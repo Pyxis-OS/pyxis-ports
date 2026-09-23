@@ -16,6 +16,19 @@ return function(ctx)
   end
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/COPYING",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
+  -- Keep the exact source pin and ordered adaptations beside the guest payload.
+  local provenance = ctx.stage .. "/share/tcc"
+  ctx.run({ "mkdir", "-p", provenance .. "/patches" })
+  local record = assert(io.open(ctx.stage .. "/" .. ctx.metadata.outputs.provenance, "w"))
+  assert(record:write("source=" .. ctx.metadata.source.url .. "\n",
+    "commit=" .. ctx.metadata.source.commit .. "\n"))
+  for _, patch in ipairs(ctx.metadata.patches) do
+    assert(record:write("patch=" .. patch .. "\n"))
+    ctx.run({ "install", "-m", "644", ctx.recipe .. "/" .. patch,
+      provenance .. "/" .. patch })
+  end
+  assert(record:close())
+
   -- Preserve the runtime sources' individual notices, including the exception.
   for _, name in ipairs({ "libtcc1.c", "va_list.c", "builtin.c" }) do
     ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/lib/" .. name,

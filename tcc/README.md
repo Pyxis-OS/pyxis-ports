@@ -2,9 +2,9 @@
 
 The recipe builds a **guest** `bin/tcc.pxe`, a **host-running** x86-64 Pyxis
 compiler and a **target** support archive. Both compilers preprocess, compile
-ELF objects and statically link native P1F executables. Neither the compiler nor
-its guest SDK is installed in the normal image yet; GCC remains the default
-compiler.
+ELF objects and statically link native P1F executables. Pyxis packages the guest
+compiler and target SDK in its normal image; GCC remains the default compiler
+for maintained userspace and the OS.
 
 ## Build and use
 
@@ -27,12 +27,11 @@ TCC's own `stddef.h`, `stdarg.h`, `stdbool.h` and `float.h`. Do not supply GCC's
 private headers. Host CPATH/C_INCLUDE_PATH/LIBRARY_PATH are intentionally ignored;
 use explicit `-I`/`-L` options. `-print-search-dirs` shows the configured paths.
 
-To link with host-running TCC, make the target compiler's libgcc directory
-available explicitly (the exported SDK does not package it yet):
+The exported Pyxis SDK includes target libgcc, so host-running TCC can link
+against the same runtime without extra library paths:
 
 ```sh
 build/tcc/stage/host/bin/x86_64-pyxis-tcc \
-  -L"$(dirname "$(x86_64-unknown-pyxis-gcc -print-libgcc-file-name)")" \
   /path/to/pyxis/userspace/mandelbrot/main.c -o mandelbrot.pxe
 ```
 
@@ -89,21 +88,26 @@ retain their debug information, but executables carry no debug sections.
 
 Output uses create/truncate streams and checks writes and close. An I/O failure
 may leave a partial file; no filesystem replacement/removal facility is invented
-for this port. Permanent guest SDK/image packaging remains the next task.
+for this port.
 
-## Guest use and staging
+## Guest SDK and use
 
-For manual image staging, add `stage/bin/tcc.pxe` to `app://tcc.pxe`, the SDK's
-`sysroot/usr/include` beneath `app://sdk/usr/include`, and `stage/lib/tcc/include`
-beneath `app://sdk/lib/tcc/include`. Also stage SDK `sysroot/usr/lib` at
-`app://sdk/usr/lib`, `stage/lib/tcc/libtcc1.a` at `app://sdk/lib/tcc/libtcc1.a`,
-and the Pyxis GCC archive reported by `-print-libgcc-file-name` at
-`app://sdk/usr/lib/libgcc.a`. Use that target archive, never the host's libgcc.
-Add existing application sources separately. These are temporary staging paths;
-normal-image packaging, licenses and provenance for the guest SDK are task 11.
-The recipe's `GUEST_SYSROOT` and `GUEST_TCCDIR` settings select the prefixes at
-build time; use a fresh build directory when changing them. `-I`, `-isystem`,
-`-nostdinc` and `-B` can select explicitly supplied headers at runtime.
+The normal Pyxis image installs `bin/tcc.pxe` at `app://tcc.pxe`. The SDK lives
+under read-only `app://sdk`: shared headers in `usr/include`, `crt0.o` and the
+libc/libterm/libpyxis/libgcc archives in `usr/lib`, and this recipe's `lib/tcc`
+with libtcc1 and its four compiler-private headers. GCC builtin headers and host
+compiler/converter executables are not guest inputs.
+
+The recipe stages TCC's source pin and ordered patch copies under `share/tcc`,
+and its license and runtime source notices under `share/licenses/tcc`. Pyxis
+packages those with the SDK's library/toolchain provenance and a manifest naming
+the Pyxis, userland and ports revisions. The recipe never modifies the SDK.
+
+`GUEST_SYSROOT` and `GUEST_TCCDIR` select the default prefixes at build time;
+use a fresh build directory when changing them. `-I`, `-isystem`, `-nostdinc`
+and `-B` can select explicitly granted headers; `-L` selects library directories.
+The paths above are the normal-image contract. Keep source and output in
+writable `home://`.
 
 From the shell, for example:
 
@@ -171,8 +175,7 @@ When the compiler itself is built for Pyxis:
   Repeat `-I`/`-L` for multiple paths.
   Configured include defaults are separate `{R}/usr/include`
   and `{B}/include` entries; library defaults are `{R}/usr/lib` and `{B}`.
-  The guest recipe supplies those prefixes; permanent guest SDK packaging
-  remains a later task.
+  The guest recipe supplies the packaged SDK prefixes.
 - Quoted includes first search beside the source file. Rooted includes are
   opened directly, without falling back to search directories. `#include_next`
   requires a relative name. Paths exceeding TCC's existing filename buffers
