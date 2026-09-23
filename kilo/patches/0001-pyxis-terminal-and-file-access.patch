@@ -1,0 +1,486 @@
+diff --git a/kilo.c b/kilo.c
+index 0d8aef4..091cce0 100644
+--- a/kilo.c
++++ b/kilo.c
+@@ -34,25 +34,16 @@
+ 
+ #define KILO_VERSION "0.0.1"
+ 
+-#ifdef __linux__
+-#define _POSIX_C_SOURCE 200809L
+-#endif
+-
+-#include <termios.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <stdint.h>
++#include <limits.h>
+ #include <errno.h>
+ #include <string.h>
+ #include <ctype.h>
+-#include <time.h>
+-#include <sys/types.h>
+-#include <sys/ioctl.h>
+-#include <sys/time.h>
+-#include <unistd.h>
+ #include <stdarg.h>
+-#include <fcntl.h>
+-#include <signal.h>
++#include <startup.h>
++#include <term.h>
+ 
+ /* Syntax highlight types */
+ #define HL_NORMAL 0
+@@ -100,12 +91,10 @@ struct editorConfig {
+     int screenrows; /* Number of rows that we can show */
+     int screencols; /* Number of cols that we can show */
+     int numrows;    /* Number of rows */
+-    int rawmode;    /* Is terminal raw mode enabled? */
+     erow *row;      /* Rows */
+     int dirty;      /* File modified but not saved. */
+     char *filename; /* Currently open filename */
+     char statusmsg[80];
+-    time_t statusmsg_time;
+     struct editorSyntax *syntax;    /* Current syntax highlight, or NULL. */
+ };
+ 
+@@ -199,166 +188,50 @@ struct editorSyntax HLDB[] = {
+ 
+ /* ======================= Low level terminal handling ====================== */
+ 
+-static struct termios orig_termios; /* In order to restore at exit.*/
++static struct terminal terminal;
++static int terminal_ready;
+ 
+-void disableRawMode(int fd) {
+-    /* Don't even check the return value as it's too late. */
+-    if (E.rawmode) {
+-        tcsetattr(fd,TCSAFLUSH,&orig_termios);
+-        E.rawmode = 0;
+-    }
++static void restore_terminal(void) {
++    if (!terminal_ready) return;
++    term_reset_style(&terminal);
++    term_clear(&terminal);
++    term_cursor_visible(&terminal, true);
++    terminal_ready = 0;
+ }
+ 
+-/* Called at exit to avoid remaining in raw mode. */
+-void editorAtExit(void) {
+-    disableRawMode(STDIN_FILENO);
++static void fail(const char *message) {
++    restore_terminal();
++    fprintf(stderr,"kilo: %s\n",message);
++    exit(EXIT_FAILURE);
+ }
+ 
+-/* Raw mode: 1960 magic shit. */
+-int enableRawMode(int fd) {
+-    struct termios raw;
+-
+-    if (E.rawmode) return 0; /* Already enabled. */
+-    if (!isatty(STDIN_FILENO)) goto fatal;
+-    atexit(editorAtExit);
+-    if (tcgetattr(fd,&orig_termios) == -1) goto fatal;
+-
+-    raw = orig_termios;  /* modify the original mode */
+-    /* input modes: no break, no CR to NL, no parity check, no strip char,
+-     * no start/stop output control. */
+-    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+-    /* output modes - disable post processing */
+-    raw.c_oflag &= ~(OPOST);
+-    /* control modes - set 8 bit chars */
+-    raw.c_cflag |= (CS8);
+-    /* local modes - choing off, canonical off, no extended functions,
+-     * no signal chars (^Z,^C) */
+-    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+-    /* control chars - set return condition: min number of bytes and timer. */
+-    raw.c_cc[VMIN] = 0; /* Return each byte, or zero for timeout. */
+-    raw.c_cc[VTIME] = 1; /* 100 ms timeout (unit is tens of second). */
+-
+-    /* put terminal in raw mode after flushing */
+-    if (tcsetattr(fd,TCSAFLUSH,&raw) < 0) goto fatal;
+-    E.rawmode = 1;
+-    return 0;
+-
+-fatal:
+-    errno = ENOTTY;
+-    return -1;
++static void *resize_or_exit(void *pointer, size_t size) {
++    void *result = realloc(pointer,size ? size : 1);
++    if (!result) fail("out of memory; unsaved edits could not be retained");
++    return result;
+ }
+ 
+-/* Read a key from the terminal put in raw mode, trying to handle
+- * escape sequences. */
+-int editorReadKey(int fd) {
+-    int nread;
+-    char c, seq[3];
+-    while ((nread = read(fd,&c,1)) == 0);
+-    if (nread == -1) exit(1);
+-
+-    while(1) {
+-        switch(c) {
+-        case ESC:    /* escape sequence */
+-            /* If this is just an ESC, we'll timeout here. */
+-            if (read(fd,seq,1) == 0) return ESC;
+-            if (read(fd,seq+1,1) == 0) return ESC;
+-
+-            /* ESC [ sequences. */
+-            if (seq[0] == '[') {
+-                if (seq[1] >= '0' && seq[1] <= '9') {
+-                    /* Extended escape, read additional byte. */
+-                    if (read(fd,seq+2,1) == 0) return ESC;
+-                    if (seq[2] == '~') {
+-                        switch(seq[1]) {
+-                        case '3': return DEL_KEY;
+-                        case '5': return PAGE_UP;
+-                        case '6': return PAGE_DOWN;
+-                        }
+-                    }
+-                } else {
+-                    switch(seq[1]) {
+-                    case 'A': return ARROW_UP;
+-                    case 'B': return ARROW_DOWN;
+-                    case 'C': return ARROW_RIGHT;
+-                    case 'D': return ARROW_LEFT;
+-                    case 'H': return HOME_KEY;
+-                    case 'F': return END_KEY;
+-                    }
+-                }
+-            }
+-
+-            /* ESC O sequences. */
+-            else if (seq[0] == 'O') {
+-                switch(seq[1]) {
+-                case 'H': return HOME_KEY;
+-                case 'F': return END_KEY;
+-                }
+-            }
+-            break;
+-        default:
+-            return c;
+-        }
++int editorReadKey(void) {
++    unsigned key;
++    enum call_status status = term_read_key(&terminal,&key);
++    if (status == CALL_INPUT_LOST) {
++        editorSetStatusMessage("Input lost; please repeat the last key");
++        return KEY_NULL;
+     }
+-}
+-
+-/* Use the ESC [6n escape sequence to query the horizontal cursor position
+- * and return it. On error -1 is returned, on success the position of the
+- * cursor is stored at *rows and *cols and 0 is returned. */
+-int getCursorPosition(int ifd, int ofd, int *rows, int *cols) {
+-    char buf[32];
+-    unsigned int i = 0;
+-
+-    /* Report cursor location */
+-    if (write(ofd, "\x1b[6n", 4) != 4) return -1;
+-
+-    /* Read the response: ESC [ rows ; cols R */
+-    while (i < sizeof(buf)-1) {
+-        if (read(ifd,buf+i,1) != 1) break;
+-        if (buf[i] == 'R') break;
+-        i++;
++    if (status != CALL_OK) fail("terminal input failed");
++    switch (key) {
++    case TERM_KEY_LEFT: return ARROW_LEFT;
++    case TERM_KEY_RIGHT: return ARROW_RIGHT;
++    case TERM_KEY_UP: return ARROW_UP;
++    case TERM_KEY_DOWN: return ARROW_DOWN;
++    case TERM_KEY_HOME: return HOME_KEY;
++    case TERM_KEY_END: return END_KEY;
++    case TERM_KEY_DELETE: return DEL_KEY;
++    case TERM_KEY_PAGE_UP: return PAGE_UP;
++    case TERM_KEY_PAGE_DOWN: return PAGE_DOWN;
++    case '\n': return ENTER;
++    default: return key < 256 ? (int)key : KEY_NULL;
+     }
+-    buf[i] = '\0';
+-
+-    /* Parse it. */
+-    if (buf[0] != ESC || buf[1] != '[') return -1;
+-    if (sscanf(buf+2,"%d;%d",rows,cols) != 2) return -1;
+-    return 0;
+-}
+-
+-/* Try to get the number of columns in the current terminal. If the ioctl()
+- * call fails the function will try to query the terminal itself.
+- * Returns 0 on success, -1 on error. */
+-int getWindowSize(int ifd, int ofd, int *rows, int *cols) {
+-    struct winsize ws;
+-
+-    if (ioctl(1, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+-        /* ioctl() failed. Try to query the terminal itself. */
+-        int orig_row, orig_col, retval;
+-
+-        /* Get the initial position so we can restore it later. */
+-        retval = getCursorPosition(ifd,ofd,&orig_row,&orig_col);
+-        if (retval == -1) goto failed;
+-
+-        /* Go to right/bottom margin and get position. */
+-        if (write(ofd,"\x1b[999C\x1b[999B",12) != 12) goto failed;
+-        retval = getCursorPosition(ifd,ofd,rows,cols);
+-        if (retval == -1) goto failed;
+-
+-        /* Restore position. */
+-        char seq[32];
+-        snprintf(seq,32,"\x1b[%d;%dH",orig_row,orig_col);
+-        if (write(ofd,seq,strlen(seq)) == -1) {
+-            /* Can't recover... */
+-        }
+-        return 0;
+-    } else {
+-        *cols = ws.ws_col;
+-        *rows = ws.ws_row;
+-        return 0;
+-    }
+-
+-failed:
+-    return -1;
+ }
+ 
+ /* ====================== Syntax highlight color scheme  ==================== */
+@@ -806,22 +679,44 @@ int editorOpen(char *filename) {
+     fp = fopen(filename,"r");
+     if (!fp) {
+         if (errno != ENOENT) {
+-            perror("Opening file");
+-            exit(1);
++            fail(strerror(errno));
+         }
+         return 1;
+     }
+ 
++    char chunk[4096];
+     char *line = NULL;
+-    size_t linecap = 0;
+-    ssize_t linelen;
+-    while((linelen = getline(&line,&linecap,fp)) != -1) {
+-        if (linelen && (line[linelen-1] == '\n' || line[linelen-1] == '\r'))
+-            line[--linelen] = '\0';
+-        editorInsertRow(E.numrows,line,linelen);
++    size_t capacity = 0, length = 0, count;
++    while ((count = fread(chunk,1,sizeof(chunk),fp)) != 0) {
++        for (size_t i = 0; i < count; i++) {
++            unsigned char byte = (unsigned char)chunk[i];
++            if (byte == '\n') {
++                if (length && line[length-1] == '\r') length--;
++                if (line) line[length] = '\0';
++                editorInsertRow(E.numrows,line ? line : "",length);
++                length = 0;
++                continue;
++            }
++            if (!byte) fail("NUL bytes are not supported in text files");
++            if (length == INT_MAX-1) fail("line is too long");
++            if (length+1 >= capacity) {
++                capacity = capacity ? capacity * 2 : 128;
++                if (capacity > INT_MAX) capacity = INT_MAX;
++                line = resize_or_exit(line,capacity);
++            }
++            line[length++] = byte;
++            line[length] = '\0';
++        }
++    }
++    if (ferror(fp)) {
++        int error = errno;
++        fclose(fp);
++        free(line);
++        fail(strerror(error));
+     }
++    if (length) editorInsertRow(E.numrows,line,length);
+     free(line);
+-    fclose(fp);
++    if (fclose(fp) == EOF) fail(strerror(errno));
+     E.dirty = 0;
+     return 0;
+ }
+@@ -830,23 +725,25 @@ int editorOpen(char *filename) {
+ int editorSave(void) {
+     int len;
+     char *buf = editorRowsToString(&len);
+-    int fd = open(E.filename,O_RDWR|O_CREAT,0644);
+-    if (fd == -1) goto writeerr;
+-
+-    /* Use truncate + a single write(2) call in order to make saving
+-     * a bit safer, under the limits of what we can do in a small editor. */
+-    if (ftruncate(fd,len) == -1) goto writeerr;
+-    if (write(fd,buf,len) != len) goto writeerr;
+-
+-    close(fd);
++    FILE *fp = fopen(E.filename,"wb");
++    if (!fp) goto writeerr;
++
++    /* This truncates before writing: failures can leave partial contents.
++     * Atomic replacement needs filesystem support beyond this first port. */
++    if (fwrite(buf,1,len,fp) != (size_t)len) {
++        int error = errno;
++        fclose(fp);
++        errno = error;
++        goto writeerr;
++    }
++    if (fclose(fp) == EOF) goto writeerr;
+     free(buf);
+     E.dirty = 0;
+-    editorSetStatusMessage("%d bytes written on disk", len);
++    editorSetStatusMessage("%d bytes written",len);
+     return 0;
+ 
+ writeerr:
+     free(buf);
+-    if (fd != -1) close(fd);
+     editorSetStatusMessage("Can't save! I/O error: %s",strerror(errno));
+     return 1;
+ }
+@@ -971,10 +868,10 @@ void editorRefreshScreen(void) {
+     }
+     abAppend(&ab,"\x1b[0m\r\n",6);
+ 
+-    /* Second row depends on E.statusmsg and the status message update time. */
++    /* Status remains until replaced; Pyxis has no userspace clock yet. */
+     abAppend(&ab,"\x1b[0K",4);
+     int msglen = strlen(E.statusmsg);
+-    if (msglen && time(NULL)-E.statusmsg_time < 5)
++    if (msglen)
+         abAppend(&ab,E.statusmsg,msglen <= E.screencols ? msglen : E.screencols);
+ 
+     /* Put cursor at its current position. Note that the horizontal position
+@@ -993,7 +890,8 @@ void editorRefreshScreen(void) {
+     snprintf(buf,sizeof(buf),"\x1b[%d;%dH",E.cy+1,cx);
+     abAppend(&ab,buf,strlen(buf));
+     abAppend(&ab,"\x1b[?25h",6); /* Show cursor. */
+-    write(STDOUT_FILENO,ab.b,ab.len);
++    if (term_write_all(&terminal,ab.b,ab.len) != CALL_OK)
++        fail("terminal output failed");
+     abFree(&ab);
+ }
+ 
+@@ -1004,14 +902,13 @@ void editorSetStatusMessage(const char *fmt, ...) {
+     va_start(ap,fmt);
+     vsnprintf(E.statusmsg,sizeof(E.statusmsg),fmt,ap);
+     va_end(ap);
+-    E.statusmsg_time = time(NULL);
+ }
+ 
+ /* =============================== Find mode ================================ */
+ 
+ #define KILO_QUERY_LEN 256
+ 
+-void editorFind(int fd) {
++void editorFind(void) {
+     char query[KILO_QUERY_LEN+1] = {0};
+     int qlen = 0;
+     int last_match = -1; /* Last line where a match was found. -1 for none. */
+@@ -1036,7 +933,7 @@ void editorFind(int fd) {
+             "Search: %s (Use ESC/Arrows/Enter)", query);
+         editorRefreshScreen();
+ 
+-        int c = editorReadKey(fd);
++        int c = editorReadKey();
+         if (c == DEL_KEY || c == CTRL_H || c == BACKSPACE) {
+             if (qlen != 0) query[--qlen] = '\0';
+             last_match = -1;
+@@ -1185,12 +1082,12 @@ void editorMoveCursor(int key) {
+ /* Process events arriving from the standard input, which is, the user
+  * is typing stuff on the terminal. */
+ #define KILO_QUIT_TIMES 3
+-void editorProcessKeypress(int fd) {
++void editorProcessKeypress(void) {
+     /* When the file is modified, requires Ctrl-q to be pressed N times
+      * before actually quitting. */
+     static int quit_times = KILO_QUIT_TIMES;
+ 
+-    int c = editorReadKey(fd);
++    int c = editorReadKey();
+     switch(c) {
+     case ENTER:         /* Enter */
+         editorInsertNewline();
+@@ -1207,13 +1104,14 @@ void editorProcessKeypress(int fd) {
+             quit_times--;
+             return;
+         }
++        restore_terminal();
+         exit(0);
+         break;
+     case CTRL_S:        /* Ctrl-s */
+         editorSave();
+         break;
+     case CTRL_F:
+-        editorFind(fd);
++        editorFind();
+         break;
+     case BACKSPACE:     /* Backspace */
+     case CTRL_H:        /* Ctrl-h */
+@@ -1247,7 +1145,7 @@ void editorProcessKeypress(int fd) {
+         /* Nothing to do for ESC in this mode. */
+         break;
+     default:
+-        editorInsertChar(c);
++        if (c == TAB || (c >= 32 && c <= 126)) editorInsertChar(c);
+         break;
+     }
+ 
+@@ -1259,19 +1157,13 @@ int editorFileWasModified(void) {
+ }
+ 
+ void updateWindowSize(void) {
+-    if (getWindowSize(STDIN_FILENO,STDOUT_FILENO,
+-                      &E.screenrows,&E.screencols) == -1) {
+-        perror("Unable to query the screen for size (columns / rows)");
+-        exit(1);
+-    }
+-    E.screenrows -= 2; /* Get room for status bar. */
+-}
+-
+-void handleSigWinCh(int unused __attribute__((unused))) {
+-    updateWindowSize();
+-    if (E.cy > E.screenrows) E.cy = E.screenrows - 1;
+-    if (E.cx > E.screencols) E.cx = E.screencols - 1;
+-    editorRefreshScreen();
++    size_t columns, rows;
++    if (term_size(&terminal,&columns,&rows) != CALL_OK)
++        fail("cannot query terminal dimensions");
++    if (columns < 2 || rows < 3 || columns > INT_MAX || rows > INT_MAX)
++        fail("unsupported terminal dimensions");
++    E.screencols = columns;
++    E.screenrows = rows - 2;
+ }
+ 
+ void initEditor(void) {
+@@ -1285,7 +1177,6 @@ void initEditor(void) {
+     E.filename = NULL;
+     E.syntax = NULL;
+     updateWindowSize();
+-    signal(SIGWINCH, handleSigWinCh);
+ }
+ 
+ int main(int argc, char **argv) {
+@@ -1294,15 +1185,21 @@ int main(int argc, char **argv) {
+         exit(1);
+     }
+ 
++    terminal.input = startup_resource("input");
++    terminal.output = startup_resource("output");
++    if (terminal.input == HANDLE_INVALID || terminal.output == HANDLE_INVALID)
++        fail("input and output console capabilities are required");
++    terminal_ready = 1;
++    if (term_reset_style(&terminal) != CALL_OK || term_clear(&terminal) != CALL_OK)
++        fail("cannot initialize terminal");
+     initEditor();
+     editorSelectSyntaxHighlight(argv[1]);
+     editorOpen(argv[1]);
+-    enableRawMode(STDIN_FILENO);
+     editorSetStatusMessage(
+         "HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
+     while(1) {
+         editorRefreshScreen();
+-        editorProcessKeypress(STDIN_FILENO);
++        editorProcessKeypress();
+     }
+     return 0;
+ }
