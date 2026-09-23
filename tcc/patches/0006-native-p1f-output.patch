@@ -1,0 +1,463 @@
+diff --git a/Makefile b/Makefile
+index 0eed7b9..08244cf 100644
+--- a/Makefile
++++ b/Makefile
+@@ -210,7 +210,7 @@ CORE_FILES += tcc.h config.h libtcc.h tcctok.h
+ i386_FILES = $(CORE_FILES) i386-gen.c i386-link.c i386-asm.c i386-asm.h i386-tok.h
+ i386-win32_FILES = $(i386_FILES) tccpe.c
+ x86_64_FILES = $(CORE_FILES) x86_64-gen.c x86_64-link.c i386-asm.c x86_64-asm.h
+-x86_64-pyxis_FILES = $(x86_64_FILES)
++x86_64-pyxis_FILES = $(x86_64_FILES) tccp1f.c $(PYXIS_P1F_HEADER)
+ x86_64-win32_FILES = $(x86_64_FILES) tccpe.c
+ x86_64-osx_FILES = $(x86_64_FILES) tccmacho.c
+ arm_FILES = $(CORE_FILES) arm-gen.c arm-link.c arm-asm.c arm-tok.h
+diff --git a/libtcc.c b/libtcc.c
+index a579a54..8affe50 100644
+--- a/libtcc.c
++++ b/libtcc.c
+@@ -1006,9 +1006,15 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
+ {
+ #ifdef TCC_TARGET_PYXIS
+     TCCState *s1 = s;
+-    /* Native executable output is a separate port milestone. */
+-    if (output_type != TCC_OUTPUT_OBJ && output_type != TCC_OUTPUT_PREPROCESS)
+-        return tcc_error_noabort("Pyxis currently supports only -c and -E; link objects with the SDK");
++    if (output_type != TCC_OUTPUT_OBJ && output_type != TCC_OUTPUT_PREPROCESS
++        && output_type != TCC_OUTPUT_EXE)
++        return tcc_error_noabort("Pyxis supports static P1F executables, -c and -E");
++    s->static_link = 1;
++    s->output_format = output_type == TCC_OUTPUT_EXE
++        ? TCC_OUTPUT_FORMAT_P1F : TCC_OUTPUT_FORMAT_ELF;
++    s->has_text_addr = 1;
++    s->text_addr = ELF_START_ADDR;
++    s->section_align = P1F_PAGE_SIZE;
+ #endif
+ #ifdef CONFIG_TCC_PIE
+     if (output_type == TCC_OUTPUT_EXE)
+@@ -1056,6 +1062,10 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
+     tcc_add_systemdir(s);
+ # endif
+ 
++#elif defined TCC_TARGET_PYXIS
++    if (!s->nostdlib)
++        tcc_add_dll(s, "crt0.o", AFF_PRINT_ERROR);
++
+ #elif defined TCC_TARGET_MACHO
+ # ifdef TCC_IS_NATIVE
+     tcc_add_macos_sdkpath(s);
+@@ -1994,13 +2004,15 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
+             break;
+         }
+ 
+-#ifdef __pyxis__
++#ifdef TCC_TARGET_PYXIS
+         /* Keep unsupported host services out even when another option would
+            later override them (for example -run followed by -c). */
+         switch (popt->index) {
+         case TCC_OPTION_HELP: case TCC_OPTION_HELP2: case TCC_OPTION_v:
+         case TCC_OPTION_I: case TCC_OPTION_D: case TCC_OPTION_U:
+         case TCC_OPTION_B: case TCC_OPTION_isystem: case TCC_OPTION_include:
++        case TCC_OPTION_L: case TCC_OPTION_l: case TCC_OPTION_static:
++        case TCC_OPTION_nostdlib:
+         case TCC_OPTION_nostdinc: case TCC_OPTION_c: case TCC_OPTION_E:
+         case TCC_OPTION_o: case TCC_OPTION_g: case TCC_OPTION_std:
+         case TCC_OPTION_x: case TCC_OPTION_d: case TCC_OPTION_P:
+@@ -2009,7 +2021,11 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
+         case TCC_OPTION_dumpmachine: case TCC_OPTION_dumpversion:
+             break;
+         case TCC_OPTION_bench:
++#ifdef __pyxis__
+             return tcc_error_noabort("-bench requires an elapsed-time clock on Pyxis");
++#else
++            break;
++#endif
+         default:
+             return tcc_error_noabort("unsupported option on Pyxis: '%s'", r);
+         }
+diff --git a/tcc.c b/tcc.c
+index e273440..d0c9086 100644
+--- a/tcc.c
++++ b/tcc.c
+@@ -30,10 +30,12 @@
+ #include "tcctools.c"
+ #endif
+ 
+-#ifdef __pyxis__
++#ifdef TCC_TARGET_PYXIS
+ static const char help[] =
+     "Tiny C Compiler " TCC_VERSION " for Pyxis\n"
+-    "Usage: tcc -E|-c [options] source...\n"
++    "Usage: tcc [options] source/object/archive...\n"
++    "  default        link a static P1F executable (a.pxe)\n"
++    "  -L path -lname -static -nostdlib\n"
+     "  -E             preprocess; -P omits line markers\n"
+     "  -c             write ELF objects (one per source)\n"
+     "  -o path        output path; -E defaults to stdout\n"
+@@ -46,8 +48,18 @@ static const char help[] =
+     "  -dD|-dM -w -W<warning> -f<flag> -m64 -msse\n"
+     "  -v -vv --version -h -hh -print-search-dirs\n"
+     "  @path          read arguments from a response file\n"
++#ifdef __pyxis__
+     "Paths are relative to the inherited directory or start with scheme://.\n"
+-    "Linking, -run, -ar, dependencies, coverage and -bench are unavailable.\n";
++#else
++    "Paths use the host filesystem; generated code targets Pyxis.\n"
++#endif
++    "-run, -ar, dependencies and coverage are unavailable.\n"
++#ifdef __pyxis__
++    "-bench requires an elapsed-time clock on Pyxis.\n"
++#else
++    "-bench uses the host clock.\n"
++#endif
++    ;
+ static const char help2[] =
+     "Warnings: all, error[=warning], write-strings, unsupported,\n"
+     "  implicit-function-declaration, discarded-qualifiers; no- reverses them.\n"
+@@ -312,7 +324,11 @@ static char *default_outputfile(TCCState *s, const char *first_file)
+     if ((s->just_deps || s->output_type == TCC_OUTPUT_OBJ) && !s->option_r && *ext)
+         strcpy(ext, ".o");
+     else
++#ifdef TCC_TARGET_PYXIS
++        strcpy(buf, "a.pxe");
++#else
+         strcpy(buf, "a.out");
++#endif
+     return tcc_strdup(buf);
+ }
+ 
+diff --git a/tcc.h b/tcc.h
+index 9ab3ad5..9f4897a 100644
+--- a/tcc.h
++++ b/tcc.h
+@@ -342,6 +342,9 @@ extern long double strtold (const char *__nptr, char **__endptr);
+ 
+ #include "libtcc.h"
+ #include "elf.h"
++#ifdef TCC_TARGET_PYXIS
++#include "pxe/p1f.h"
++#endif
+ #include "stab.h"
+ #include "dwarf.h"
+ 
+@@ -831,6 +834,9 @@ struct TCCState {
+     int output_type;
+     /* output format, see TCC_OUTPUT_FORMAT_xxx */
+     int output_format;
++#ifdef TCC_TARGET_PYXIS
++    size_t archive_members_loaded; /* progress for runtime archive rescanning */
++#endif
+     /* nth test to run with -dt -run */
+     int run_test;
+ 
+@@ -1546,6 +1552,7 @@ ST_FUNC Sym *gfunc_set_param(Sym *s, int c, int byref);
+ #define TCC_OUTPUT_FORMAT_ELF    0 /* default output format: ELF */
+ #define TCC_OUTPUT_FORMAT_BINARY 1 /* binary image output */
+ #define TCC_OUTPUT_FORMAT_COFF   2 /* COFF */
++#define TCC_OUTPUT_FORMAT_P1F    3 /* Pyxis fixed-address executable */
+ #define TCC_OUTPUT_DYN           TCC_OUTPUT_DLL
+ 
+ #define ARMAG  "!<arch>\n"    /* For COFF and a.out archives */
+diff --git a/tccelf.c b/tccelf.c
+index b8c4e20..a9b7efe 100644
+--- a/tccelf.c
++++ b/tccelf.c
+@@ -1121,10 +1121,12 @@ ST_FUNC void relocate_syms(TCCState *s1, Section *symtab, int do_resolve)
+             /* if dynamic symbol exist, it will be used in relocate_section */
+             } else if (s1->dynsym && find_elf_sym(s1->dynsym, name))
+                 goto found;
++#ifndef TCC_TARGET_PYXIS
+             /* XXX: _fp_hw seems to be part of the ABI, so we ignore
+                it */
+             if (!strcmp(name, "_fp_hw"))
+                 goto found;
++#endif
+             /* only weak symbols are accepted to be undefined. Their
+                value is zero */
+             sym_bind = ELFW(ST_BIND)(sym->st_info);
+@@ -1843,6 +1845,21 @@ ST_FUNC void tcc_add_runtime(TCCState *s1)
+ #endif
+     tcc_add_pragma_libs(s1);
+ 
++#ifdef TCC_TARGET_PYXIS
++    if (!s1->nostdlib) {
++        static const char *const libraries[] = { "c", "term", "pyxis", "tcc1", "gcc" };
++        size_t previous;
++        int i;
++        /* Later archives can introduce references back into earlier ones.
++           The archive reader extracts only members needed by undefined symbols. */
++        do {
++            previous = s1->archive_members_loaded;
++            for (i = 0; i < countof(libraries); ++i)
++                if (tcc_add_library(s1, libraries[i]) < 0)
++                    return;
++        } while (s1->archive_members_loaded != previous && !s1->nb_errors);
++    }
++#else
+     /* add libc */
+     if (!s1->nostdlib) {
+         int lpthread = s1->option_pthread;
+@@ -1890,6 +1907,7 @@ ST_FUNC void tcc_add_runtime(TCCState *s1)
+             tccelf_add_crtend(s1);
+ #endif
+     }
++#endif
+ }
+ #endif /* ndef TCC_TARGET_PE */
+ 
+@@ -2498,7 +2516,8 @@ static int layout_sections(TCCState *s1, int *sec_order, struct dyn_inf *d)
+                 if ((addr & (s_align - 1)) != 0)
+                     addr += s_align;
+             } else {
+-                align = s_align - 1;
++                if (align < s_align - 1)
++                    align = s_align - 1;
+             }
+         }
+ 
+@@ -2834,6 +2853,10 @@ static int tcc_output_binary(TCCState *s1, FILE *f)
+     return 0;
+ }
+ 
++#ifdef TCC_TARGET_PYXIS
++#include "tccp1f.c"
++#endif
++
+ /* Write an elf, coff or "binary" file */
+ static int tcc_write_elf_file(TCCState *s1, const char *filename, int phnum,
+                               ElfW(Phdr) *phdr)
+@@ -2849,6 +2872,11 @@ static int tcc_write_elf_file(TCCState *s1, const char *filename, int phnum,
+     if (s1->output_format == TCC_OUTPUT_FORMAT_COFF)
+         tcc_output_coff(s1, f);
+     else
++#endif
++#ifdef TCC_TARGET_PYXIS
++    if (s1->output_format == TCC_OUTPUT_FORMAT_P1F)
++        ret = tcc_output_p1f(s1, f, phnum, phdr);
++    else
+ #endif
+     if (s1->output_format == TCC_OUTPUT_FORMAT_ELF)
+         ret = tcc_output_elf(s1, f, phnum, phdr);
+@@ -3059,7 +3087,13 @@ static int elf_output_file(TCCState *s1, const char *filename)
+ 
+         /* if linking, also link in runtime libraries (libc, libgcc, etc.) */
+         tcc_add_runtime(s1);
+-	resolve_common_syms(s1);
++        if (s1->nb_errors)
++            goto the_end;
++#ifdef TCC_TARGET_PYXIS
++        if (p1f_check_sections(s1))
++            goto the_end;
++#endif
++        resolve_common_syms(s1);
+ 
+         if (!s1->static_link) {
+             if (file_type & TCC_OUTPUT_EXE) {
+@@ -3149,6 +3183,10 @@ static int elf_output_file(TCCState *s1, const char *filename)
+ 
+     /* create and fill .shstrtab section */
+     alloc_sec_names(s1, 0);
++#ifdef TCC_TARGET_PYXIS
++    if (p1f_check_layout_size(s1))
++        goto the_end;
++#endif
+     /* this array is used to reorder sections in the output file */
+     sec_order = tcc_malloc(sizeof(int) * 2 * s1->nb_sections);
+     /* compute section to program header mapping */
+@@ -3189,7 +3227,9 @@ static int elf_output_file(TCCState *s1, const char *filename)
+     /* fill with final data */
+     tcc_eh_frame_hdr(s1, 1);
+ #endif
+-    /* Create the ELF file with name 'filename' */
++    if (s1->nb_errors)
++        goto the_end;
++    /* Create the output file only after all relocations succeeded. */
+     ret = tcc_write_elf_file(s1, filename, dyninf.phnum, dyninf.phdr);
+  the_end:
+     tcc_free(sec_order);
+@@ -3738,6 +3778,9 @@ static int tcc_load_alacarte(TCCState *s1, FILE *stream, int size, int entrysize
+                 printf("   -> %s\n", hdr.ar_name);
+             if (tcc_load_object_file(s1, stream, off) < 0)
+                 goto the_end;
++#ifdef TCC_TARGET_PYXIS
++            ++s1->archive_members_loaded;
++#endif
+             ++bound;
+         }
+     } while(bound);
+diff --git a/tccp1f.c b/tccp1f.c
+new file mode 100644
+index 0000000..0689e16
+--- /dev/null
++++ b/tccp1f.c
+@@ -0,0 +1,171 @@
++/* Pyxis P1F output. Layout and relocations remain in the ELF linker. */
++
++static int p1f_check_sections(TCCState *s1)
++{
++    Section *s;
++    ElfW(Sym) *sym;
++    ElfW_Rel *rel;
++    int i, type;
++
++    for_each_elem(symtab_section, 1, sym, ElfW(Sym)) {
++        type = ELFW(ST_TYPE)(sym->st_info);
++        if (type == STT_TLS || type == STT_GNU_IFUNC)
++            return tcc_error_noabort("P1F does not support TLS or indirect functions");
++    }
++    for (i = 1; i < s1->nb_sections; ++i) {
++        s = s1->sections[i];
++        if (s->sh_flags & SHF_TLS)
++            return tcc_error_noabort("P1F does not support TLS: %s", s->name);
++        if ((s->sh_flags & (SHF_WRITE | SHF_EXECINSTR)) == (SHF_WRITE | SHF_EXECINSTR))
++            return tcc_error_noabort("P1F does not support writable executable sections: %s", s->name);
++        if ((s->sh_flags & SHF_ALLOC) && s->data_offset
++            && s->sh_type != SHT_PROGBITS && s->sh_type != SHT_NOBITS
++            && s->sh_type != SHT_NOTE)
++            return tcc_error_noabort("unsupported P1F section: %s", s->name);
++        if (s->sh_type != SHT_RELX)
++            continue;
++        for_each_elem(s, 0, rel, ElfW_Rel) {
++            switch (ELFW(R_TYPE)(rel->r_info)) {
++            case R_X86_64_NONE:
++            case R_X86_64_32: case R_X86_64_32S: case R_X86_64_64:
++            case R_X86_64_PC32: case R_X86_64_PC64:
++            case R_X86_64_PLT32: case R_X86_64_PLTOFF64:
++            case R_X86_64_GOT32: case R_X86_64_GOT64:
++            case R_X86_64_GOTPC32: case R_X86_64_GOTPC64:
++            case R_X86_64_GOTOFF64: case R_X86_64_GOTPCREL:
++            case R_X86_64_GOTPCRELX: case R_X86_64_REX_GOTPCRELX:
++                break;
++            default:
++                return tcc_error_noabort("unsupported P1F relocation %d in %s",
++                    (int)ELFW(R_TYPE)(rel->r_info), s->name);
++            }
++        }
++    }
++    return 0;
++}
++
++static int p1f_check_layout_size(TCCState *s1)
++{
++    uint64_t budget = 0, align;
++    Section *s;
++    int i;
++
++    /* Upstream layout uses signed int file offsets. Bound every section and
++       worst-case alignment gap before that arithmetic, including debug data. */
++    if (s1->nb_sections > INT_MAX / (2 * sizeof(int)))
++        return tcc_error_noabort("too many P1F sections");
++    for (i = 1; i < s1->nb_sections; ++i) {
++        s = s1->sections[i];
++        align = s->sh_addralign;
++        if (!align || (align & (align - 1)))
++            return tcc_error_noabort("invalid section alignment: %s", s->name);
++        if (align < P1F_PAGE_SIZE)
++            align = P1F_PAGE_SIZE;
++        if (align > INT_MAX || s->sh_size > INT_MAX
++            || budget > INT_MAX - align
++            || s->sh_size > INT_MAX - budget - align)
++            return tcc_error_noabort("P1F image exceeds linker layout limits");
++        budget += align + s->sh_size;
++    }
++    return 0;
++}
++
++static int p1f_write_zeros(FILE *f, uint64_t count)
++{
++    static const unsigned char zeros[256];
++    size_t size;
++
++    while (count) {
++        size = count > sizeof zeros ? sizeof zeros : count;
++        if (fwrite(zeros, 1, size, f) != size)
++            return -1;
++        count -= size;
++    }
++    return 0;
++}
++
++static int tcc_output_p1f(TCCState *s1, FILE *f, int phnum, ElfW(Phdr) *phdr)
++{
++    struct p1f_header header = { P1F_MAGIC, 0, 0 };
++    struct p1f_segment *segments, *segment;
++    ElfW(Phdr) *ph;
++    Section *s;
++    uint64_t previous_end = 0, end, offset, written;
++    int i, j, entry_found = 0, ret = -1;
++
++    header.entry = get_sym_addr(s1, "_start", 1, 0);
++    if (s1->nb_errors)
++        return -1;
++    segments = tcc_mallocz(phnum * sizeof(*segments));
++    for (i = 0; i < phnum; ++i) {
++        ph = &phdr[i];
++        if (ph->p_type != PT_LOAD || !ph->p_memsz)
++            continue;
++        if (ph->p_vaddr < P1F_PAGE_SIZE || ph->p_vaddr % P1F_PAGE_SIZE
++            || ph->p_vaddr < previous_end || ph->p_vaddr >= P1F_USER_LIMIT
++            || ph->p_memsz > P1F_USER_LIMIT - ph->p_vaddr
++            || !(ph->p_flags & PF_R) || (ph->p_flags & ~(PF_R | PF_W | PF_X))
++            || (ph->p_flags & (PF_W | PF_X)) == (PF_W | PF_X))
++            goto invalid;
++        end = ph->p_vaddr + ph->p_memsz;
++        previous_end = (end + P1F_PAGE_SIZE - 1) & ~(P1F_PAGE_SIZE - 1);
++        segment = &segments[header.segment_count++];
++        segment->virtual_address = ph->p_vaddr;
++        segment->memory_size = ph->p_memsz;
++        segment->flags = P1F_READ;
++        if (ph->p_flags & PF_W)
++            segment->flags |= P1F_WRITE;
++        if (ph->p_flags & PF_X) {
++            segment->flags |= P1F_EXECUTE;
++            if (header.entry >= ph->p_vaddr && header.entry < end)
++                entry_found = 1;
++        }
++        /* File bytes extend through the last backed section. Interior gaps
++           are emitted as zeros; a trailing NOBITS extent stays out of the file. */
++        for (j = 1; j < s1->nb_sections; ++j) {
++            s = s1->sections[j];
++            if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size
++                || s->sh_addr < ph->p_vaddr || s->sh_addr >= end)
++                continue;
++            if (s->sh_size > end - s->sh_addr)
++                goto invalid;
++            if (s->sh_type != SHT_NOBITS)
++                segment->file_size = s->sh_addr + s->sh_size - ph->p_vaddr;
++        }
++    }
++    if (!entry_found)
++        goto invalid;
++    if (fwrite(&header, sizeof header, 1, f) != 1
++        || fwrite(segments, sizeof(*segments), header.segment_count, f) != header.segment_count)
++        goto write_error;
++    for (i = 0; i < header.segment_count; ++i) {
++        segment = &segments[i];
++        written = 0;
++        for (j = 1; j < s1->nb_sections; ++j) {
++            s = s1->sections[j];
++            if (!(s->sh_flags & SHF_ALLOC) || s->sh_type == SHT_NOBITS || !s->sh_size
++                || s->sh_addr < segment->virtual_address)
++                continue;
++            offset = s->sh_addr - segment->virtual_address;
++            if (offset >= segment->memory_size)
++                continue;
++            if (offset < written || offset > segment->file_size
++                || s->sh_size > segment->file_size - offset)
++                goto invalid;
++            if (p1f_write_zeros(f, offset - written)
++                || fwrite(s->data, 1, s->sh_size, f) != s->sh_size)
++                goto write_error;
++            written = offset + s->sh_size;
++        }
++    }
++    ret = 0;
++    goto done;
++ invalid:
++    tcc_error_noabort("invalid P1F segment layout or entry point");
++    goto done;
++ write_error:
++    tcc_error_noabort("could not write P1F image");
++ done:
++    tcc_free(segments);
++    return ret;
++}
