@@ -1,9 +1,9 @@
-# TCC: Pyxis object target
+# TCC: Pyxis object compiler
 
-This first port stage builds a **host-running** x86-64 Pyxis compiler and a
-**target** support archive. It supports `-E` and `-c`; it is not yet a guest
-application or a PXE linker. Pyxis's normal image still contains only the
-previously selected ports, and GCC remains its default compiler.
+The recipe builds a **guest** `bin/tcc.pxe`, a **host-running** x86-64 Pyxis
+compiler and a **target** support archive. Guest TCC supports preprocessing and
+ELF object compilation, not executable linking yet. It is not installed in the
+normal boot image at this stage; GCC remains the default compiler.
 
 ## Build and use
 
@@ -14,9 +14,10 @@ lua build.lua tcc --sdk /path/to/pyxis/build/sdk
 build/tcc/stage/host/bin/x86_64-pyxis-tcc -c /path/to/pyxis/userspace/mandelbrot/main.c -o mandelbrot.o
 ```
 
-The recipe also needs host `cc` and GNU Make. The host compiler links the host
-C runtime; target support and application objects use only Pyxis headers and
-libraries. The runner's usual `--work` and `--cross-prefix` options apply.
+The recipe also needs host `cc` and GNU Make. Only the host compiler links the
+host C runtime. The guest compiler, target support and application objects use
+the Pyxis GCC/SDK, with the guest ELF retained at `build/tcc/build/guest/tcc.elf`
+for GDB. The runner's usual `--work` and `--cross-prefix` options apply.
 
 The compiler records the selected SDK sysroot and stage directory. Rebuild if
 moving the SDK; `-B` can select a relocated compiler-header/support directory.
@@ -73,11 +74,63 @@ TCC accepts all of them: for inspection, libc format/printf compile with
 `-include stdbool.h`; the line editor's `[[fallthrough]]` is unsupported. No
 first-party source is rewritten to make this port's validation compile.
 
-The guest driver, P1F output and SDK packaging remain later tasks.
+P1F output and permanent guest SDK packaging remain later tasks.
 Executable/shared/in-memory output is rejected at this stage;
 there is no Linux ELF executable fallback. Only preprocessing/object compilation
 and the explicit GNU link path above are supported here, not every upstream
 command-line option or language extension.
+
+## Guest use and staging
+
+For manual image staging, add `stage/bin/tcc.pxe` to `app://tcc.pxe`, the SDK's
+`sysroot/usr/include` beneath `app://sdk/usr/include`, and `stage/lib/tcc/include`
+beneath `app://sdk/lib/tcc/include`. Add existing application sources separately.
+These are temporary staging paths, not a new normal-image packaging rule.
+The recipe's `GUEST_SYSROOT` and `GUEST_TCCDIR` settings select the prefixes at
+build time; use a fresh build directory when changing them. `-I`, `-isystem`,
+`-nostdinc` and `-B` can select explicitly supplied headers at runtime.
+
+From the shell, for example:
+
+```text
+tcc -c app://src/cat/main.c -o home://cat.o
+tcc -E -P app://src/shell/main.c -o home://shell.i
+tcc -g -c app://src/mandelbrot/main.c -o home://mandelbrot.o
+```
+
+The guest driver accepts:
+
+- `-E`, `-c`, `-o path`, source paths and `@response-file`. Multiple `-c` inputs
+  produce separate objects and cannot share one explicit `-o`. Preprocessing
+  defaults to stdout; `-o -` also selects stdout for `-E`.
+- `-I`, `-isystem`, `-include`, `-D`, `-U`, `-nostdinc`, `-B`, `-P`, `-dD`, `-dM`.
+- `-g`, `-g0`, `-g1`, `-g2`, `-gdwarf`; the guest defaults to DWARF 5 when debug
+  output is requested. Its compilation-directory metadata uses the optional
+  startup description, never as authority; overlong descriptions are diagnosed.
+- `-std=c99`, `-std=gnu99`, `-std=c11`, `-std=gnu11`; `-x c`, `assembler`,
+  `assembler-with-cpp` or `none`. These retain TCC's dialect and extensions,
+  not strict conformance checking or full C23 support.
+- `-w`, the warnings/flags listed by `-hh`, `-m64`, `-msse`, `-v`, `-vv`,
+  `--version`, `-h`, `-hh`, `-print-search-dirs`, `-dumpmachine`, `-dumpversion`.
+
+Other options report an error. This includes linking and library selection
+(`-r`, `-L`, `-l`, `-Wl`), dependency generation, archive creation, runtime/JIT
+execution, coverage, backtraces, bounds checking and compiler subprocess dispatch.
+`-bench` specifically reports the missing elapsed-time clock. Unsupported
+options cannot be silently overridden by a later `-c` or `-E`.
+
+The process needs an `output` console with write rights and `memory` with manage
+rights; stdin compilation also needs an `input` console with read rights. Sources
+and headers need readable file/directory grants, and output needs a writable
+directory with lookup/create rights and writable files. Relative paths require
+the inherited directory chain; rooted paths use the named startup grants. The
+existing shell supplies these. TCC needs no launcher or process-management grant.
+
+The process stack stays 64 KiB. GCC stack-usage output reports a largest fixed
+compiler frame of 2,720 bytes for this build; recursive parsing is not bounded
+by that single-frame figure. Existing cat, shell preprocessing and Mandelbrot
+work in the guest. Compiling the existing line editor demonstrates an ordinary
+unsupported-C23 diagnostic and stream/process cleanup, not a new test source.
 
 ## Native stream and path adaptation
 
@@ -96,10 +149,11 @@ When the compiler itself is built for Pyxis:
 - Relative names use the inherited working directory through libc streams.
   A leading `scheme://` selects a startup root. Components are not normalized
   before traversal; `missing/..` must still fail at `missing`.
-- Each `-I`/`-L` argument is one path. Repeat the option for multiple paths;
-  colons are preserved. Configured include defaults are separate `{R}/usr/include`
+- Include/library path APIs take one path per call; colons are preserved.
+  Repeat `-I` for multiple paths; the guest driver defers `-L` until linking.
+  Configured include defaults are separate `{R}/usr/include`
   and `{B}/include` entries; library defaults are `{R}/usr/lib` and `{B}`.
-  The guest recipe will supply those prefixes; permanent guest SDK packaging
+  The guest recipe supplies those prefixes; permanent guest SDK packaging
   remains a later task.
 - Quoted includes first search beside the source file. Rooted includes are
   opened directly, without falling back to search directories. `#include_next`
@@ -112,20 +166,18 @@ When the compiler itself is built for Pyxis:
   No date is invented. Explicit user macro definitions still work normally.
 
 Host-running TCC retains host pathname, clock and `#pragma once` behavior.
-`libtcc.c`, `tccpp.c`, `tccelf.c`, `tccgen.c` and `tccasm.c` also compile separately
-against the real Pyxis SDK, with implicit function declarations treated as
-errors. This is not a runnable guest compiler yet: driver/tool dispatch, timing,
-debug-directory metadata and remaining optional host services still need the
-next port stage. No fd compatibility layer or new libc/kernel API is added.
+The guest compiler builds against the real Pyxis SDK. It excludes the upstream
+host tools and clock calls and uses the existing native startup metadata for
+debug information. No fd compatibility layer or new libc/kernel API is added.
 
 ## Source and local changes
 
 Pinned upstream: [TinyCC 3dc99dbc82f8e07308c5d398136803e62f9676df](https://github.com/TinyCC/tinycc/tree/3dc99dbc82f8e07308c5d398136803e62f9676df)
-(`0.9.28rc`). Metadata lists four ordered patches: the Pyxis object target,
-runtime symbol ownership, FP scratch allocation, and native streams/paths.
-The last also uses existing bounded formatting for internal names and removes
-an unnecessary `inttypes.h` dependency. Upstream algorithms and formatting are
-otherwise retained; the supported port target remains x86-64 Pyxis/ELF.
+(`0.9.28rc`). Metadata lists five ordered patches: the Pyxis object target,
+runtime symbol ownership, FP scratch allocation, native streams/paths, and the
+guest driver. The stream patch uses existing bounded formatting for internal
+names and removes an unnecessary `inttypes.h` dependency. Upstream algorithms
+and formatting are otherwise retained; the supported port target remains x86-64 Pyxis/ELF.
 
 Upstream `COPYING` contains LGPL 2.1. `lib/libtcc1.c` separately states GPL 2 or
 later with its explicit unlimited-linking exception; retain that notice as well.

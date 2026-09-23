@@ -13,9 +13,11 @@ return {
     "patches/0002-libgcc-conversion-ownership.patch",
     "patches/0003-reserve-fp-scratch.patch",
     "patches/0004-native-streams-and-paths.patch",
+    "patches/0005-guest-driver.patch",
   },
   outputs = {
     host_compiler = "host/bin/x86_64-pyxis-tcc",
+    compiler = "bin/tcc.pxe",
     support = "lib/tcc/libtcc1.a",
     license = "share/licenses/tcc/COPYING",
   },
