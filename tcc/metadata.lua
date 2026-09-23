@@ -21,5 +21,6 @@ return {
     compiler = "bin/tcc.pxe",
     support = "lib/tcc/libtcc1.a",
     license = "share/licenses/tcc/COPYING",
+    provenance = "share/tcc/source.txt",
   },
 }

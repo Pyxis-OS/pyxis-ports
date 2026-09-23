@@ -4,7 +4,7 @@ SOURCE := $(abspath $(SOURCE))
 BUILD := $(abspath $(BUILD))
 STAGE := $(abspath $(STAGE))
 HOST_CC ?= cc
-# Temporary staging layout; permanent guest SDK packaging is a later milestone.
+# Read-only SDK layout used by the Pyxis boot archive.
 GUEST_SYSROOT ?= app://sdk
 GUEST_TCCDIR ?= $(GUEST_SYSROOT)/lib/tcc
 .DEFAULT_GOAL := all
