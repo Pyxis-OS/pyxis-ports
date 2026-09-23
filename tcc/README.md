@@ -1,0 +1,93 @@
+# TCC: Pyxis object target
+
+This first port stage builds a **host-running** x86-64 Pyxis compiler and a
+**target** support archive. It supports `-E` and `-c`; it is not yet a guest
+application or a PXE linker. Pyxis's normal image still contains only the
+previously selected ports, and GCC remains its default compiler.
+
+## Build and use
+
+With the Pyxis cross-toolchain on PATH and an exported SDK:
+
+```sh
+lua build.lua tcc --sdk /path/to/pyxis/build/sdk
+build/tcc/stage/host/bin/x86_64-pyxis-tcc -c /path/to/pyxis/userspace/mandelbrot/main.c -o mandelbrot.o
+```
+
+The recipe also needs host `cc` and GNU Make. The host compiler links the host
+C runtime; target support and application objects use only Pyxis headers and
+libraries. The runner's usual `--work` and `--cross-prefix` options apply.
+
+The compiler records the selected SDK sysroot and stage directory. Rebuild if
+moving the SDK; `-B` can select a relocated compiler-header/support directory.
+Its default includes are SDK `usr/include`, then `stage/lib/tcc/include` with
+TCC's own `stddef.h`, `stdarg.h`, `stdbool.h` and `float.h`. Do not supply GCC's
+private headers. Host CPATH/C_INCLUDE_PATH/LIBRARY_PATH are intentionally ignored;
+use explicit `-I`/`-L` options. `-print-search-dirs` shows the configured paths.
+
+Use the existing SDK link path for objects. For example, with `PYXIS_SDK` and
+`TCC_STAGE` set to the absolute SDK and `build/tcc/stage` paths:
+
+```sh
+x86_64-unknown-pyxis-gcc --sysroot="$PYXIS_SDK/sysroot" \
+  -nostdlib -static -no-pie \
+  -Wl,-T,"$PYXIS_SDK/sysroot/usr/lib/pyxis.ld" \
+  -Wl,--build-id=none -Wl,-z,max-page-size=0x1000 \
+  -o mandelbrot.elf "$PYXIS_SDK/sysroot/usr/lib/crt0.o" mandelbrot.o \
+  -Wl,--start-group \
+  "$PYXIS_SDK/sysroot/usr/lib/libc.a" \
+  "$PYXIS_SDK/sysroot/usr/lib/libterm.a" \
+  "$PYXIS_SDK/sysroot/usr/lib/libpyxis.a" \
+  "$TCC_STAGE/lib/tcc/libtcc1.a" -lgcc -Wl,--end-group
+"$PYXIS_SDK/bin/elf2pxe" --format p1f -o mandelbrot.pxe mandelbrot.elf
+```
+
+Keep the ELF for GDB. `-gdwarf` selects DWARF debug information; upstream `-g`
+defaults to STABS, which current GDB deprecates. This GNU linker/converter path
+is an intermediate development path, not the planned guest compiler workflow.
+
+## Target and runtime contract
+
+- LP64/System V x86-64, `__pyxis__`, SSE2 float/double and 80-bit x87 long double.
+  No Linux/Unix target predefines, host include paths or Linux startup objects.
+  The target is freestanding and uses the SDK's integer types, size and pointer
+  types. Explicit machine options are limited to `-m64` and `-msse`.
+- ELF relocatable objects have a non-executable `.note.GNU-stack`. FP register
+  transfers reserve temporary stack storage rather than using the red zone;
+  LEA adjusts RSP without destroying pending integer condition flags.
+- `libtcc1.a` is built with the Pyxis GCC/SDK from `libtcc1.c`, `va_list.c` and
+  `builtin.c`. It supplies unsigned-integer-to-FP conversions, `__fixxfdi`,
+  `__va_arg` and TCC's bit-operation builtins. It does not import startup,
+  dynamic-loader, backtrace, coverage, bounds-checking or atomic runtime code.
+- libgcc owns `__fixunssfdi`, `__fixunsdfdi` and `__fixunsxfdi`. The Pyxis patch
+  excludes their TCC copies and the unused signed float/double helpers;
+  `__fixxfdi` uses the libgcc long-double helper. The two archives have no
+  overlapping defined symbols with the current Pyxis GCC 16.2.0 toolchain.
+- Link `crt0.o` and application objects before the archive group shown above.
+  Group rescanning resolves libc/libpyxis cycles and support dependencies on
+  libc and libgcc. Future native TCC linking must preserve that behavior; merely
+  appending one pass over the libraries is insufficient.
+
+First-party implementation sources remain GNU C23. This is not a promise that
+TCC accepts all of them: for inspection, libc format/printf compile with
+`-include stdbool.h`; the line editor's `[[fallthrough]]` is unsupported. No
+first-party source is rewritten to make this port's validation compile.
+
+Guest file/URI access, the guest driver, P1F output and SDK packaging remain
+later tasks. Executable/shared/in-memory output is rejected at this stage;
+there is no Linux ELF executable fallback. Only preprocessing/object compilation
+and the explicit GNU link path above are supported here, not every upstream
+command-line option or language extension.
+
+## Source and local changes
+
+Pinned upstream: [TinyCC 3dc99dbc82f8e07308c5d398136803e62f9676df](https://github.com/TinyCC/tinycc/tree/3dc99dbc82f8e07308c5d398136803e62f9676df)
+(`0.9.28rc`). Metadata lists three ordered patches: the Pyxis object target,
+runtime symbol ownership, and FP scratch allocation. Other upstream algorithms
+and formatting are retained.
+
+Upstream `COPYING` contains LGPL 2.1. `lib/libtcc1.c` separately states GPL 2 or
+later with its explicit unlimited-linking exception; retain that notice as well.
+The stage includes `COPYING` and the three selected runtime source files under
+`share/licenses/tcc`, preserving their individual notices. Compiler and runtime
+licensing must not be described as one blanket license.

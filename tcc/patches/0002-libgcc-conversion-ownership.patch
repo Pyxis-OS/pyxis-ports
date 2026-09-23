@@ -1,0 +1,35 @@
+diff --git a/lib/libtcc1.c b/lib/libtcc1.c
+index 878f9512..4f650466 100644
+--- a/lib/libtcc1.c
++++ b/lib/libtcc1.c
+@@ -522,6 +522,8 @@ long double __floatundixf(unsigned long long a)
+     }
+ }
+ 
++/* Pyxis uses libgcc's ABI-matching unsigned conversion helpers. */
++#ifndef __pyxis__
+ unsigned long long __fixunssfdi (float a1)
+ {
+     register union float_long fl1;
+@@ -590,7 +592,10 @@ long long __fixdfdi (double a1)
+     return s ? ret : -ret;
+ }
+ 
++#endif /* !__pyxis__ */
++
+ #ifndef __arm__
++#ifndef __pyxis__
+ unsigned long long __fixunsxfdi (long double a1)
+ {
+     register union ldouble_long dl1;
+@@ -614,6 +619,10 @@ unsigned long long __fixunsxfdi (long double a1)
+     return l;
+ }
+ 
++#else
++extern unsigned long long __fixunsxfdi(long double);
++#endif
++
+ long long __fixxfdi (long double a1)
+ {
+     long long ret; int s;

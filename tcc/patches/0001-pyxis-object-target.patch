@@ -1,0 +1,222 @@
+diff --git a/Makefile b/Makefile
+index 62078ea3..0eed7b9f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -100,6 +100,9 @@ DEF-i386           = -DTCC_TARGET_I386
+ DEF-i386-win32     = -DTCC_TARGET_I386 -DTCC_TARGET_PE
+ DEF-i386-OpenBSD   = $(DEF-i386) -DTARGETOS_OpenBSD
+ DEF-x86_64         = -DTCC_TARGET_X86_64
++DEF-x86_64-pyxis   = $(DEF-x86_64) -DTCC_TARGET_PYXIS \
++                    -DCONFIG_TCC_BACKTRACE=0 -DCONFIG_TCC_BCHECK=0 \
++                    -DCONFIG_TCC_SEMLOCK=0
+ DEF-x86_64-win32   = -DTCC_TARGET_X86_64 -DTCC_TARGET_PE
+ DEF-x86_64-osx     = -DTCC_TARGET_X86_64 -DTCC_TARGET_MACHO
+ DEF-arm-fpa        = -DTCC_TARGET_ARM
+@@ -167,6 +170,10 @@ ifneq ($(CONFIG_WIN32),yes)
+ DEF-win = -DCONFIG_TCCDIR="\"$(tccdir)/win32\""
+ endif
+ # some default config for cross compilers
++INC-x86_64-pyxis = {R}/usr/include:{B}/include
++LIB-x86_64-pyxis = {R}/usr/lib:{B}
++CRT-x86_64-pyxis = {R}/usr/lib
++ELF-x86_64-pyxis = -
+ TRIPLET-i386 = i686-linux-gnu
+ TRIPLET-x86_64 = x86_64-linux-gnu
+ TRIPLET-arm = arm-linux-gnueabihf
+@@ -203,6 +210,7 @@ CORE_FILES += tcc.h config.h libtcc.h tcctok.h
+ i386_FILES = $(CORE_FILES) i386-gen.c i386-link.c i386-asm.c i386-asm.h i386-tok.h
+ i386-win32_FILES = $(i386_FILES) tccpe.c
+ x86_64_FILES = $(CORE_FILES) x86_64-gen.c x86_64-link.c i386-asm.c x86_64-asm.h
++x86_64-pyxis_FILES = $(x86_64_FILES)
+ x86_64-win32_FILES = $(x86_64_FILES) tccpe.c
+ x86_64-osx_FILES = $(x86_64_FILES) tccmacho.c
+ arm_FILES = $(CORE_FILES) arm-gen.c arm-link.c arm-asm.c arm-tok.h
+diff --git a/conftest.c b/conftest.c
+index a4450d51..c36bbd6b 100644
+--- a/conftest.c
++++ b/conftest.c
+@@ -21,6 +21,7 @@ const char *platform_macros[] = {
+     "__OpenBSD__",          "TARGETOS_OpenBSD",
+     "__NetBSD__",           "TARGETOS_NetBSD",
+     "__linux__",            "TARGETOS_Linux",
++    "__pyxis__",            "TCC_TARGET_PYXIS",
+     "__ANDROID__",          "TARGETOS_ANDROID",
+ 
+     "__SIZEOF_POINTER__",   "PTR_SIZE",
+diff --git a/include/tccdefs.h b/include/tccdefs.h
+index 2655c1dd..0e73d938 100644
+--- a/include/tccdefs.h
++++ b/include/tccdefs.h
+@@ -38,7 +38,7 @@
+     #define __SIZE_TYPE__ unsigned long
+     #define __PTRDIFF_TYPE__ long
+     #define __LP64__ 1
+-# if defined __linux__
++# if defined __linux__ || defined __pyxis__
+     #define __INT64_TYPE__ long
+ # else /* APPLE, BSD */
+     #define __INT64_TYPE__ long long
+@@ -60,7 +60,7 @@
+ #if defined _WIN32
+     #define __WCHAR_TYPE__ unsigned short
+     #define __WINT_TYPE__ unsigned short
+-#elif defined __linux__
++#elif defined __linux__ || defined __pyxis__
+     #define __WCHAR_TYPE__ int
+     #define __WINT_TYPE__ unsigned int
+ #else
+diff --git a/libtcc.c b/libtcc.c
+index 44ea25fa..e74e6e03 100644
+--- a/libtcc.c
++++ b/libtcc.c
+@@ -964,6 +964,12 @@ LIBTCCAPI void tcc_delete(TCCState *s1)
+ 
+ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
+ {
++#ifdef TCC_TARGET_PYXIS
++    TCCState *s1 = s;
++    /* Native executable output is a separate port milestone. */
++    if (output_type != TCC_OUTPUT_OBJ && output_type != TCC_OUTPUT_PREPROCESS)
++        return tcc_error_noabort("Pyxis currently supports only -c and -E; link objects with the SDK");
++#endif
+ #ifdef CONFIG_TCC_PIE
+     if (output_type == TCC_OUTPUT_EXE)
+         output_type |= TCC_OUTPUT_DYN;
+@@ -2059,6 +2065,10 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
+             continue;
+ #endif
+         case TCC_OPTION_m:
++#ifdef TCC_TARGET_PYXIS
++            if (strcmp(optarg, "64") && strcmp(optarg, "sse"))
++                return tcc_error_noabort("Pyxis requires baseline x86-64 with SSE2");
++#endif
+             if (set_flag(s, options_m, optarg) < 0) {
+                 if (x = atoi(optarg), x != 32 && x != 64)
+                     goto unsupported_option;
+diff --git a/tcc.c b/tcc.c
+index c2274fb2..ada657ce 100644
+--- a/tcc.c
++++ b/tcc.c
+@@ -193,7 +193,9 @@ static const char version[] =
+ #elif defined TCC_TARGET_RISCV64
+         "riscv64"
+ #endif
+-#ifdef TCC_TARGET_PE
++#ifdef TCC_TARGET_PYXIS
++        " Pyxis"
++#elif defined TCC_TARGET_PE
+         " Windows"
+ #elif defined(TCC_TARGET_MACHO)
+         " Darwin"
+@@ -223,8 +225,12 @@ static void print_search_dirs(TCCState *s)
+     /* print_dirs("programs", NULL, 0); */
+     print_dirs("include", s->sysinclude_paths, s->nb_sysinclude_paths);
+     print_dirs("libraries", s->library_paths, s->nb_library_paths);
++#ifdef TCC_TARGET_PYXIS
++    printf("libtcc1:\n  %s/libtcc1.a\n", s->tcc_lib_path);
++#else
+     printf("libtcc1:\n  %s/%s\n", s->library_paths[0], CONFIG_TCC_CROSSPREFIX TCC_LIBTCC1);
+-#ifdef TCC_TARGET_UNIX
++#endif
++#if defined TCC_TARGET_UNIX && !defined TCC_TARGET_PYXIS
+     print_dirs("crt", s->crt_paths, s->nb_crt_paths);
+     printf("elfinterp:\n  %s\n",  s->elfint);
+ #endif
+@@ -232,6 +238,10 @@ static void print_search_dirs(TCCState *s)
+ 
+ static void set_environment(TCCState *s)
+ {
++#ifdef TCC_TARGET_PYXIS
++    /* Host search-path variables must not leak Linux headers into Pyxis. */
++    (void)s;
++#else
+     char * path;
+ 
+     path = getenv("C_INCLUDE_PATH");
+@@ -246,6 +256,7 @@ static void set_environment(TCCState *s)
+     if(path != NULL) {
+         tcc_add_library_path(s, path);
+     }
++#endif
+ }
+ 
+ static char *default_outputfile(TCCState *s, const char *first_file)
+@@ -323,7 +334,12 @@ redo:
+         if (opt == OPT_PRINT_DIRS) {
+             /* initialize search dirs */
+             set_environment(s);
++#ifdef TCC_TARGET_PYXIS
++            tcc_set_output_type(s, TCC_OUTPUT_PREPROCESS);
++            tcc_add_library_path(s, CONFIG_TCC_LIBPATHS);
++#else
+             tcc_set_output_type(s, TCC_OUTPUT_MEMORY);
++#endif
+             print_search_dirs(s);
+         }
+         if (opt) {
+diff --git a/tcc.h b/tcc.h
+index ce9b5189..38c5d02d 100644
+--- a/tcc.h
++++ b/tcc.h
+@@ -186,7 +186,7 @@ extern long double strtold (const char *__nptr, char **__endptr);
+ #endif
+ 
+ /* only native compiler supports -run */
+-#if defined _WIN32 == defined TCC_TARGET_PE \
++#if !defined TCC_TARGET_PYXIS && defined _WIN32 == defined TCC_TARGET_PE \
+     && defined __APPLE__ == defined TCC_TARGET_MACHO
+ # if defined __i386__ && defined TCC_TARGET_I386
+ #  define TCC_IS_NATIVE
+@@ -224,7 +224,7 @@ extern long double strtold (const char *__nptr, char **__endptr);
+     || defined TARGETOS_NetBSD \
+     || defined TARGETOS_FreeBSD_kernel
+ # define TARGETOS_BSD 1
+-#elif !(defined TCC_TARGET_PE || defined TCC_TARGET_MACHO)
++#elif !(defined TCC_TARGET_PE || defined TCC_TARGET_MACHO || defined TCC_TARGET_PYXIS)
+ # define TARGETOS_Linux 1 /* for tccdefs_.h */
+ #endif
+ 
+diff --git a/tccelf.c b/tccelf.c
+index def5aebc..ace83f76 100644
+--- a/tccelf.c
++++ b/tccelf.c
+@@ -72,6 +72,9 @@ ST_FUNC void tccelf_new(TCCState *s)
+     bss_section = new_section(s, ".bss", SHT_NOBITS, SHF_ALLOC | SHF_WRITE);
+     common_section = new_section(s, ".common", SHT_NOBITS, SHF_PRIVATE);
+     common_section->sh_num = SHN_COMMON;
++#ifdef TCC_TARGET_PYXIS
++    new_section(s, ".note.GNU-stack", SHT_PROGBITS, 0);
++#endif
+ 
+     /* symbols are always generated for linking stage */
+     symtab_section = new_symtab(s, ".symtab", SHT_SYMTAB, 0,
+diff --git a/tccpp.c b/tccpp.c
+index 214e9cd4..5317bdd7 100644
+--- a/tccpp.c
++++ b/tccpp.c
+@@ -3543,7 +3543,12 @@ ST_INLN void unget_tok(int last_tok)
+ /* init preprocessor */
+ 
+ static const char * const target_os_defs =
+-#ifdef TCC_TARGET_PE
++#ifdef TCC_TARGET_PYXIS
++    "__pyxis__\0"
++    "__SSE__\0"
++    "__SSE2__\0"
++    "__FLT_EVAL_METHOD__ 0\0"
++#elif defined TCC_TARGET_PE
+     "_WIN32\0"
+ # if PTR_SIZE == 8
+     "_WIN64\0"
+@@ -3618,7 +3623,11 @@ static void tcc_predefs(TCCState *s1, CString *cs, int is_asm)
+     cstr_printf(cs, "#define __SIZEOF_LONG__ %d\n", LONG_SIZE);
+     if (!is_asm) {
+       putdef(cs, "__STDC__");
++#ifdef TCC_TARGET_PYXIS
++      putdef(cs, "__STDC_HOSTED__ 0");
++#else
+       cstr_printf(cs, "#define __STDC_HOSTED__ %d\n", s1->nostdlib ? 0 : 1);
++#endif
+       cstr_printf(cs, "#define __STDC_VERSION__ %dL\n", s1->cversion);
+       cstr_cat(cs,
+         /* load more predefs and __builtins */
