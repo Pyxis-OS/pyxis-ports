@@ -1,0 +1,134 @@
+diff --git a/x86_64-gen.c b/x86_64-gen.c
+index ffa4cbc8..5128473c 100644
+--- a/x86_64-gen.c
++++ b/x86_64-gen.c
+@@ -371,6 +371,32 @@ static void gen_modrm32(int opcode, int op_reg, int r, Sym *sym, int c)
+ }
+ 
+ /* load 'r' from value 'sv' */
++/* FP register transfers need a memory operand. Pyxis does not use a red zone;
++   LEA preserves any pending integer comparison while reserving the scratch. */
++static void fp_scratch_begin(void)
++{
++#ifdef TCC_TARGET_PYXIS
++    o(0x24648d48); g(-16); /* lea -16(%rsp),%rsp */
++#endif
++}
++
++static void fp_scratch_address(void)
++{
++    g(0x24); /* SIB: base RSP, no index */
++#ifdef TCC_TARGET_PYXIS
++    g(0);
++#else
++    g(-16);
++#endif
++}
++
++static void fp_scratch_end(void)
++{
++#ifdef TCC_TARGET_PYXIS
++    o(0x24648d48); g(16); /* lea 16(%rsp),%rsp */
++#endif
++}
++
+ void load(int r, SValue *sv)
+ {
+     int v, t, ft, fc, fr;
+@@ -542,11 +568,13 @@ void load(int r, SValue *sv)
+             if ((r >= TREG_XMM0) && (r <= TREG_XMM7)) {
+                 if (v == TREG_ST0) {
+                     /* gen_cvt_ftof(VT_DOUBLE); */
+-                    o(0xf0245cdd); /* fstpl -0x10(%rsp) */
+-                    /* movsd -0x10(%rsp),%xmmN */
++                    fp_scratch_begin();
++                    o(0x5cdd); fp_scratch_address(); /* fstpl scratch */
++                    /* movsd scratch,%xmmN */
+                     o(0x100ff2);
+                     o(0x44 + REG_VALUE(r)*8); /* %xmmN */
+-                    o(0xf024);
++                    fp_scratch_address();
++                    fp_scratch_end();
+                 } else {
+                     assert((v >= TREG_XMM0) && (v <= TREG_XMM7));
+                     if ((ft & VT_BTYPE) == VT_FLOAT) {
+@@ -560,11 +588,13 @@ void load(int r, SValue *sv)
+             } else if (r == TREG_ST0) {
+                 assert((v >= TREG_XMM0) && (v <= TREG_XMM7));
+                 /* gen_cvt_ftof(VT_LDOUBLE); */
+-                /* movsd %xmmN,-0x10(%rsp) */
++                fp_scratch_begin();
++                /* movsd %xmmN,scratch */
+                 o(0x110ff2);
+                 o(0x44 + REG_VALUE(r)*8); /* %xmmN */
+-                o(0xf024);
+-                o(0xf02444dd); /* fldl -0x10(%rsp) */
++                fp_scratch_address();
++                o(0x44dd); fp_scratch_address(); /* fldl scratch */
++                fp_scratch_end();
+             } else {
+                 orex(is64_type(ft), r, v, 0x89);
+                 o(0xc0 + REG_VALUE(r) + REG_VALUE(v) * 8); /* mov v, r */
+@@ -2069,11 +2099,13 @@ void gen_cvt_ftof(int t)
+             o(0xc0 + REG_VALUE(vtop->r)*9);
+         } else if (tbt == VT_LDOUBLE) {
+             save_reg(RC_ST0);
+-            /* movss %xmm0,-0x10(%rsp) */
++            fp_scratch_begin();
++            /* movss %xmmN,scratch */
+             o(0x110ff3);
+             o(0x44 + REG_VALUE(vtop->r)*8);
+-            o(0xf024);
+-            o(0xf02444d9); /* flds -0x10(%rsp) */
++            fp_scratch_address();
++            o(0x44d9); fp_scratch_address(); /* flds scratch */
++            fp_scratch_end();
+             vtop->r = TREG_ST0;
+         }
+     } else if (bt == VT_DOUBLE) {
+@@ -2085,11 +2117,13 @@ void gen_cvt_ftof(int t)
+             o(0xc0 + REG_VALUE(vtop->r)*9);
+         } else if (tbt == VT_LDOUBLE) {
+             save_reg(RC_ST0);
+-            /* movsd %xmm0,-0x10(%rsp) */
++            fp_scratch_begin();
++            /* movsd %xmmN,scratch */
+             o(0x110ff2);
+             o(0x44 + REG_VALUE(vtop->r)*8);
+-            o(0xf024);
+-            o(0xf02444dd); /* fldl -0x10(%rsp) */
++            fp_scratch_address();
++            o(0x44dd); fp_scratch_address(); /* fldl scratch */
++            fp_scratch_end();
+             vtop->r = TREG_ST0;
+         }
+     } else {
+@@ -2097,18 +2131,22 @@ void gen_cvt_ftof(int t)
+         gv(RC_ST0);
+         r = get_reg(RC_FLOAT);
+         if (tbt == VT_DOUBLE) {
+-            o(0xf0245cdd); /* fstpl -0x10(%rsp) */
+-            /* movsd -0x10(%rsp),%xmm0 */
++            fp_scratch_begin();
++            o(0x5cdd); fp_scratch_address(); /* fstpl scratch */
++            /* movsd scratch,%xmmN */
+             o(0x100ff2);
+             o(0x44 + REG_VALUE(r)*8);
+-            o(0xf024);
++            fp_scratch_address();
++            fp_scratch_end();
+             vtop->r = r;
+         } else if (tbt == VT_FLOAT) {
+-            o(0xf0245cd9); /* fstps -0x10(%rsp) */
+-            /* movss -0x10(%rsp),%xmm0 */
++            fp_scratch_begin();
++            o(0x5cd9); fp_scratch_address(); /* fstps scratch */
++            /* movss scratch,%xmmN */
+             o(0x100ff3);
+             o(0x44 + REG_VALUE(r)*8);
+-            o(0xf024);
++            fp_scratch_address();
++            fp_scratch_end();
+             vtop->r = r;
+         }
+     }
