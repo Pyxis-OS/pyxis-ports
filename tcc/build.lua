@@ -5,6 +5,8 @@ return function(ctx)
   ctx.run({ "install", "-D", "-m", "755",
     ctx.build .. "/host/x86_64-pyxis-tcc",
     ctx.stage .. "/" .. ctx.metadata.outputs.host_compiler })
+  ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/guest/tcc.pxe",
+    ctx.stage .. "/" .. ctx.metadata.outputs.compiler })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/libtcc1.a",
     ctx.stage .. "/" .. ctx.metadata.outputs.support })
 
