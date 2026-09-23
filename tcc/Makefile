@@ -26,10 +26,12 @@ $(BUILD)/host/config.mak: $(SOURCE)/configure $(RECIPE_MAKEFILE)
 	  --sysroot=$(PYXIS_SYSROOT) --tccdir=$(STAGE)/lib/tcc
 
 host: $(BUILD)/host/config.mak
-	$(MAKE) -C $(BUILD)/host x86_64-pyxis-tcc
+	$(MAKE) -C $(BUILD)/host x86_64-pyxis-tcc \
+	  CPPFLAGS="-iquote $(PYXIS_SYSROOT)/usr/include -Wno-unused-function" \
+	  PYXIS_P1F_HEADER=$(PYXIS_SYSROOT)/usr/include/pxe/p1f.h
 
 GUEST_SOURCES := tcc.c libtcc.c tccpp.c tccgen.c tccdbg.c tccasm.c tccelf.c \
-                 tccrun.c x86_64-gen.c x86_64-link.c i386-asm.c
+                 tccrun.c tccp1f.c x86_64-gen.c x86_64-link.c i386-asm.c
 GUEST_DEFINES := -DTCC_TARGET_X86_64 -DTCC_TARGET_PYXIS \
                  -DCONFIG_TCC_BACKTRACE=0 -DCONFIG_TCC_BCHECK=0 \
                  -DCONFIG_TCC_SEMLOCK=0 -DCONFIG_DWARF_VERSION=5 \

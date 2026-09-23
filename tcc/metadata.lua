@@ -14,6 +14,7 @@ return {
     "patches/0003-reserve-fp-scratch.patch",
     "patches/0004-native-streams-and-paths.patch",
     "patches/0005-guest-driver.patch",
+    "patches/0006-native-p1f-output.patch",
   },
   outputs = {
     host_compiler = "host/bin/x86_64-pyxis-tcc",
