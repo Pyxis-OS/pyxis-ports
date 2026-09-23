@@ -1,0 +1,1326 @@
+diff --git a/elf.h b/elf.h
+index 05ea707..93dcd2d 100644
+--- a/elf.h
++++ b/elf.h
+@@ -20,7 +20,7 @@
+ #define	_ELF_H 1
+ 
+ #ifndef _WIN32
+-#include <inttypes.h>
++#include <stdint.h>
+ #else
+ #ifndef __int8_t_defined
+ #define __int8_t_defined
+diff --git a/libtcc.c b/libtcc.c
+index e74e6e0..fab7fc3 100644
+--- a/libtcc.c
++++ b/libtcc.c
+@@ -211,10 +211,19 @@ PUB_FUNC char *tcc_fileextension (const char *name)
+     return e ? e : strchr(b, 0);
+ }
+ 
+-ST_FUNC char *tcc_load_text(int fd)
++ST_FUNC char *tcc_load_text(FILE *stream)
+ {
+-    int len = lseek(fd, 0, SEEK_END);
+-    char *buf = load_data(fd, 0, len + 1);
++    long len;
++    char *buf;
++
++    if (fseek(stream, 0, SEEK_END) || (len = ftell(stream)) < 0
++        || len >= INT_MAX || fseek(stream, 0, SEEK_SET))
++        return NULL;
++    buf = tcc_malloc(len + 1);
++    if (full_read(stream, buf, len) != len) {
++        tcc_free(buf);
++        return NULL;
++    }
+     buf[len] = 0;
+     return buf;
+ }
+@@ -495,6 +504,7 @@ PUB_FUNC void tcc_memcheck(int d)
+ # define realpath(file, buf) _fullpath(buf, file, 260)
+ #endif
+ 
++#ifndef __pyxis__
+ /* for #pragma once */
+ ST_FUNC int normalized_PATHCMP(const char *f1, const char *f2)
+ {
+@@ -510,6 +520,8 @@ ST_FUNC int normalized_PATHCMP(const char *f1, const char *f2)
+     return ret;
+ }
+ 
++#endif
++
+ /********************************************************/
+ /* dynarrays */
+ 
+@@ -578,6 +590,19 @@ static void dynarray_split(char ***argv, int *argc, const char *p, int sep)
+     }
+ }
+ 
++/* A native root must precede the first slash. Do not normalize components:
++   traversal of missing/.. must still fail at the missing directory. */
++#ifdef __pyxis__
++ST_FUNC int tcc_rooted_path(const char *path)
++{
++    const char *p = path;
++    while (*p && *p != '/' && *p != ':')
++        ++p;
++    return p > path && *p == ':' && p[1] == '/' && p[2] == '/';
++}
++
++#endif
++
+ static void tcc_split_path(TCCState *s, void *p_ary, int *p_nb_ary, const char *in)
+ {
+     const char *p;
+@@ -586,7 +611,11 @@ static void tcc_split_path(TCCState *s, void *p_ary, int *p_nb_ary, const char *
+         CString str;
+ 
+         cstr_new(&str);
+-        for (p = in; c = *p, c != '\0' && c != PATHSEP[0]; ++p) {
++        for (p = in; c = *p, c != '\0'
++#ifndef __pyxis__
++             && c != PATHSEP[0]
++#endif
++             ; ++p) {
+             if (c == '{' && p[1] && p[2] == '}') {
+                 c = p[1], p += 2;
+                 if (c == 'B')
+@@ -752,7 +781,7 @@ ST_FUNC void tcc_open_bf(TCCState *s1, const char *filename, int initlen)
+     bf->true_filename = bf->filename;
+     bf->line_num = 1;
+     bf->ifdef_stack_ptr = s1->ifdef_stack_ptr;
+-    bf->fd = -1;
++    bf->stream = NULL;
+     bf->prev = file;
+     bf->prev_tok_flags = tok_flags;
+     file = bf;
+@@ -763,8 +792,9 @@ ST_FUNC void tcc_close(void)
+ {
+     TCCState *s1 = tcc_state;
+     BufferedFile *bf = file;
+-    if (bf->fd > 0) {
+-        close(bf->fd);
++    if (bf->stream && bf->stream != stdin) {
++        if (fclose(bf->stream))
++            tcc_error_noabort("could not close '%s'", bf->filename);
+         total_lines += bf->line_num - 1;
+     }
+     if (bf->true_filename != bf->filename)
+@@ -774,31 +804,38 @@ ST_FUNC void tcc_close(void)
+     tcc_free(bf);
+ }
+ 
+-static int _tcc_open(TCCState *s1, const char *filename)
++static FILE *open_input(TCCState *s1, const char *filename)
+ {
+-    int fd;
++    FILE *stream;
+     if (strcmp(filename, "-") == 0)
+-        fd = 0, filename = "<stdin>";
++        stream = stdin, filename = "<stdin>";
+     else
+-        fd = open(filename, O_RDONLY | O_BINARY);
+-    if ((s1->verbose == 2 && fd >= 0) || s1->verbose == 3)
+-        printf("%s %*s%s\n", fd < 0 ? "nf":"->",
++        stream = fopen(filename, "rb");
++    if ((s1->verbose == 2 && stream) || s1->verbose == 3)
++        printf("%s %*s%s\n", stream ? "->" : "nf",
+                (int)(s1->include_stack_ptr - s1->include_stack), "", filename);
+-    return fd;
++    return stream;
+ }
+ 
+ ST_FUNC int tcc_open(TCCState *s1, const char *filename)
+ {
+-    int fd = _tcc_open(s1, filename);
+-    if (fd < 0)
+-        return -1;
++    if (strlen(filename) >= sizeof(file->filename))
++        return tcc_error_noabort("input filename is too long");
++    /* Link the buffer before opening: compile-error unwinding owns it. */
+     tcc_open_bf(s1, filename, 0);
+-    file->fd = fd;
++    file->stream = open_input(s1, filename);
++    if (!file->stream) {
++        int error = errno;
++        tcc_close();
++        if (error != ENOENT)
++            tcc_error_noabort("could not open '%s': %s", filename, strerror(error));
++        return -1;
++    }
+     return 0;
+ }
+ 
+ /* compile the file opened in 'file'. Return non zero if errors. */
+-static int tcc_compile(TCCState *s1, int filetype, const char *str, int fd)
++static int tcc_compile(TCCState *s1, int filetype, const char *str, int from_file)
+ {
+     /* Here we enter the code section where we use the global variables for
+        parsing and code generation (tccpp.c, tccgen.c, <target>-gen.c).
+@@ -812,13 +849,15 @@ static int tcc_compile(TCCState *s1, int filetype, const char *str, int fd)
+ 
+     if (setjmp(s1->error_jmp_buf) == 0) {
+ 
+-        if (fd == -1) {
++        if (!from_file) {
+             int len = strlen(str);
+             tcc_open_bf(s1, "<string>", len);
+             memcpy(file->buffer, str, len);
+         } else {
+-            tcc_open_bf(s1, str, 0);
+-            file->fd = fd;
++            if (tcc_open(s1, str) < 0) {
++                tcc_error_noabort("could not open '%s'", str);
++                goto exit_compile;
++            }
+         }
+ 
+         preprocess_start(s1, filetype);
+@@ -838,6 +877,7 @@ static int tcc_compile(TCCState *s1, int filetype, const char *str, int fd)
+     }
+     tccgen_finish(s1);
+     preprocess_end(s1);
++exit_compile:
+     s1->error_set_jmp_enabled = 0;
+     tcc_exit_state(s1);
+     return s1->nb_errors != 0 ? -1 : 0;
+@@ -845,7 +885,7 @@ static int tcc_compile(TCCState *s1, int filetype, const char *str, int fd)
+ 
+ LIBTCCAPI int tcc_compile_string(TCCState *s, const char *str)
+ {
+-    return tcc_compile(s, s->filetype, str, -1);
++    return tcc_compile(s, s->filetype, str, 0);
+ }
+ 
+ /* define a preprocessor symbol. value can be NULL, sym can be "sym=val" */
+@@ -979,7 +1019,12 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
+     if (!s->nostdinc) {
+         /* default include paths */
+         /* -isystem paths have already been handled */
++#ifdef __pyxis__
++        tcc_add_sysinclude_path(s, "{R}/usr/include");
++        tcc_add_sysinclude_path(s, "{B}/include");
++#else
+         tcc_add_sysinclude_path(s, CONFIG_TCC_SYSINCLUDEPATHS);
++#endif
+     }
+ 
+     if (output_type == TCC_OUTPUT_PREPROCESS) {
+@@ -996,8 +1041,14 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
+         return 0;
+     }
+ 
+-    if (!s->nostdlib_paths)
++    if (!s->nostdlib_paths) {
++#ifdef __pyxis__
++        tcc_add_library_path(s, "{R}/usr/lib");
++        tcc_add_library_path(s, "{B}");
++#else
+         tcc_add_library_path(s, CONFIG_TCC_LIBPATHS);
++#endif
++    }
+ 
+ #ifdef TCC_TARGET_PE
+ # ifdef TCC_IS_NATIVE
+@@ -1068,7 +1119,7 @@ ST_FUNC DLLReference *tcc_add_dllref(TCCState *s1, const char *dllname, int leve
+     return ref;
+ }
+ 
+-static int tcc_add_binary(TCCState *s1, int flags, const char *filename, int fd)
++static int tcc_add_binary(TCCState *s1, int flags, const char *filename, FILE *stream)
+ {
+     ElfW(Ehdr) ehdr;
+     int obj_type;
+@@ -1076,20 +1127,30 @@ static int tcc_add_binary(TCCState *s1, int flags, const char *filename, int fd)
+     int ret = 0;
+ 
+     s1->current_filename = filename;
+-    obj_type = tcc_object_type(fd, &ehdr);
+-    lseek(fd, 0, SEEK_SET);
++    obj_type = tcc_object_type(stream, &ehdr);
++    if (ferror(stream) || fseek(stream, 0, SEEK_SET)) {
++        ret = tcc_error_noabort("could not read '%s'", filename);
++        goto done;
++    }
+ 
+     switch (obj_type) {
+ 
+     case AFF_BINTYPE_REL:
+-        ret = tcc_load_object_file(s1, fd, 0);
++        ret = tcc_load_object_file(s1, stream, 0);
+         break;
+ 
+     case AFF_BINTYPE_AR:
+-        ret = tcc_load_archive(s1, fd, !(flags & AFF_WHOLE_ARCHIVE));
++        ret = tcc_load_archive(s1, stream, !(flags & AFF_WHOLE_ARCHIVE));
+         break;
+ 
+-#if defined TCC_TARGET_UNIX
++#if defined TCC_TARGET_PYXIS
++    case AFF_BINTYPE_DYN:
++        ret = tcc_error_noabort("shared objects are unsupported on Pyxis");
++        break;
++    default:
++        ret = tcc_error_noabort("expected ELF object or archive; linker scripts are unsupported on Pyxis");
++        break;
++#elif defined TCC_TARGET_UNIX
+     case AFF_BINTYPE_DYN:
+         if (s1->output_type == TCC_OUTPUT_MEMORY) {
+ #ifdef TCC_IS_NATIVE
+@@ -1100,12 +1161,12 @@ static int tcc_add_binary(TCCState *s1, int flags, const char *filename, int fd)
+                 ret = FILE_NOT_RECOGNIZED;
+ #endif
+         } else
+-            ret = tcc_load_dll(s1, fd, filename, (flags & AFF_REFERENCED_DLL) != 0);
++            ret = tcc_load_dll(s1, stream, filename, (flags & AFF_REFERENCED_DLL) != 0);
+         break;
+ 
+     default:
+         /* as GNU ld, consider it is an ld script if not recognized */
+-        ret = tcc_load_ldscript(s1, fd);
++        ret = tcc_load_ldscript(s1, stream);
+         break;
+ 
+ #elif defined TCC_TARGET_MACHO
+@@ -1117,7 +1178,7 @@ static int tcc_add_binary(TCCState *s1, int flags, const char *filename, int fd)
+             const char* soname = filename;
+             char *tmp = 0;
+             if (obj_type != AFF_BINTYPE_DYN) {
+-                tmp = macho_tbd_soname(fd);
++                tmp = macho_tbd_soname(fileno(stream));
+                 if (tmp)
+                     soname = tmp;
+             }
+@@ -1129,9 +1190,9 @@ static int tcc_add_binary(TCCState *s1, int flags, const char *filename, int fd)
+ 	    tcc_free(tmp);
+ #endif
+         } else if (obj_type == AFF_BINTYPE_DYN) {
+-            ret = macho_load_dll(s1, fd, filename, (flags & AFF_REFERENCED_DLL) != 0);
++            ret = macho_load_dll(s1, fileno(stream), filename, (flags & AFF_REFERENCED_DLL) != 0);
+         } else {
+-            ret = macho_load_tbd(s1, fd, filename, (flags & AFF_REFERENCED_DLL) != 0);
++            ret = macho_load_tbd(s1, fileno(stream), filename, (flags & AFF_REFERENCED_DLL) != 0);
+         }
+         if (ret)
+             ret = FILE_NOT_RECOGNIZED;
+@@ -1152,19 +1213,21 @@ static int tcc_add_binary(TCCState *s1, int flags, const char *filename, int fd)
+ 
+ #elif defined TCC_TARGET_PE
+     default:
+-        if (pe_load_file(s1, fd, filename))
++        if (pe_load_file(s1, fileno(stream), filename))
+             ret = FILE_NOT_RECOGNIZED;
+         break;
+ #endif
+ 
+ #ifdef TCC_TARGET_COFF
+     case AFF_BINTYPE_C67:
+-        ret = tcc_load_coff(s1, fd);
++        ret = tcc_load_coff(s1, fileno(stream));
+         break;
+ #endif
+     }
+ 
+-    close(fd);
++done:
++    if (stream != stdin && fclose(stream))
++        ret = tcc_error_noabort("could not close '%s'", filename);
+     s1->current_filename = saved_filename;
+     if (ret == FILE_NOT_RECOGNIZED)
+         return tcc_error_noabort("%s: unrecognized file type", filename);
+@@ -1223,7 +1286,7 @@ static int guess_filetype(const char *filename)
+ 
+ ST_FUNC int tcc_add_file_internal(TCCState *s1, const char *filename, int flags)
+ {
+-    int fd;
++    FILE *stream;
+ 
+ #if defined TARGETOS_OpenBSD && !defined _WIN32
+     char buf[1024];
+@@ -1239,19 +1302,18 @@ ST_FUNC int tcc_add_file_internal(TCCState *s1, const char *filename, int flags)
+         && (flags & AFF_TYPE_BIN))
+         return 0;
+ 
+-    /* open the file */
+-    fd = _tcc_open(s1, filename);
+-    if (fd < 0) {
++    if (!(flags & AFF_TYPE_BIN)) {
++        dynarray_add(&s1->target_deps, &s1->nb_target_deps, tcc_strdup(filename));
++        return tcc_compile(s1, flags, filename, 1);
++    }
++
++    stream = open_input(s1, filename);
++    if (!stream) {
+         if (flags & AFF_PRINT_ERROR)
+-            tcc_error_noabort("file '%s' not found", filename);
++            tcc_error_noabort("could not open '%s': %s", filename, strerror(errno));
+         return FILE_NOT_FOUND;
+     }
+-
+-    if (flags & AFF_TYPE_BIN)
+-        return tcc_add_binary(s1, flags, filename, fd);
+-
+-    dynarray_add(&s1->target_deps, &s1->nb_target_deps, tcc_strdup(filename));
+-    return tcc_compile(s1, flags, filename, fd);
++    return tcc_add_binary(s1, flags, filename, stream);
+ }
+ 
+ LIBTCCAPI int tcc_add_file(TCCState *s, const char *filename)
+@@ -1266,7 +1328,9 @@ static int tcc_add_library_internal(TCCState *s1, const char *fmt,
+     int i, ret;
+ 
+     for(i = 0; i < nb_paths; i++) {
+-        snprintf(buf, sizeof(buf), fmt, paths[i], filename);
++        ret = snprintf(buf, sizeof(buf), fmt, paths[i], filename);
++        if (ret < 0 || ret >= sizeof(buf))
++            return tcc_error_noabort("library path is too long");
+         ret = tcc_add_file_internal(s1, buf, flags & ~AFF_PRINT_ERROR);
+         if (ret != FILE_NOT_FOUND)
+             return ret;
+@@ -1288,8 +1352,12 @@ ST_FUNC int tcc_add_dll(TCCState *s, const char *filename, int flags)
+ ST_FUNC int tcc_add_support(TCCState *s1, const char *filename)
+ {
+     char buf[100];
+-    if (CONFIG_TCC_CROSSPREFIX[0])
+-        filename = strcat(strcpy(buf, CONFIG_TCC_CROSSPREFIX), filename);
++    if (CONFIG_TCC_CROSSPREFIX[0]) {
++        int len = snprintf(buf, sizeof buf, "%s%s", CONFIG_TCC_CROSSPREFIX, filename);
++        if (len < 0 || len >= sizeof buf)
++            return tcc_error_noabort("support filename is too long");
++        filename = buf;
++    }
+     return tcc_add_dll(s1, filename, AFF_PRINT_ERROR);
+ }
+ 
+@@ -1872,13 +1940,19 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
+     while (optind < argc) {
+         r = argv[optind];
+         if (r[0] == '@' && r[1] != '\0') { /* read @listfile */
+-            int fd; char *p;
+-            fd = open(++r, O_RDONLY | O_BINARY);
+-            if (fd < 0)
+-                return tcc_error_noabort("listfile '%s' not found", r);
+-            p = tcc_load_text(fd);
++            FILE *stream; char *p;
++            int close_error;
++            stream = fopen(++r, "rb");
++            if (!stream)
++                return tcc_error_noabort("could not open listfile '%s': %s", r, strerror(errno));
++            p = tcc_load_text(stream);
++            close_error = fclose(stream);
++            if (!p || close_error) {
++                tcc_free(p);
++                return tcc_error_noabort("could not read/close listfile '%s'", r);
++            }
+             insert_args(s1, &argv, &argc, optind, p, 0);
+-            close(fd), tcc_free(p);
++            tcc_free(p);
+             continue;
+         }
+         optind++;
+diff --git a/tcc.c b/tcc.c
+index ada657c..bc4fcfb 100644
+--- a/tcc.c
++++ b/tcc.c
+@@ -336,7 +336,12 @@ redo:
+             set_environment(s);
+ #ifdef TCC_TARGET_PYXIS
+             tcc_set_output_type(s, TCC_OUTPUT_PREPROCESS);
++#ifdef __pyxis__
++            tcc_add_library_path(s, "{R}/usr/lib");
++            tcc_add_library_path(s, "{B}");
++#else
+             tcc_add_library_path(s, CONFIG_TCC_LIBPATHS);
++#endif
+ #else
+             tcc_set_output_type(s, TCC_OUTPUT_MEMORY);
+ #endif
+@@ -439,10 +444,12 @@ redo:
+     else if (s->do_bench)
+         tcc_print_stats(s, end_time - start_time);
+ 
++    if (s->output_type == TCC_OUTPUT_PREPROCESS && ferror(s->ppfp))
++        ret = tcc_error_noabort("could not write preprocessor output");
++    if (done && ppfp && tcc_fclose(ppfp))
++        ret = tcc_error_noabort("could not close preprocessor output");
+     tcc_delete(s);
+     if (!done)
+         goto redo;
+-    if (ppfp)
+-        tcc_fclose(ppfp);
+     return ret;
+ }
+diff --git a/tcc.h b/tcc.h
+index 38c5d02..9ab3ad5 100644
+--- a/tcc.h
++++ b/tcc.h
+@@ -35,11 +35,17 @@
+ #include <string.h>
+ #include <errno.h>
+ #include <math.h>
++#include <stdint.h>
++#include <limits.h>
++#ifndef __pyxis__
+ #include <fcntl.h>
++#endif
+ #include <setjmp.h>
++#ifndef __pyxis__
+ #include <time.h>
++#endif
+ 
+-#ifndef _WIN32
++#if !defined _WIN32 && !defined __pyxis__
+ # include <unistd.h>
+ # include <sys/time.h>
+ # ifndef CONFIG_TCC_STATIC
+@@ -133,7 +139,11 @@ extern long double strtold (const char *__nptr, char **__endptr);
+ # define PATHSEP ";"
+ #else
+ # define IS_DIRSEP(c) (c == '/')
+-# define IS_ABSPATH(p) IS_DIRSEP(p[0])
++# ifdef __pyxis__
++#  define IS_ABSPATH(p) tcc_rooted_path(p)
++# else
++#  define IS_ABSPATH(p) IS_DIRSEP(p[0])
++# endif
+ # define PATHCMP strcmp
+ # define PATHSEP ":"
+ #endif
+@@ -634,7 +644,7 @@ typedef struct DLLReference {
+ typedef struct BufferedFile {
+     uint8_t *buf_ptr;
+     uint8_t *buf_end;
+-    int fd;
++    FILE *stream; /* NULL for memory input; stdin is borrowed. */
+     struct BufferedFile *prev;
+     int line_num;    /* current line number - here to simplify code */
+     int line_ref;    /* tcc -E: last printed line */
+@@ -1320,9 +1330,14 @@ PUB_FUNC int tcc_fclose(FILE *f);
+ # define tcc_fclose fclose
+ #endif
+ ST_FUNC DLLReference *tcc_add_dllref(TCCState *s1, const char *dllname, int level);
+-ST_FUNC char *tcc_load_text(int fd);
++#ifdef __pyxis__
++ST_FUNC int tcc_rooted_path(const char *path);
++#endif
++ST_FUNC char *tcc_load_text(FILE *stream);
+ /* for #pragma once */
++#ifndef __pyxis__
+ ST_FUNC int normalized_PATHCMP(const char *f1, const char *f2);
++#endif
+ 
+ /* tcc_parse_args return codes: */
+ #define OPT_HELP 1
+@@ -1567,11 +1582,12 @@ ST_FUNC void resolve_common_syms(TCCState *s1);
+ ST_FUNC void relocate_syms(TCCState *s1, Section *symtab, int do_resolve);
+ ST_FUNC void relocate_sections(TCCState *s1);
+ 
+-ST_FUNC ssize_t full_read(int fd, void *buf, size_t count);
+-ST_FUNC void *load_data(int fd, unsigned long file_offset, unsigned long size);
+-ST_FUNC int tcc_object_type(int fd, ElfW(Ehdr) *h);
+-ST_FUNC int tcc_load_object_file(TCCState *s1, int fd, unsigned long file_offset);
+-ST_FUNC int tcc_load_archive(TCCState *s1, int fd, int alacarte);
++ST_FUNC long full_read(FILE *stream, void *buf, size_t count);
++ST_FUNC int seek_input(FILE *stream, unsigned long base, unsigned long offset);
++ST_FUNC void *load_data(FILE *stream, unsigned long file_offset, unsigned long size);
++ST_FUNC int tcc_object_type(FILE *stream, ElfW(Ehdr) *h);
++ST_FUNC int tcc_load_object_file(TCCState *s1, FILE *stream, unsigned long file_offset);
++ST_FUNC int tcc_load_archive(TCCState *s1, FILE *stream, int alacarte);
+ ST_FUNC void add_array(TCCState *s1, const char *sec, int c);
+ 
+ ST_FUNC struct sym_attr *get_sym_attr(TCCState *s1, int index, int alloc);
+@@ -1587,8 +1603,10 @@ ST_FUNC int set_global_sym(TCCState *s1, const char *name, Section *sec, addr_t
+          elem < (type *) (sec->data + sec->data_offset); elem++)
+ 
+ #ifndef ELF_OBJ_ONLY
+-ST_FUNC int tcc_load_dll(TCCState *s1, int fd, const char *filename, int level);
+-ST_FUNC int tcc_load_ldscript(TCCState *s1, int fd);
++#ifndef TCC_TARGET_PYXIS
++ST_FUNC int tcc_load_dll(TCCState *s1, FILE *stream, const char *filename, int level);
++ST_FUNC int tcc_load_ldscript(TCCState *s1, FILE *stream);
++#endif
+ ST_FUNC void tccelf_add_crtbegin(TCCState *s1);
+ ST_FUNC void tccelf_add_crtend(TCCState *s1);
+ #endif
+diff --git a/tccasm.c b/tccasm.c
+index eb24e3a..20bda8d 100644
+--- a/tccasm.c
++++ b/tccasm.c
+@@ -782,6 +782,7 @@ static void asm_parse_directive(TCCState *s1, int global)
+     case TOK_ASMDIR_bss:
+ 	{ 
+             char sname[64];
++            int len;
+             tok1 = tok;
+             n = 0;
+             next();
+@@ -790,9 +791,11 @@ static void asm_parse_directive(TCCState *s1, int global)
+ 		next();
+             }
+             if (n)
+-                sprintf(sname, "%s%d", get_tok_str(tok1, NULL), n);
++                len = snprintf(sname, sizeof sname, "%s%d", get_tok_str(tok1, NULL), n);
+             else
+-                sprintf(sname, "%s", get_tok_str(tok1, NULL));
++                len = snprintf(sname, sizeof sname, "%s", get_tok_str(tok1, NULL));
++            if (len < 0 || len >= sizeof sname)
++                tcc_error("section name is too long");
+             use_section(s1, sname);
+ 	}
+ 	break;
+diff --git a/tccelf.c b/tccelf.c
+index ace83f7..b8c4e20 100644
+--- a/tccelf.c
++++ b/tccelf.c
+@@ -1605,6 +1605,7 @@ ST_FUNC void tcc_add_bcheck(TCCState *s1)
+ }
+ #endif
+ 
++#if !defined __pyxis__ || defined CONFIG_TCC_BACKTRACE
+ /* set symbol to STB_LOCAL and resolve. The point is to not export it as
+    a dynamic symbol to allow so's to have one each with a different value. */
+ static void set_local_sym(TCCState *s1, const char *name, Section *s, int offset)
+@@ -1631,6 +1632,8 @@ static void tcc_compile_string_no_debug(TCCState *s, const char *str)
+     s->test_coverage = save_test_coverage;
+ }
+ 
++#endif
++
+ #ifdef CONFIG_TCC_BACKTRACE
+ static void put_ptr(TCCState *s1, Section *s, int offs)
+ {
+@@ -1728,6 +1731,9 @@ ST_FUNC void tcc_add_btstub(TCCState *s1)
+ 
+ static void tcc_tcov_add_file(TCCState *s1, const char *filename)
+ {
++#ifdef __pyxis__
++    tcc_error_noabort("coverage output is unsupported on Pyxis");
++#else
+     CString cstr;
+     void *ptr;
+     char wd[1024];
+@@ -1762,6 +1768,7 @@ static void tcc_tcov_add_file(TCCState *s1, const char *filename)
+     tcc_compile_string_no_debug(s1, cstr.data);
+     cstr_free(&cstr);
+     set_local_sym(s1, &"___tcov_data"[!s1->leading_underscore], tcov_section, 0);
++#endif
+ }
+ 
+ #ifdef TCC_TARGET_UNIX
+@@ -2747,12 +2754,19 @@ static int tcc_output_elf(TCCState *s1, FILE *f, int phnum, ElfW(Phdr) *phdr)
+     ehdr.e_shstrndx = shnum - 1;
+ 
+     offset = fwrite(&ehdr, 1, sizeof(ElfW(Ehdr)), f);
+-    if (phdr)
+-        offset += fwrite(phdr, 1, phnum * sizeof(ElfW(Phdr)), f);
++    if (offset != sizeof(ElfW(Ehdr)))
++        return -1;
++    if (phdr) {
++        size = phnum * sizeof(ElfW(Phdr));
++        if (fwrite(phdr, 1, size, f) != size)
++            return -1;
++        offset += size;
++    }
+ 
+     /* output section headers */
+     while (offset < ehdr.e_shoff) {
+-        fputc(0, f);
++        if (fputc(0, f) == EOF)
++            return -1;
+         offset++;
+     }
+ 
+@@ -2773,7 +2787,9 @@ static int tcc_output_elf(TCCState *s1, FILE *f, int phnum, ElfW(Phdr) *phdr)
+             sh->sh_offset = s->sh_offset;
+             sh->sh_size = s->sh_size;
+         }
+-        offset += fwrite(sh, 1, sizeof(ElfW(Shdr)), f);
++        if (fwrite(sh, 1, sizeof(ElfW(Shdr)), f) != sizeof(ElfW(Shdr)))
++            return -1;
++        offset += sizeof(ElfW(Shdr));
+     }
+ 
+     /* output sections */
+@@ -2781,12 +2797,14 @@ static int tcc_output_elf(TCCState *s1, FILE *f, int phnum, ElfW(Phdr) *phdr)
+         s = s1->sections[i];
+         if (s->sh_type != SHT_NOBITS) {
+             while (offset < s->sh_offset) {
+-                fputc(0, f);
++                if (fputc(0, f) == EOF)
++                    return -1;
+                 offset++;
+             }
+             size = s->sh_size;
+-            if (size)
+-                offset += fwrite(s->data, 1, size, f);
++            if (fwrite(s->data, 1, size, f) != size)
++                return -1;
++            offset += size;
+         }
+     }
+     return 0;
+@@ -2803,11 +2821,13 @@ static int tcc_output_binary(TCCState *s1, FILE *f)
+         if (s->sh_type != SHT_NOBITS &&
+             (s->sh_flags & SHF_ALLOC)) {
+             while (offset < s->sh_offset) {
+-                fputc(0, f);
++                if (fputc(0, f) == EOF)
++                    return -1;
+                 offset++;
+             }
+             size = s->sh_size;
+-            fwrite(s->data, 1, size, f);
++            if (fwrite(s->data, 1, size, f) != size)
++                return -1;
+             offset += size;
+         }
+     }
+@@ -2818,18 +2838,11 @@ static int tcc_output_binary(TCCState *s1, FILE *f)
+ static int tcc_write_elf_file(TCCState *s1, const char *filename, int phnum,
+                               ElfW(Phdr) *phdr)
+ {
+-    int fd, mode, file_type, ret;
+-    FILE *f;
++    int ret;
++    FILE *f = fopen(filename, "wb");
+ 
+-    file_type = s1->output_type;
+-    if (file_type == TCC_OUTPUT_OBJ)
+-        mode = 0666;
+-    else
+-        mode = 0777;
+-    unlink(filename);
+-    fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, mode);
+-    if (fd < 0 || (f = fdopen(fd, "wb")) == NULL)
+-        return tcc_error_noabort("could not write '%s: %s'", filename, strerror(errno));
++    if (!f)
++        return tcc_error_noabort("could not write '%s': %s", filename, strerror(errno));
+     if (s1->verbose)
+         printf("<- %s\n", filename);
+ #ifdef TCC_TARGET_COFF
+@@ -2841,7 +2854,10 @@ static int tcc_write_elf_file(TCCState *s1, const char *filename, int phnum,
+         ret = tcc_output_elf(s1, f, phnum, phdr);
+     else
+         ret = tcc_output_binary(s1, f);
+-    fclose(f);
++    if (ferror(f))
++        ret = tcc_error_noabort("could not write '%s': %s", filename, strerror(errno));
++    if (fclose(f))
++        ret = tcc_error_noabort("could not close '%s': %s", filename, strerror(errno));
+ 
+     return ret;
+ }
+@@ -3237,25 +3253,41 @@ LIBTCCAPI int tcc_output_file(TCCState *s, const char *filename)
+ #endif
+ }
+ 
+-ST_FUNC ssize_t full_read(int fd, void *buf, size_t count) {
+-    char *cbuf = buf;
+-    size_t rnum = 0;
+-    while (1) {
+-        ssize_t num = read(fd, cbuf, count-rnum);
+-        if (num < 0) return num;
+-        if (num == 0) return rnum;
+-        rnum += num;
+-        cbuf += num;
++ST_FUNC long full_read(FILE *stream, void *buf, size_t count)
++{
++    size_t done = 0;
++    if (count > LONG_MAX)
++        return -1;
++    while (done < count) {
++        size_t n = fread((char *)buf + done, 1, count - done, stream);
++        done += n;
++        if (ferror(stream))
++            return -1;
++        if (!n)
++            break;
+     }
++    return done;
+ }
+ 
+-ST_FUNC void *load_data(int fd, unsigned long file_offset, unsigned long size)
++/* Archive members use a base offset; check before converting to fseek's long. */
++ST_FUNC int seek_input(FILE *stream, unsigned long base, unsigned long offset)
++{
++    if (base > LONG_MAX || offset > LONG_MAX - base)
++        return -1;
++    return fseek(stream, base + offset, SEEK_SET);
++}
++
++ST_FUNC void *load_data(FILE *stream, unsigned long file_offset, unsigned long size)
+ {
+     void *data;
+ 
+-    data = tcc_malloc(size);
+-    lseek(fd, file_offset, SEEK_SET);
+-    full_read(fd, data, size);
++    if (seek_input(stream, 0, file_offset) || size > LONG_MAX)
++        return NULL;
++    data = tcc_malloc(size ? size : 1);
++    if (full_read(stream, data, size) != size) {
++        tcc_free(data);
++        return NULL;
++    }
+     return data;
+ }
+ 
+@@ -3266,9 +3298,9 @@ typedef struct SectionMergeInfo {
+     uint8_t link_once;         /* true if link once section */
+ } SectionMergeInfo;
+ 
+-ST_FUNC int tcc_object_type(int fd, ElfW(Ehdr) *h)
++ST_FUNC int tcc_object_type(FILE *stream, ElfW(Ehdr) *h)
+ {
+-    int size = full_read(fd, h, sizeof *h);
++    int size = full_read(stream, h, sizeof *h);
+     if (size == sizeof *h && 0 == memcmp(h, ELFMAG, 4)) {
+         if (h->e_type == ET_REL)
+             return AFF_BINTYPE_REL;
+@@ -3288,23 +3320,25 @@ ST_FUNC int tcc_object_type(int fd, ElfW(Ehdr) *h)
+ /* load an object file and merge it with current files */
+ /* XXX: handle correctly stab (debug) info */
+ ST_FUNC int tcc_load_object_file(TCCState *s1,
+-                                int fd, unsigned long file_offset)
++                                FILE *stream, unsigned long file_offset)
+ {
+     ElfW(Ehdr) ehdr;
+-    ElfW(Shdr) *shdr, *sh;
++    ElfW(Shdr) *shdr = NULL, *sh;
+     unsigned long size, offset, offseti;
+     int i, j, nb_syms, sym_index, ret, seencompressed;
+-    char *strsec, *strtab;
++    char *strsec = NULL, *strtab = NULL;
+     int stab_index, stabstr_index;
+-    int *old_to_new_syms;
++    int *old_to_new_syms = NULL;
+     char *sh_name, *name;
+-    SectionMergeInfo *sm_table, *sm;
+-    ElfW(Sym) *sym, *symtab;
++    SectionMergeInfo *sm_table = NULL, *sm;
++    ElfW(Sym) *sym, *symtab = NULL;
+     ElfW_Rel *rel;
+     Section *s;
+ 
+-    lseek(fd, file_offset, SEEK_SET);
+-    if (tcc_object_type(fd, &ehdr) != AFF_BINTYPE_REL)
++    ret = -1;
++    if (seek_input(stream, file_offset, 0))
++        goto invalid;
++    if (tcc_object_type(stream, &ehdr) != AFF_BINTYPE_REL)
+         goto invalid;
+     /* test CPU specific stuff */
+     if (ehdr.e_ident[5] != ELFDATA2LSB ||
+@@ -3312,14 +3346,27 @@ ST_FUNC int tcc_load_object_file(TCCState *s1,
+ invalid:
+         return tcc_error_noabort("invalid object file");
+     }
++    if (!ehdr.e_shnum || ehdr.e_shstrndx >= ehdr.e_shnum
++        || ehdr.e_shoff > LONG_MAX - file_offset)
++        goto invalid;
+     /* read sections */
+-    shdr = load_data(fd, file_offset + ehdr.e_shoff,
++    shdr = load_data(stream, file_offset + ehdr.e_shoff,
+                      sizeof(ElfW(Shdr)) * ehdr.e_shnum);
++    if (!shdr)
++        goto read_error;
+     sm_table = tcc_mallocz(sizeof(SectionMergeInfo) * ehdr.e_shnum);
+ 
++    for (i = 0; i < ehdr.e_shnum; ++i) {
++        sh = &shdr[i];
++        if (sh->sh_offset > LONG_MAX - file_offset)
++            goto read_error;
++    }
++
+     /* load section names */
+     sh = &shdr[ehdr.e_shstrndx];
+-    strsec = load_data(fd, file_offset + sh->sh_offset, sh->sh_size);
++    strsec = load_data(stream, file_offset + sh->sh_offset, sh->sh_size);
++    if (!strsec)
++        goto read_error;
+ 
+     /* load symtab and strtab */
+     old_to_new_syms = NULL;
+@@ -3338,12 +3385,16 @@ invalid:
+                 goto the_end;
+             }
+             nb_syms = sh->sh_size / sizeof(ElfW(Sym));
+-            symtab = load_data(fd, file_offset + sh->sh_offset, sh->sh_size);
++            symtab = load_data(stream, file_offset + sh->sh_offset, sh->sh_size);
++            if (!symtab)
++                goto read_error;
+             sm_table[i].s = symtab_section;
+ 
+             /* now load strtab */
+             sh = &shdr[sh->sh_link];
+-            strtab = load_data(fd, file_offset + sh->sh_offset, sh->sh_size);
++            strtab = load_data(stream, file_offset + sh->sh_offset, sh->sh_size);
++            if (!strtab)
++                goto read_error;
+         }
+ 	if (sh->sh_flags & SHF_COMPRESSED)
+ 	    seencompressed = 1;
+@@ -3441,9 +3492,10 @@ invalid:
+         /* concatenate sections */
+         if (sh->sh_type != SHT_NOBITS && size) {
+             unsigned char *ptr;
+-            lseek(fd, file_offset + sh->sh_offset, SEEK_SET);
+             ptr = s->data + offset;
+-            full_read(fd, ptr, size);
++            if (seek_input(stream, file_offset, sh->sh_offset)
++                || full_read(stream, ptr, size) != size)
++                goto read_error;
+         }
+ #if defined TCC_TARGET_ARM || defined TCC_TARGET_ARM64 || defined TCC_TARGET_RISCV64
+         /* align code sections to instruction lenght */
+@@ -3585,6 +3637,9 @@ invalid:
+     }
+  done:
+     ret = !s1->nb_errors - 1; /* errors possibly from set_elf_sym() */
++    goto the_end;
++ read_error:
++    tcc_error_noabort("could not read object data");
+  the_end:
+     tcc_free(symtab);
+     tcc_free(strtab);
+@@ -3615,12 +3670,13 @@ static unsigned long long get_be(const uint8_t *b, int n)
+     return ret;
+ }
+ 
+-static int read_ar_header(int fd, int offset, ArchiveHeader *hdr)
++static int read_ar_header(FILE *stream, unsigned long long offset, ArchiveHeader *hdr)
+ {
+     char *p, *e;
+     int len;
+-    lseek(fd, offset, SEEK_SET);
+-    len = full_read(fd, hdr, sizeof(ArchiveHeader));
++    if (offset > LONG_MAX || seek_input(stream, 0, offset))
++        return -1;
++    len = full_read(stream, hdr, sizeof(ArchiveHeader));
+     if (len != sizeof(ArchiveHeader))
+         return len ? -1 : 0;
+     if (memcmp(hdr->ar_fmag, ARFMAG, sizeof hdr->ar_fmag))
+@@ -3629,12 +3685,11 @@ static int read_ar_header(int fd, int offset, ArchiveHeader *hdr)
+     for (e = p + sizeof hdr->ar_name; e > p && e[-1] == ' ';)
+         --e;
+     *e = '\0';
+-    hdr->ar_size[sizeof hdr->ar_size-1] = 0;
+     return len;
+ }
+ 
+ /* load only the objects which resolve undefined symbols */
+-static int tcc_load_alacarte(TCCState *s1, int fd, int size, int entrysize)
++static int tcc_load_alacarte(TCCState *s1, FILE *stream, int size, int entrysize)
+ {
+     int i, bound, nsyms, sym_index, len, ret = -1;
+     unsigned long long off;
+@@ -3644,10 +3699,15 @@ static int tcc_load_alacarte(TCCState *s1, int fd, int size, int entrysize)
+     ElfW(Sym) *sym;
+     ArchiveHeader hdr;
+ 
++    if (size < entrysize)
++        return tcc_error_noabort("invalid archive index size");
+     data = tcc_malloc(size);
+-    if (full_read(fd, data, size) != size)
++    if (full_read(stream, data, size) != size)
++        goto invalid;
++    off = get_be(data, entrysize);
++    if (off > (size - entrysize) / entrysize)
+         goto invalid;
+-    nsyms = get_be(data, entrysize);
++    nsyms = off;
+     ar_index = data + entrysize;
+     ar_names = (char *) ar_index + nsyms * entrysize;
+ 
+@@ -3655,6 +3715,9 @@ static int tcc_load_alacarte(TCCState *s1, int fd, int size, int entrysize)
+         bound = 0;
+         for (p = ar_names, i = 0; i < nsyms; i++, p += strlen(p)+1) {
+             Section *s = symtab_section;
++            if (p >= (char *)data + size
++                || strnlen(p, (char *)data + size - p) == (char *)data + size - p)
++                goto invalid;
+             sym_index = find_elf_sym(s, p);
+             if (!sym_index)
+                 continue;
+@@ -3662,16 +3725,18 @@ static int tcc_load_alacarte(TCCState *s1, int fd, int size, int entrysize)
+             if(sym->st_shndx != SHN_UNDEF)
+                 continue;
+             off = get_be(ar_index + i * entrysize, entrysize);
+-            len = read_ar_header(fd, off, &hdr);
++            len = read_ar_header(stream, off, &hdr);
+             if (len <= 0 || memcmp(hdr.ar_fmag, ARFMAG, 2)) {
+         invalid:
+                 tcc_error_noabort("invalid archive");
+                 goto the_end;
+             }
++            if (off > LONG_MAX - len)
++                goto invalid;
+             off += len;
+             if (s1->verbose == 2)
+                 printf("   -> %s\n", hdr.ar_name);
+-            if (tcc_load_object_file(s1, fd, off) < 0)
++            if (tcc_load_object_file(s1, stream, off) < 0)
+                 goto the_end;
+             ++bound;
+         }
+@@ -3683,36 +3748,55 @@ static int tcc_load_alacarte(TCCState *s1, int fd, int size, int entrysize)
+ }
+ 
+ /* load a '.a' file */
+-ST_FUNC int tcc_load_archive(TCCState *s1, int fd, int alacarte)
++ST_FUNC int tcc_load_archive(TCCState *s1, FILE *stream, int alacarte)
+ {
+     ArchiveHeader hdr;
+     /* char magic[8]; */
+     int size, len;
+     unsigned long file_offset;
++    long file_size;
+     ElfW(Ehdr) ehdr;
+ 
++    if (fseek(stream, 0, SEEK_END) || (file_size = ftell(stream)) < 0)
++        return tcc_error_noabort("could not size archive");
++
+     /* skip magic which was already checked */
+-    /* full_read(fd, magic, sizeof(magic)); */
++    /* full_read(stream, magic, sizeof(magic)); */
+     file_offset = sizeof ARMAG - 1;
+ 
+     for(;;) {
+-        len = read_ar_header(fd, file_offset, &hdr);
++        len = read_ar_header(stream, file_offset, &hdr);
+         if (len == 0)
+             return 0;
+         if (len < 0)
+             return tcc_error_noabort("invalid archive");
++        if (file_offset > LONG_MAX - len)
++            return tcc_error_noabort("archive offset is too large");
+         file_offset += len;
+-        size = strtol(hdr.ar_size, NULL, 0);
++        {
++            char size_text[sizeof hdr.ar_size + 1], *end;
++            long member_size;
++            memcpy(size_text, hdr.ar_size, sizeof hdr.ar_size);
++            size_text[sizeof hdr.ar_size] = 0;
++            errno = 0;
++            member_size = strtol(size_text, &end, 10);
++            while (*end == ' ') ++end;
++            if (errno || end == size_text || *end || member_size < 0
++                || member_size > INT_MAX || file_offset > LONG_MAX - member_size - 1
++                || file_offset > file_size || member_size > file_size - file_offset)
++                return tcc_error_noabort("invalid archive member size");
++            size = member_size;
++        }
+         if (alacarte) {
+             /* coff symbol table : we handle it */
+             if (!strcmp(hdr.ar_name, "/"))
+-                return tcc_load_alacarte(s1, fd, size, 4);
++                return tcc_load_alacarte(s1, stream, size, 4);
+             if (!strcmp(hdr.ar_name, "/SYM64/"))
+-                return tcc_load_alacarte(s1, fd, size, 8);
+-        } else if (tcc_object_type(fd, &ehdr) == AFF_BINTYPE_REL) {
++                return tcc_load_alacarte(s1, stream, size, 8);
++        } else if (tcc_object_type(stream, &ehdr) == AFF_BINTYPE_REL) {
+             if (s1->verbose == 2)
+                 printf("   -> %s\n", hdr.ar_name);
+-            if (tcc_load_object_file(s1, fd, file_offset) < 0)
++            if (tcc_load_object_file(s1, stream, file_offset) < 0)
+                 return -1;
+         }
+         /* align to even */
+@@ -3720,7 +3804,7 @@ ST_FUNC int tcc_load_archive(TCCState *s1, int fd, int alacarte)
+     }
+ }
+ 
+-#ifndef ELF_OBJ_ONLY
++#if !defined ELF_OBJ_ONLY && !defined TCC_TARGET_PYXIS
+ /* Set LV[I] to the global index of sym-version (LIB,VERSION).  Maybe resizes
+    LV, maybe create a new entry for (LIB,VERSION).  */
+ static void set_ver_to_ver(TCCState *s1, int *n, int **lv, int i, char *lib, char *version)
+@@ -3855,7 +3939,7 @@ static void store_version(TCCState *s1, struct versym_info *v, char *dynstr)
+ /* load a library / DLL
+    'level = 0' means that the DLL is referenced by the user
+    (so it should be added as DT_NEEDED in the generated ELF file) */
+-ST_FUNC int tcc_load_dll(TCCState *s1, int fd, const char *filename, int level)
++ST_FUNC int tcc_load_dll(TCCState *s1, FILE *stream, const char *filename, int level)
+ {
+     ElfW(Ehdr) ehdr;
+     ElfW(Shdr) *shdr, *sh, *sh1;
+@@ -3868,7 +3952,7 @@ ST_FUNC int tcc_load_dll(TCCState *s1, int fd, const char *filename, int level)
+     const char *name, *soname;
+     struct versym_info v;
+ 
+-    full_read(fd, &ehdr, sizeof(ehdr));
++    full_read(stream, &ehdr, sizeof(ehdr));
+ 
+     /* test CPU specific stuff */
+     if (ehdr.e_ident[5] != ELFDATA2LSB ||
+@@ -3877,7 +3961,7 @@ ST_FUNC int tcc_load_dll(TCCState *s1, int fd, const char *filename, int level)
+     }
+ 
+     /* read sections */
+-    shdr = load_data(fd, ehdr.e_shoff, sizeof(ElfW(Shdr)) * ehdr.e_shnum);
++    shdr = load_data(stream, ehdr.e_shoff, sizeof(ElfW(Shdr)) * ehdr.e_shnum);
+ 
+     /* load dynamic section and dynamic symbols */
+     nb_syms = 0;
+@@ -3891,23 +3975,23 @@ ST_FUNC int tcc_load_dll(TCCState *s1, int fd, const char *filename, int level)
+         switch(sh->sh_type) {
+         case SHT_DYNAMIC:
+             nb_dts = sh->sh_size / sizeof(ElfW(Dyn));
+-            dynamic = load_data(fd, sh->sh_offset, sh->sh_size);
++            dynamic = load_data(stream, sh->sh_offset, sh->sh_size);
+             break;
+         case SHT_DYNSYM:
+             nb_syms = sh->sh_size / sizeof(ElfW(Sym));
+-            dynsym = load_data(fd, sh->sh_offset, sh->sh_size);
++            dynsym = load_data(stream, sh->sh_offset, sh->sh_size);
+             sh1 = &shdr[sh->sh_link];
+-            dynstr = load_data(fd, sh1->sh_offset, sh1->sh_size);
++            dynstr = load_data(stream, sh1->sh_offset, sh1->sh_size);
+             break;
+         case SHT_GNU_verdef:
+-	    v.verdef = load_data(fd, sh->sh_offset, sh->sh_size);
++	    v.verdef = load_data(stream, sh->sh_offset, sh->sh_size);
+ 	    break;
+         case SHT_GNU_verneed:
+-	    v.verneed = load_data(fd, sh->sh_offset, sh->sh_size);
++	    v.verneed = load_data(stream, sh->sh_offset, sh->sh_size);
+ 	    break;
+         case SHT_GNU_versym:
+             v.nb_versyms = sh->sh_size / sizeof(ElfW(Half));
+-	    v.versym = load_data(fd, sh->sh_offset, sh->sh_size);
++	    v.versym = load_data(stream, sh->sh_offset, sh->sh_size);
+ 	    break;
+         default:
+             break;
+@@ -4181,14 +4265,16 @@ repeat:
+ 
+ /* interpret a subset of GNU ldscripts to handle the dummy libc.so
+    files */
+-ST_FUNC int tcc_load_ldscript(TCCState *s1, int fd)
++ST_FUNC int tcc_load_ldscript(TCCState *s1, FILE *stream)
+ {
+     char cmd[64];
+     int t, ret = 0, noscript = 1;
+     unsigned char *text_ptr, *saved_ptr;
+ 
+     saved_ptr = s1->ld_p;
+-    s1->ld_p = text_ptr = (void*)tcc_load_text(fd);
++    s1->ld_p = text_ptr = (void*)tcc_load_text(stream);
++    if (!text_ptr)
++        return tcc_error_noabort("could not read linker script");
+     for(;;) {
+         t = ld_next(s1, cmd, sizeof(cmd));
+         if (t == LD_TOK_EOF)
+diff --git a/tccgen.c b/tccgen.c
+index a4a3e64..cb5a148 100644
+--- a/tccgen.c
++++ b/tccgen.c
+@@ -5579,7 +5579,11 @@ static void parse_atomic(int atok)
+         break;
+     }
+ 
+-    sprintf(buf, "%s_%d", get_tok_str(atok, 0), size);
++    {
++        int len = snprintf(buf, sizeof buf, "%s_%d", get_tok_str(atok, 0), size);
++        if (len < 0 || len >= sizeof buf)
++            tcc_error("atomic helper name is too long");
++    }
+     vpush_helper_func(tok_alloc_const(buf));
+     vrott(arg - save + 1);
+     gfunc_call(arg - save);
+diff --git a/tccpp.c b/tccpp.c
+index 5317bdd..5588a54 100644
+--- a/tccpp.c
++++ b/tccpp.c
+@@ -542,7 +542,9 @@ ST_FUNC const char *get_tok_str(int v, CValue *cv)
+     case TOK_CLLONG:
+     case TOK_CULLONG:
+         /* XXX: not quite exact, but only useful for testing  */
+-        sprintf(p, "%llu", (unsigned long long)cv->i);
++        len = snprintf(p, cstr_buf.size_allocated, "%llu", (unsigned long long)cv->i);
++        if (len < 0 || len >= cstr_buf.size_allocated)
++            tcc_error("could not format integer token");
+         break;
+     case TOK_LCHAR:
+         cstr_ccat(&cstr_buf, 'L');
+@@ -613,7 +615,9 @@ ST_FUNC const char *get_tok_str(int v, CValue *cv)
+                 q += 3;
+             }
+             if (v >= 127 || (v < 32 && !is_space(v) && v != '\n')) {
+-                sprintf(p, "<\\x%02x>", v);
++                len = snprintf(p, cstr_buf.size_allocated, "<\\x%02x>", v);
++                if (len < 0 || len >= cstr_buf.size_allocated)
++                    tcc_error("could not format byte token");
+                 break;
+             }
+     addv:
+@@ -623,7 +627,9 @@ ST_FUNC const char *get_tok_str(int v, CValue *cv)
+             return table_ident[v - TOK_IDENT]->str;
+         } else if (v >= SYM_FIRST_ANOM) {
+             /* special name for anonymous symbol */
+-            sprintf(p, "L.%u", v - SYM_FIRST_ANOM);
++            len = snprintf(p, cstr_buf.size_allocated, "L.%u", v - SYM_FIRST_ANOM);
++            if (len < 0 || len >= cstr_buf.size_allocated)
++                tcc_error("could not format label token");
+         } else {
+             /* should never happen */
+             return NULL;
+@@ -642,15 +648,15 @@ static int handle_eob(void)
+ 
+     /* only tries to read if really end of buffer */
+     if (bf->buf_ptr >= bf->buf_end) {
+-        if (bf->fd >= 0) {
++        if (bf->stream) {
+ #if defined(PARSE_DEBUG)
+             len = 1;
+ #else
+             len = IO_BUF_SIZE;
+ #endif
+-            len = read(bf->fd, bf->buffer, len);
+-            if (len < 0)
+-                len = 0;
++            len = fread(bf->buffer, 1, len, bf->stream);
++            if (ferror(bf->stream))
++                tcc_error("could not read input: %s", strerror(errno));
+         } else {
+             len = 0;
+         }
+@@ -1332,6 +1338,8 @@ static int parse_include(TCCState *s1, int do_next, int test)
+         cstr_reset(&tokcstr);
+         file->buf_ptr = parse_pp_string(file->buf_ptr, c == '<' ? '>' : c, &tokcstr);
+         i = tokcstr.size;
++        if (i >= sizeof name)
++            tcc_error("include filename is too long");
+         pstrncpy(name, sizeof name, tokcstr.data, i);
+         next_nomacro();
+     } else {
+@@ -1350,7 +1358,12 @@ static int parse_include(TCCState *s1, int do_next, int test)
+                 break;
+             if (tok == TOK_LINEFEED)
+                 tcc_error("'#include' expects \"FILENAME\" or <FILENAME>");
+-            pstrcat(name, sizeof name, get_tok_str(tok, &tokc));
++            {
++                const char *token = get_tok_str(tok, &tokc);
++                if (strlen(name) + strlen(token) >= sizeof name)
++                    tcc_error("include filename is too long");
++                pstrcat(name, sizeof name, token);
++            }
+ 	}
+         c = p[0];
+         /* remove '<>|""' */
+@@ -1360,6 +1373,12 @@ static int parse_include(TCCState *s1, int do_next, int test)
+     if (!test)
+         skip_to_eol(1);
+ 
++#ifdef __pyxis__
++    if (name[0] == '/')
++        tcc_error("native paths require scheme:// or a relative path");
++    if (do_next && IS_ABSPATH(name))
++        tcc_error("#include_next requires a relative include name");
++#endif
+     i = do_next ? file->include_next_index : -1;
+     for (;;) {
+         ++i;
+@@ -1373,6 +1392,8 @@ static int parse_include(TCCState *s1, int do_next, int test)
+             if (c != '\"')
+                 continue;
+             p = file->true_filename;
++            if (tcc_basename(p) - p >= sizeof buf)
++                tcc_error("include directory is too long");
+             pstrncpy(buf, sizeof buf, p, tcc_basename(p) - p);
+         } else {
+             int j = i - 2, k = j - s1->nb_include_paths;
+@@ -1384,9 +1405,13 @@ static int parse_include(TCCState *s1, int do_next, int test)
+                 return 0;
+             else
+                 tcc_error("include file '%s' not found", name);
++            if (strlen(p) + 1 >= sizeof buf)
++                tcc_error("include directory is too long");
+             pstrcpy(buf, sizeof buf, p);
+             pstrcat(buf, sizeof buf, "/");
+         }
++        if (strlen(buf) + strlen(name) >= sizeof buf)
++            tcc_error("include path is too long");
+         pstrcat(buf, sizeof buf, name);
+         e = search_cached_include(s1, buf, 0);
+         if (e && (define_find(e->ifndef_macro) || e->once)) {
+@@ -1402,6 +1427,13 @@ static int parse_include(TCCState *s1, int do_next, int test)
+         }
+         if (tcc_open(s1, buf) >= 0)
+             break;
++#ifdef __pyxis__
++        if (IS_ABSPATH(name)) {
++            if (test)
++                return 0;
++            tcc_error("include file '%s' not found", name);
++        }
++#endif
+     }
+ 
+     if (test) {
+@@ -1628,11 +1660,13 @@ static CachedInclude *search_cached_include(TCCState *s1, const char *filename,
+         e = s1->cached_includes[i - 1];
+         if (0 == PATHCMP(filename, e->filename))
+             return e;
++#ifndef __pyxis__
+         if (e->once
+             && 0 == PATHCMP(basename, tcc_basename(e->filename))
+             && 0 == normalized_PATHCMP(filename, e->filename)
+             )
+             return e;
++#endif
+         i = e->hash_next;
+     }
+     if (!add)
+@@ -1683,7 +1717,11 @@ static int pragma_parse(TCCState *s1)
+         pp_debug_tok = t, pp_debug_symv = v;
+ 
+     } else if (tok == TOK_once) {
++#ifdef __pyxis__
++        tcc_error("#pragma once requires file identity support; use include guards");
++#else
+         search_cached_include(s1, file->true_filename, 1)->once = 1;
++#endif
+ 
+     } else if (s1->output_type == TCC_OUTPUT_PREPROCESS) {
+         /* tcc -E: keep pragmas below unchanged */
+@@ -1775,6 +1813,8 @@ ST_FUNC void tccpp_putfile(const char *filename)
+         pstrcpy(buf, sizeof buf, file->true_filename);
+         *tcc_basename(buf) = 0;
+     }
++    if (strlen(buf) + strlen(filename) >= sizeof buf)
++        tcc_error("line filename is too long");
+     pstrcat(buf, sizeof buf, filename);
+ #ifdef _WIN32
+     normalize_slashes(buf);
+@@ -1937,7 +1977,7 @@ ST_FUNC void preprocess(int is_bof)
+             /* skip optional level number & advance to next line */
+             skip_to_eol(c);
+         }
+-        if (file->fd > 0)
++        if (file->stream && file->stream != stdin)
+             total_lines += file->line_num - n;
+         file->line_num = n;
+         break;
+@@ -3376,6 +3416,9 @@ static int macro_subst_tok(
+             goto add_cstr;
+ 
+         } else if (v == TOK___DATE__ || v == TOK___TIME__) {
++#ifdef __pyxis__
++            tcc_error("%s requires wall-clock support on Pyxis", get_tok_str(v, NULL));
++#else
+             time_t ti;
+             struct tm *tm;
+             time(&ti);
+@@ -3391,6 +3434,7 @@ static int macro_subst_tok(
+                 snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
+                     tm->tm_hour, tm->tm_min, tm->tm_sec);
+             }
++#endif
+         add_cstr:
+             t = TOK_STR;
+         add_cstr1:

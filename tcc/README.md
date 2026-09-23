@@ -73,18 +73,59 @@ TCC accepts all of them: for inspection, libc format/printf compile with
 `-include stdbool.h`; the line editor's `[[fallthrough]]` is unsupported. No
 first-party source is rewritten to make this port's validation compile.
 
-Guest file/URI access, the guest driver, P1F output and SDK packaging remain
-later tasks. Executable/shared/in-memory output is rejected at this stage;
+The guest driver, P1F output and SDK packaging remain later tasks.
+Executable/shared/in-memory output is rejected at this stage;
 there is no Linux ELF executable fallback. Only preprocessing/object compilation
 and the explicit GNU link path above are supported here, not every upstream
 command-line option or language extension.
 
+## Native stream and path adaptation
+
+The selected source, response-file and ELF object/archive readers now use
+`FILE *` streams. Source streams belong to the existing `BufferedFile` chain,
+which closes nested includes during normal completion and compile-error
+unwinding. Memory inputs have no stream; stdin is borrowed. Reads distinguish
+errors from EOF, binary seeks check their offsets, and object/archive read
+failures release temporary data. Output uses create/truncate streams and checks
+writes and close; a failed output can remain partial because Pyxis has no
+replacement/removal operation yet. Shared objects and linker scripts are
+rejected by the Pyxis target.
+
+When the compiler itself is built for Pyxis:
+
+- Relative names use the inherited working directory through libc streams.
+  A leading `scheme://` selects a startup root. Components are not normalized
+  before traversal; `missing/..` must still fail at `missing`.
+- Each `-I`/`-L` argument is one path. Repeat the option for multiple paths;
+  colons are preserved. Configured include defaults are separate `{R}/usr/include`
+  and `{B}/include` entries; library defaults are `{R}/usr/lib` and `{B}`.
+  The guest recipe will supply those prefixes; permanent guest SDK packaging
+  remains a later task.
+- Quoted includes first search beside the source file. Rooted includes are
+  opened directly, without falling back to search directories. `#include_next`
+  requires a relative name. Paths exceeding TCC's existing filename buffers
+  produce an error rather than being truncated.
+- `#pragma once` reports an error: native file handles have no identity query,
+  and aliases cannot be compared reliably using path strings. Use ordinary
+  include guards until that filesystem operation exists.
+- Expanding `__DATE__` or `__TIME__` reports the missing wall-clock facility.
+  No date is invented. Explicit user macro definitions still work normally.
+
+Host-running TCC retains host pathname, clock and `#pragma once` behavior.
+`libtcc.c`, `tccpp.c`, `tccelf.c`, `tccgen.c` and `tccasm.c` also compile separately
+against the real Pyxis SDK, with implicit function declarations treated as
+errors. This is not a runnable guest compiler yet: driver/tool dispatch, timing,
+debug-directory metadata and remaining optional host services still need the
+next port stage. No fd compatibility layer or new libc/kernel API is added.
+
 ## Source and local changes
 
 Pinned upstream: [TinyCC 3dc99dbc82f8e07308c5d398136803e62f9676df](https://github.com/TinyCC/tinycc/tree/3dc99dbc82f8e07308c5d398136803e62f9676df)
-(`0.9.28rc`). Metadata lists three ordered patches: the Pyxis object target,
-runtime symbol ownership, and FP scratch allocation. Other upstream algorithms
-and formatting are retained.
+(`0.9.28rc`). Metadata lists four ordered patches: the Pyxis object target,
+runtime symbol ownership, FP scratch allocation, and native streams/paths.
+The last also uses existing bounded formatting for internal names and removes
+an unnecessary `inttypes.h` dependency. Upstream algorithms and formatting are
+otherwise retained; the supported port target remains x86-64 Pyxis/ELF.
 
 Upstream `COPYING` contains LGPL 2.1. `lib/libtcc1.c` separately states GPL 2 or
 later with its explicit unlimited-linking exception; retain that notice as well.

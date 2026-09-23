@@ -12,6 +12,7 @@ return {
     "patches/0001-pyxis-object-target.patch",
     "patches/0002-libgcc-conversion-ownership.patch",
     "patches/0003-reserve-fp-scratch.patch",
+    "patches/0004-native-streams-and-paths.patch",
   },
   outputs = {
     host_compiler = "host/bin/x86_64-pyxis-tcc",
