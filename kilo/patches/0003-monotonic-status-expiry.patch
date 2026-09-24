@@ -1,0 +1,117 @@
+diff --git a/kilo.c b/kilo.c
+--- a/kilo.c
++++ b/kilo.c
+@@ -44,6 +44,10 @@
+ #include <stdarg.h>
+ #include <startup.h>
+ #include <term.h>
++#include <clock.h>
++
++#define STATUS_DURATION_NS UINT64_C(5000000000)
++#define NANOSECONDS_PER_MILLISECOND UINT64_C(1000000)
+ 
+ /* Syntax highlight types */
+ #define HL_NORMAL 0
+@@ -95,6 +99,7 @@
+     int dirty;      /* File modified but not saved. */
+     char *filename; /* Currently open filename */
+     char statusmsg[80];
++    uint64_t statusmsg_deadline; /* Zero keeps an active prompt visible. */
+     struct editorSyntax *syntax;    /* Current syntax highlight, or NULL. */
+ };
+ 
+@@ -128,6 +133,7 @@
+ };
+ 
+ void editorSetStatusMessage(const char *fmt, ...);
++void editorRefreshScreen(void);
+ 
+ /* =========================== Syntax highlights DB =========================
+  *
+@@ -189,6 +195,7 @@
+ /* ======================= Low level terminal handling ====================== */
+ 
+ static struct terminal terminal;
++static handle_t clock_handle;
+ static int terminal_ready;
+ 
+ static void restore_terminal(void) {
+@@ -211,9 +218,33 @@
+     return result;
+ }
+ 
++static uint64_t monotonic_ns(void) {
++    uint64_t now;
++    if (clock_now(clock_handle,&now) != CALL_OK) fail("cannot read monotonic clock");
++    return now;
++}
++
+ int editorReadKey(void) {
+     unsigned key;
+-    enum call_status status = term_read_key(&terminal,&key);
++    enum call_status status;
++    for (;;) {
++        if (!E.statusmsg_deadline) {
++            status = term_read_key(&terminal,&key);
++        } else {
++            uint64_t now = monotonic_ns();
++            if (now >= E.statusmsg_deadline) {
++                /* Redraw expiry without inventing a keypress or resetting the
++                 * editor's repeated-quit confirmation state. */
++                editorRefreshScreen();
++                continue;
++            }
++            uint64_t remaining = E.statusmsg_deadline-now;
++            uint32_t timeout_ms = remaining/NANOSECONDS_PER_MILLISECOND +
++                                  (remaining%NANOSECONDS_PER_MILLISECOND != 0);
++            status = term_read_key_timeout(&terminal,timeout_ms,&key);
++        }
++        if (status != CALL_TIMED_OUT) break;
++    }
+     if (status == CALL_INPUT_LOST) {
+         editorSetStatusMessage("Input lost; please repeat the last key");
+         return KEY_NULL;
+@@ -904,7 +935,10 @@
+     }
+     abAppend(&ab,"\x1b[0m\r\n",6);
+ 
+-    /* Status remains until replaced; Pyxis has no userspace clock yet. */
++    if (E.statusmsg_deadline && monotonic_ns() >= E.statusmsg_deadline) {
++        E.statusmsg[0] = '\0';
++        E.statusmsg_deadline = 0;
++    }
+     abAppend(&ab,"\x1b[0K",4);
+     int msglen = strlen(E.statusmsg);
+     if (msglen)
+@@ -930,6 +964,12 @@
+     va_start(ap,fmt);
+     vsnprintf(E.statusmsg,sizeof(E.statusmsg),fmt,ap);
+     va_end(ap);
++    E.statusmsg_deadline = 0;
++    if (E.statusmsg[0]) {
++        uint64_t now = monotonic_ns();
++        E.statusmsg_deadline = now > UINT64_MAX-STATUS_DURATION_NS ?
++                               UINT64_MAX : now+STATUS_DURATION_NS;
++    }
+ }
+ 
+ /* =============================== Find mode ================================ */
+@@ -959,6 +999,8 @@
+     while(1) {
+         editorSetStatusMessage(
+             "Search: %s (Use ESC/Arrows/Enter)", query);
++        /* A search prompt describes the current mode, not a transient notice. */
++        E.statusmsg_deadline = 0;
+         editorRefreshScreen();
+ 
+         int c = editorReadKey();
+@@ -1231,6 +1273,9 @@
+     terminal.output = startup_resource("output");
+     if (terminal.input == HANDLE_INVALID || terminal.output == HANDLE_INVALID)
+         fail("input and output console capabilities are required");
++    clock_handle = startup_resource("clock");
++    if (clock_handle == HANDLE_INVALID) fail("a clock capability with READ is required");
++    (void)monotonic_ns();
+     terminal_ready = 1;
+     if (term_reset_style(&terminal) != CALL_OK || term_clear(&terminal) != CALL_OK)
+         fail("cannot initialize terminal");
