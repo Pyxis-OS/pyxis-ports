@@ -1,0 +1,658 @@
+diff --git a/doomgeneric/doomtype.h b/doomgeneric/doomtype.h
+index dc14bc5..14c6adb 100644
+--- a/doomgeneric/doomtype.h
++++ b/doomgeneric/doomtype.h
+@@ -60,9 +60,10 @@
+ // pre-standardisation version).  inttypes.h is also in the C99 
+ // standard and defined to include stdint.h, so include this. 
+ 
+-#include <inttypes.h>
++#include <stdint.h>
+ 
+-#if defined(__cplusplus) || defined(__bool_true_false_are_defined)
++#if defined(__cplusplus) || defined(__bool_true_false_are_defined) \
++    || (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L)
+ 
+ //boolean is cast to int* in doom. so to keep size the same, make boolean an int.
+ typedef unsigned int boolean;
+diff --git a/doomgeneric/g_game.c b/doomgeneric/g_game.c
+index 9954d78..a5e779b 100644
+--- a/doomgeneric/g_game.c
++++ b/doomgeneric/g_game.c
+@@ -1547,48 +1547,8 @@ void G_LoadGame (char* name)
+ 
+ void G_DoLoadGame (void) 
+ {
+-    int savedleveltime;
+-	 
+-    gameaction = ga_nothing; 
+-	 
+-    save_stream = fopen(savename, "rb");
+-
+-    if (save_stream == NULL)
+-    {
+-    	return;
+-    }
+-
+-    savegame_error = false;
+-
+-    if (!P_ReadSaveGameHeader())
+-    {
+-        fclose(save_stream);
+-        return;
+-    }
+-
+-    savedleveltime = leveltime;
+-    
+-    // load a base level 
+-    G_InitNew (gameskill, gameepisode, gamemap); 
+- 
+-    leveltime = savedleveltime;
+-
+-    // dearchive all the modifications
+-    P_UnArchivePlayers (); 
+-    P_UnArchiveWorld (); 
+-    P_UnArchiveThinkers (); 
+-    P_UnArchiveSpecials (); 
+- 
+-    if (!P_ReadSaveGameEOF())
+-	I_Error ("Bad savegame");
+-
+-    fclose(save_stream);
+-    
+-    if (setsizeneeded)
+-    	R_ExecuteSetViewSize ();
+-    
+-    // draw the pattern into the back screen
+-    R_FillBackScreen (); 
++    gameaction = ga_nothing;
++    players[consoleplayer].message = "SAVE/LOAD UNAVAILABLE IN THIS PORT";
+ } 
+  
+ 
+@@ -1608,80 +1568,9 @@ G_SaveGame
+ }
+ 
+ void G_DoSaveGame (void) 
+-{ 
+-    char *savegame_file;
+-    char *temp_savegame_file;
+-    char *recovery_savegame_file;
+-
+-    recovery_savegame_file = NULL;
+-    temp_savegame_file = P_TempSaveGameFile();
+-    savegame_file = P_SaveGameFile(savegameslot);
+-
+-    // Open the savegame file for writing.  We write to a temporary file
+-    // and then rename it at the end if it was successfully written.
+-    // This prevents an existing savegame from being overwritten by 
+-    // a corrupted one, or if a savegame buffer overrun occurs.
+-    save_stream = fopen(temp_savegame_file, "wb");
+-
+-    if (save_stream == NULL)
+-    {
+-        // Failed to save the game, so we're going to have to abort. But
+-        // to be nice, save to somewhere else before we call I_Error().
+-        recovery_savegame_file = M_TempFile("recovery.dsg");
+-        save_stream = fopen(recovery_savegame_file, "wb");
+-        if (save_stream == NULL)
+-        {
+-            I_Error("Failed to open either '%s' or '%s' to write savegame.",
+-                    temp_savegame_file, recovery_savegame_file);
+-        }
+-    }
+-
+-    savegame_error = false;
+-
+-    P_WriteSaveGameHeader(savedescription);
+- 
+-    P_ArchivePlayers (); 
+-    P_ArchiveWorld (); 
+-    P_ArchiveThinkers (); 
+-    P_ArchiveSpecials (); 
+-	 
+-    P_WriteSaveGameEOF();
+-	 
+-    // Enforce the same savegame size limit as in Vanilla Doom, 
+-    // except if the vanilla_savegame_limit setting is turned off.
+-
+-    if (vanilla_savegame_limit && ftell(save_stream) > SAVEGAMESIZE)
+-    {
+-        I_Error ("Savegame buffer overrun");
+-    }
+-    
+-    // Finish up, close the savegame file.
+-
+-    fclose(save_stream);
+-
+-    if (recovery_savegame_file != NULL)
+-    {
+-        // We failed to save to the normal location, but we wrote a
+-        // recovery file to the temp directory. Now we can bomb out
+-        // with an error.
+-        I_Error("Failed to open savegame file '%s' for writing.\n"
+-                "But your game has been saved to '%s' for recovery.",
+-                temp_savegame_file, recovery_savegame_file);
+-    }
+-
+-    // Now rename the temporary savegame file to the actual savegame
+-    // file, overwriting the old savegame if there was one there.
+-
+-    remove(savegame_file);
+-    rename(temp_savegame_file, savegame_file);
+-    
++{
+     gameaction = ga_nothing;
+-    M_StringCopy(savedescription, "", sizeof(savedescription));
+-
+-    players[consoleplayer].message = DEH_String(GGSAVED);
+-
+-    // draw the pattern into the back screen
+-    R_FillBackScreen ();	
++    players[consoleplayer].message = "SAVE/LOAD UNAVAILABLE IN THIS PORT";
+ } 
+  
+ 
+diff --git a/doomgeneric/i_input.c b/doomgeneric/i_input.c
+index 7ec4b63..4ef7f6f 100644
+--- a/doomgeneric/i_input.c
++++ b/doomgeneric/i_input.c
+@@ -18,7 +18,7 @@
+ #include <ctype.h>
+ #include <math.h>
+ #include <string.h>
+-#include <fcntl.h>
++
+ #include <stdio.h>
+ 
+ #include "config.h"
+@@ -319,7 +319,8 @@ void I_GetEvent(void)
+             {
+                 D_PostEvent(&event);
+             }
+-            break;
++            // Drain releases too: a focus reset can release several held keys
++            // before the Pyxis adapter blocks waiting for focus to return.
+         }
+     }
+ 
+diff --git a/doomgeneric/i_system.c b/doomgeneric/i_system.c
+index 53ab2c9..b1fc815 100644
+--- a/doomgeneric/i_system.c
++++ b/doomgeneric/i_system.c
+@@ -27,7 +27,7 @@
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+ #else
+-#include <unistd.h>
++/* Pyxis uses capability-backed stdio; no file-descriptor API. */
+ #endif
+ 
+ #ifdef ORIGCODE
+@@ -259,97 +259,10 @@ void I_Quit (void)
+ 
+ #if ORIGCODE
+     SDL_Quit();
+-
+-    exit(0);
+ #endif
++    exit(0);
+ }
+ 
+-#if !defined(_WIN32) && !defined(__MACOSX__) && !defined(__DJGPP__)
+-#define ZENITY_BINARY "/usr/bin/zenity"
+-
+-// returns non-zero if zenity is available
+-
+-static int ZenityAvailable(void)
+-{
+-    return system(ZENITY_BINARY " --help >/dev/null 2>&1") == 0;
+-}
+-
+-// Escape special characters in the given string so that they can be
+-// safely enclosed in shell quotes.
+-
+-static char *EscapeShellString(char *string)
+-{
+-    char *result;
+-    char *r, *s;
+-
+-    // In the worst case, every character might be escaped.
+-    result = malloc(strlen(string) * 2 + 3);
+-    r = result;
+-
+-    // Enclosing quotes.
+-    *r = '"';
+-    ++r;
+-
+-    for (s = string; *s != '\0'; ++s)
+-    {
+-        // From the bash manual:
+-        //
+-        //  "Enclosing characters in double quotes preserves the literal
+-        //   value of all characters within the quotes, with the exception
+-        //   of $, `, \, and, when history expansion is enabled, !."
+-        //
+-        // Therefore, escape these characters by prefixing with a backslash.
+-
+-        if (strchr("$`\\!", *s) != NULL)
+-        {
+-            *r = '\\';
+-            ++r;
+-        }
+-
+-        *r = *s;
+-        ++r;
+-    }
+-
+-    // Enclosing quotes.
+-    *r = '"';
+-    ++r;
+-    *r = '\0';
+-
+-    return result;
+-}
+-
+-// Open a native error box with a message using zenity
+-
+-static int ZenityErrorBox(char *message)
+-{
+-    int result;
+-    char *escaped_message;
+-    char *errorboxpath;
+-    static size_t errorboxpath_size;
+-
+-    if (!ZenityAvailable())
+-    {
+-        return 0;
+-    }
+-
+-    escaped_message = EscapeShellString(message);
+-
+-    errorboxpath_size = strlen(ZENITY_BINARY) + strlen(escaped_message) + 19;
+-    errorboxpath = malloc(errorboxpath_size);
+-    M_snprintf(errorboxpath, errorboxpath_size, "%s --error --text=%s",
+-               ZENITY_BINARY, escaped_message);
+-
+-    result = system(errorboxpath);
+-
+-    free(errorboxpath);
+-    free(escaped_message);
+-
+-    return result;
+-}
+-
+-#endif /* !defined(_WIN32) && !defined(__MACOSX__) && !defined(__DJGPP__) */
+-
+-
+ //
+ // I_Error
+ //
+@@ -361,7 +274,6 @@ void I_Error (char *error, ...)
+     char msgbuf[512];
+     va_list argptr;
+     atexit_listentry_t *entry;
+-    boolean exit_gui_popup;
+ 
+     if (already_quitting)
+     {
+@@ -403,63 +315,6 @@ void I_Error (char *error, ...)
+         entry = entry->next;
+     }
+ 
+-    exit_gui_popup = !M_ParmExists("-nogui");
+-
+-    // Pop up a GUI dialog box to show the error message, if the
+-    // game was not run from the console (and the user will
+-    // therefore be unable to otherwise see the message).
+-    if (exit_gui_popup && !I_ConsoleStdout())
+-#ifdef _WIN32
+-    {
+-        wchar_t wmsgbuf[512];
+-
+-        MultiByteToWideChar(CP_ACP, 0,
+-                            msgbuf, strlen(msgbuf) + 1,
+-                            wmsgbuf, sizeof(wmsgbuf));
+-
+-        MessageBoxW(NULL, wmsgbuf, L"", MB_OK);
+-    }
+-#elif defined(__MACOSX__)
+-    {
+-        CFStringRef message;
+-	int i;
+-
+-	// The CoreFoundation message box wraps text lines, so replace
+-	// newline characters with spaces so that multiline messages
+-	// are continuous.
+-
+-	for (i = 0; msgbuf[i] != '\0'; ++i)
+-        {
+-            if (msgbuf[i] == '\n')
+-            {
+-                msgbuf[i] = ' ';
+-            }
+-        }
+-
+-        message = CFStringCreateWithCString(NULL, msgbuf,
+-                                            kCFStringEncodingUTF8);
+-
+-        CFUserNotificationDisplayNotice(0,
+-                                        kCFUserNotificationCautionAlertLevel,
+-                                        NULL,
+-                                        NULL,
+-                                        NULL,
+-                                        CFSTR(PACKAGE_STRING),
+-                                        message,
+-                                        NULL);
+-    }
+-#elif defined(__DJGPP__)
+-    {
+-        printf("%s\n", msgbuf);
+-        exit(-1);
+-    }
+-
+-#else
+-    {
+-        ZenityErrorBox(msgbuf);
+-    }
+-#endif
+-
+     // abort();
+ #if ORIGCODE
+     SDL_Quit();
+diff --git a/doomgeneric/i_video.c b/doomgeneric/i_video.c
+index 84bebde..f96e180 100644
+--- a/doomgeneric/i_video.c
++++ b/doomgeneric/i_video.c
+@@ -42,11 +42,11 @@ rcsid[] = "$Id: i_x.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
+ #include <stdbool.h>
+ #include <stdlib.h>
+ 
+-#include <fcntl.h>
++
+ 
+ #include <stdarg.h>
+ 
+-#include <sys/types.h>
++
+ 
+ //#define CMAP256
+ 
+diff --git a/doomgeneric/m_config.c b/doomgeneric/m_config.c
+index 865e168..d3c1eaa 100644
+--- a/doomgeneric/m_config.c
++++ b/doomgeneric/m_config.c
+@@ -1715,14 +1715,9 @@ static void SaveDefaultCollection(default_collection_t *collection)
+ 
+ static int ParseIntParameter(char *strparm)
+ {
+-    int parm;
+-
+-    if (strparm[0] == '0' && strparm[1] == 'x')
+-        sscanf(strparm+2, "%x", &parm);
+-    else
+-        sscanf(strparm, "%i", &parm);
+-
+-    return parm;
++    int value = 0;
++    M_StrToInt(strparm, &value);
++    return value;
+ }
+ 
+ static void SetVariable(default_t *def, char *value)
+@@ -1763,7 +1758,7 @@ static void SetVariable(default_t *def, char *value)
+             break;
+ 
+         case DEFAULT_FLOAT:
+-            * (float *) def->location = (float) atof(value);
++            * (float *) def->location = strtof(value, NULL);
+             break;
+     }
+ }
+@@ -1905,7 +1900,7 @@ void M_LoadDefaults (void)
+             = M_StringJoin(configdir, default_main_config, NULL);
+     }
+ 
+-    printf("saving config in %s\n", doom_defaults.filename);
++    printf("Configuration persistence is unavailable in this port.\n");
+ 
+     //!
+     // @arg <file>
+@@ -2058,25 +2053,8 @@ static char *GetDefaultConfigDir(void)
+ 
+ void M_SetConfigDir(char *dir)
+ {
+-    // Use the directory that was passed, or find the default.
+-
+-    if (dir != NULL)
+-    {
+-        configdir = dir;
+-    }
+-    else
+-    {
+-        configdir = GetDefaultConfigDir();
+-    }
+-
+-    if (strcmp(configdir, "") != 0)
+-    {
+-        printf("Using %s for configuration and saves\n", configdir);
+-    }
+-
+-    // Make the directory if it doesn't already exist:
+-
+-    M_MakeDirectory(configdir);
++    // Configuration persistence is disabled in this generic build.
++    configdir = dir != NULL ? dir : "";
+ }
+ 
+ //
+@@ -2086,43 +2064,7 @@ void M_SetConfigDir(char *dir)
+ 
+ char *M_GetSaveGameDir(char *iwadname)
+ {
+-    char *savegamedir;
+-#if ORIGCODE
+-    char *topdir;
+-#endif
+-
+-    // If not "doing" a configuration directory (Windows), don't "do"
+-    // a savegame directory, either.
+-
+-    if (!strcmp(configdir, ""))
+-    {
+-    	savegamedir = strdup("");
+-    }
+-    else
+-    {
+-#if ORIGCODE
+-        // ~/.chocolate-doom/savegames
+-
+-        topdir = M_StringJoin(configdir, "savegame", NULL);
+-        M_MakeDirectory(topdir);
+-
+-        // eg. ~/.chocolate-doom/savegames/doom2.wad/
+-
+-        savegamedir = M_StringJoin(topdir, DIR_SEPARATOR_S, iwadname,
+-                                   DIR_SEPARATOR_S, NULL);
+-
+-        M_MakeDirectory(savegamedir);
+-
+-        free(topdir);
+-#else
+-        savegamedir = M_StringJoin(configdir, DIR_SEPARATOR_S, ".savegame/", NULL);
+-
+-        M_MakeDirectory(savegamedir);
+-
+-        printf ("Using %s for savegames\n", savegamedir);
+-#endif
+-    }
+-
+-    return savegamedir;
++    // No save files are read or written in the first Pyxis port.
++    return M_StringDuplicate("");
+ }
+ 
+diff --git a/doomgeneric/m_menu.c b/doomgeneric/m_menu.c
+index 6df9655..3265ad2 100644
+--- a/doomgeneric/m_menu.c
++++ b/doomgeneric/m_menu.c
+@@ -584,14 +584,7 @@ void M_LoadSelect(int choice)
+ //
+ void M_LoadGame (int choice)
+ {
+-    if (netgame)
+-    {
+-	M_StartMessage(DEH_String(LOADNET),NULL,false);
+-	return;
+-    }
+-	
+-    M_SetupNextMenu(&LoadDef);
+-    M_ReadSaveStrings();
++    M_StartMessage("SAVE/LOAD UNAVAILABLE IN THIS PORT", NULL, false);
+ }
+ 
+ 
+@@ -649,17 +642,7 @@ void M_SaveSelect(int choice)
+ //
+ void M_SaveGame (int choice)
+ {
+-    if (!usergame)
+-    {
+-	M_StartMessage(DEH_String(SAVEDEAD),NULL,false);
+-	return;
+-    }
+-	
+-    if (gamestate != GS_LEVEL)
+-	return;
+-	
+-    M_SetupNextMenu(&SaveDef);
+-    M_ReadSaveStrings();
++    M_StartMessage("SAVE/LOAD UNAVAILABLE IN THIS PORT", NULL, false);
+ }
+ 
+ 
+@@ -680,25 +663,7 @@ void M_QuickSaveResponse(int key)
+ 
+ void M_QuickSave(void)
+ {
+-    if (!usergame)
+-    {
+-	S_StartSound(NULL,sfx_oof);
+-	return;
+-    }
+-
+-    if (gamestate != GS_LEVEL)
+-	return;
+-	
+-    if (quickSaveSlot < 0)
+-    {
+-	M_StartControlPanel();
+-	M_ReadSaveStrings();
+-	M_SetupNextMenu(&SaveDef);
+-	quickSaveSlot = -2;	// means to pick a slot now
+-	return;
+-    }
+-    DEH_snprintf(tempstring, 80, QSPROMPT, savegamestrings[quickSaveSlot]);
+-    M_StartMessage(tempstring,M_QuickSaveResponse,true);
++    M_StartMessage("SAVE/LOAD UNAVAILABLE IN THIS PORT", NULL, false);
+ }
+ 
+ 
+@@ -718,19 +683,7 @@ void M_QuickLoadResponse(int key)
+ 
+ void M_QuickLoad(void)
+ {
+-    if (netgame)
+-    {
+-	M_StartMessage(DEH_String(QLOADNET),NULL,false);
+-	return;
+-    }
+-	
+-    if (quickSaveSlot < 0)
+-    {
+-	M_StartMessage(DEH_String(QSAVESPOT),NULL,false);
+-	return;
+-    }
+-    DEH_snprintf(tempstring, 80, QLPROMPT, savegamestrings[quickSaveSlot]);
+-    M_StartMessage(tempstring,M_QuickLoadResponse,true);
++    M_StartMessage("SAVE/LOAD UNAVAILABLE IN THIS PORT", NULL, false);
+ }
+ 
+ 
+diff --git a/doomgeneric/m_misc.c b/doomgeneric/m_misc.c
+index 54b2613..a5499c7 100644
+--- a/doomgeneric/m_misc.c
++++ b/doomgeneric/m_misc.c
+@@ -32,8 +32,7 @@
+ #include <direct.h>
+ #endif
+ #else
+-#include <sys/stat.h>
+-#include <sys/types.h>
++
+ #endif
+ 
+ #include "doomtype.h"
+@@ -52,15 +51,6 @@
+ // Create a directory
+ //
+ 
+-void M_MakeDirectory(char *path)
+-{
+-#ifdef _WIN32
+-    mkdir(path);
+-#else
+-    mkdir(path, 0755);
+-#endif
+-}
+-
+ // Check if a file exists
+ 
+ boolean M_FileExists(char *filename)
+@@ -76,10 +66,9 @@ boolean M_FileExists(char *filename)
+     }
+     else
+     {
+-        // If we can't open because the file is a directory, the 
+-        // "file" exists at least!
++        // The Pyxis port checks regular files here.
+ 
+-        return errno == EISDIR;
++        return false;
+     }
+ }
+ 
+@@ -189,10 +178,17 @@ char *M_TempFile(char *s)
+ 
+ boolean M_StrToInt(const char *str, int *result)
+ {
+-    return sscanf(str, " 0x%x", result) == 1
+-        || sscanf(str, " 0X%x", result) == 1
+-        || sscanf(str, " 0%o", result) == 1
+-        || sscanf(str, " %d", result) == 1;
++    char *end;
++    long value;
++
++    errno = 0;
++    value = strtol(str, &end, 0);
++    if (end == str || errno == ERANGE || value < INT_MIN || value > INT_MAX)
++    {
++        return false;
++    }
++    *result = (int) value;
++    return true;
+ }
+ 
+ void M_ExtractFileBase(char *path, char *dest)
+diff --git a/doomgeneric/v_video.c b/doomgeneric/v_video.c
+index 6db28aa..d385705 100644
+--- a/doomgeneric/v_video.c
++++ b/doomgeneric/v_video.c
+@@ -20,6 +20,7 @@
+ //
+ 
+ #include <stdio.h>
++#include <math.h>
+ #include <string.h>
+ #include <math.h>
+ 
