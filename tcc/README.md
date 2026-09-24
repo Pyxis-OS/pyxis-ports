@@ -138,11 +138,12 @@ The guest driver accepts:
 Other options report an error. This includes relocatable merging (`-r`),
 arbitrary linker options (`-Wl`), dependency generation, archive creation, runtime/JIT
 execution, coverage, backtraces, bounds checking and compiler subprocess dispatch.
-`-bench` specifically reports the missing elapsed-time clock. Unsupported
-options cannot be silently overridden by a later `-c` or `-E`.
+`-bench` reports compilation time and throughput using the monotonic clock.
+Unsupported options cannot be silently overridden by a later `-c` or `-E`.
 
 The process needs an `output` console with write rights and `memory` with manage
-rights; stdin compilation also needs an `input` console with read rights. Sources
+rights; `-bench` and calendar macros also need `clock` with read rights.
+Stdin compilation also needs an `input` console with read rights. Sources
 and headers need readable file/directory grants, and output needs a writable
 directory with lookup/create rights and writable files. Relative paths require
 the inherited directory chain; rooted paths use the named startup grants. The
@@ -183,22 +184,26 @@ When the compiler itself is built for Pyxis:
 - `#pragma once` reports an error: native file handles have no identity query,
   and aliases cannot be compared reliably using path strings. Use ordinary
   include guards until that filesystem operation exists.
-- Expanding `__DATE__` or `__TIME__` reports the missing wall-clock facility.
-  No date is invented. Explicit user macro definitions still work normally.
+- `__DATE__` and `__TIME__` use UTC, with C's month-name date and 24-hour
+  time spelling. A missing clock or date outside years 0000–9999 is an error;
+  no date is invented. Explicit user macro definitions still work normally.
 
 Host-running TCC retains host pathname, clock and `#pragma once` behavior.
 The guest compiler builds against the real Pyxis SDK. It excludes the upstream
-host tools and clock calls and uses the existing native startup metadata for
+host tools and uses the existing native startup metadata for
 debug information. No fd compatibility layer or new libc/kernel API is added.
 
 ## Source and local changes
 
 Pinned upstream: [TinyCC 3dc99dbc82f8e07308c5d398136803e62f9676df](https://github.com/TinyCC/tinycc/tree/3dc99dbc82f8e07308c5d398136803e62f9676df)
-(`0.9.28rc`). Metadata lists six ordered patches: the Pyxis object target,
+(`0.9.28rc`). Metadata lists seven ordered patches: the Pyxis object target,
 runtime symbol ownership, FP scratch allocation, native streams/paths, the
-guest driver, and native P1F linking. The P1F writer consumes the SDK format
+guest driver, native P1F linking, and guest clock integration. The P1F writer consumes the SDK format
 header; the host build uses a quoted include path so it does not import target
-libc headers. The stream patch uses existing bounded formatting for internal
+libc headers. The clock patch keeps host clock behavior and upstream floating-point
+benchmark formatting; the guest uses libpyxis monotonic reads and libc UTC
+calendar conversion. Calendar years are padded to four digits. Its existing unsigned millisecond counter wraps after
+roughly 49 days, so benchmark intervals must be shorter than that. The stream patch uses existing bounded formatting for internal
 names and removes an unnecessary `inttypes.h` dependency. Upstream algorithms
 and formatting are otherwise retained; the target remains x86-64 Pyxis, with
 ELF objects and P1F executables.
