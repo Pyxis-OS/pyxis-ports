@@ -21,9 +21,22 @@ lua -e 'local t = {3, 1, 2}; table.sort(t); print(table.concat(t, ","))'
 `lua -e 'code'` executes one text chunk. `lua file.lua [args...]` loads a
 script, and `lua -- file.lua [args...]` permits filenames beginning with `-`.
 Success returns zero; usage, file, allocation, compilation and execution errors
-return one. Runtime errors include a Lua traceback. No arguments prints usage;
-this is not yet an interactive REPL. Chunk return values are discarded; use
-`print` for output.
+return one. Runtime errors include a Lua traceback. Script and `-e` chunk return
+values are discarded; use `print` for output.
+
+With no arguments, `lua` opens a libterm REPL. Expressions print their results;
+statements execute normally, and globals persist between chunks. As in Lua's
+CLI, locals belong to a single chunk. Incomplete statements use a `>> ` prompt
+until Lua can compile them. Syntax/runtime errors, including errors in the global
+`print` function, are reported before returning to the primary `> ` prompt.
+
+Ctrl+C discards the whole pending chunk. Ctrl+D on an empty line exits zero,
+including at the continuation prompt; with text on the line it is ignored.
+The editor supports insertion, deletion and cursor movement, without history.
+Each line is limited to 1023 bytes and the visible terminal capacity. Rejected
+input or input loss discards the pending chunk instead of executing partial
+source. Multiline source grows on Lua's heap. Allocation and terminal failures
+exit nonzero. Prompts are fixed; `_PROMPT`/`_PROMPT2` overrides are not supported.
 
 Script paths use the inherited working directory or an explicit Pyxis URI;
 there is no executable/module search or implicit change to the script's directory.
@@ -66,8 +79,9 @@ chunks are evaluated, and no native modules are loaded.
   decimal point `.` and bytewise string collation. There is no fake locale or
   signal implementation, and Lua's numeric types/recursion limits are unchanged.
 - `main.c` embeds the upstream core through its public API instead of building
-  the upstream CLI and all standard libraries. Its message handler follows
-  upstream `lua.c` under the same MIT notice. Library initialization, compilation
+  the upstream CLI and all standard libraries. Its message handler and REPL
+  compilation flow follow upstream `lua.c` under the same MIT notice.
+  Library initialization, compilation
   and execution are protected against Lua errors, including argument-table
   construction and file loading; the state is closed before process exit. The
   SDK supplies allocation, stdio and the core math subset.
@@ -78,4 +92,5 @@ retain upstream's limits. These limits are not a proof against every possible
 combination exhausting the fixed native stack; automatic growth is deferred.
 Lua bytecode calls ordinarily use the VM loop rather than one C frame per Lua
 call. There is no signal-driven interruption: Ctrl+C cannot stop a running
-expression. REPL input/cancellation and configuration evaluation are later work.
+chunk. REPL cancellation applies only while reading input. Configuration
+evaluation is later work.
