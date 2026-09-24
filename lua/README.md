@@ -101,5 +101,5 @@ retain upstream's limits. These limits are not a proof against every possible
 combination exhausting the fixed native stack; automatic growth is deferred.
 Lua bytecode calls ordinarily use the VM loop rather than one C frame per Lua
 call. There is no signal-driven interruption: Ctrl+C cannot stop a running
-chunk. REPL cancellation applies only while reading input. Configuration
-evaluation is later work.
+chunk. REPL cancellation applies only while reading input. Session configuration
+is evaluated by the separate userland launcher, using the exported Lua library.
