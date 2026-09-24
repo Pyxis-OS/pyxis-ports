@@ -26,3 +26,7 @@ Recipes are trusted Lua code; dependencies are prerequisites, not a package
 resolver. See each recipe's README for adaptation notes and limitations.
 
 Boot-archive inclusion is handled by Pyxis; this repository only stages files.
+
+`install.lua` selects the guest layout from the per-port stage trees for Pyxis's
+manifest runner. It includes executables, notices and TCC target support, while
+excluding the host compiler and intermediate build files.
