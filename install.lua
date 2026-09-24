@@ -5,6 +5,8 @@ return function(inputs)
   return {
     { tree = root .. "/kilo/stage/bin", at = "" },
     { tree = root .. "/kilo/stage/share", at = "share" },
+    { tree = root .. "/lua/stage/bin", at = "" },
+    { tree = root .. "/lua/stage/share", at = "share" },
     { tree = root .. "/doom/stage/bin", at = "" },
     { tree = root .. "/doom/stage/share", at = "share" },
     { tree = root .. "/tcc/stage/bin", at = "" },
