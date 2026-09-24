@@ -10,6 +10,15 @@ Build against an exported Pyxis SDK:
 lua build.lua lua --sdk /path/to/pyxis/build/sdk
 ```
 
+The recipe also exports `stage/dev/lib/liblua.a` and public headers under
+`stage/dev/include`. The archive contains the pinned core, auxiliary library and
+selected base/coroutine/table/string/UTF-8 libraries, without the CLI's `main`.
+Consumers choose which libraries to open. `lua.h` retains the MIT notice.
+Pyxis stages these build inputs separately at `build/ports-dev/lua`; they are
+included in the ports bundle but excluded from the boot archive. Link with the
+same SDK used to build the archive. This does not provide `luaL_openlibs`, io/os,
+package, debug or the full math library.
+
 The guest executable is `bin/lua.pxe`; Pyxis installs it at `app://lua.pxe`.
 From the guest shell:
 
