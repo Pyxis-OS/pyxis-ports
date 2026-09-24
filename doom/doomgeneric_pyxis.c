@@ -79,9 +79,11 @@ enum doom_key {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "doomgeneric.h"
 #include "i_system.h"
+#include "m_argv.h"
 
 static handle_t display, keyboard, clock;
 static struct display_buffer buffer;
@@ -156,6 +158,16 @@ static uint64_t now_ns(void)
 
 void DG_Init(void)
 {
+  /* doomgeneric_Create has expanded response files by this point. Use Doom's
+   * case-insensitive parser so those files cannot bypass the format boundary. */
+  char *const unsupported[] = {"-gfxmode", "-scaling", "-loadgame", "-record", "-timedemo"};
+  for (size_t i = 0; i < sizeof(unsupported) / sizeof(unsupported[0]); ++i) {
+    if (M_ParmExists(unsupported[i])) {
+      fprintf(stderr, "doom: %s is not supported by this port\n", unsupported[i]);
+      exit(EXIT_FAILURE);
+    }
+  }
+
   display = startup_resource("display");
   keyboard = startup_resource("keyboard");
   clock = startup_resource("clock");
@@ -296,13 +308,7 @@ int main(int argc, char **argv)
 {
   bool has_iwad = false;
   for (int i = 1; i < argc; ++i) {
-    has_iwad |= strcmp(argv[i], "-iwad") == 0;
-    if (strcmp(argv[i], "-gfxmode") == 0 || strcmp(argv[i], "-scaling") == 0 ||
-        strcmp(argv[i], "-loadgame") == 0 || strcmp(argv[i], "-record") == 0 ||
-        strcmp(argv[i], "-timedemo") == 0) {
-      fprintf(stderr, "doom: %s is not supported by this port\n", argv[i]);
-      return EXIT_FAILURE;
-    }
+    has_iwad |= strcasecmp(argv[i], "-iwad") == 0;
   }
 
   char **arguments = calloc((size_t)argc + 3, sizeof(*arguments));
