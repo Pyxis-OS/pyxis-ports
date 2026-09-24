@@ -23,16 +23,32 @@ The ordered runtime patch removes unused Unix headers and desktop error-dialog
 launching, uses fixed-width integer headers and existing integer/float parsers,
 and makes normal quit actually exit. It drains key releases to support focus
 resets. Upstream's generic configuration persistence remains disabled; this
-port also disables save/load explicitly in menus and engine dispatch. It does
-not pretend to implement file removal or rename.
+save/load adaptation uses native directory creation and libc atomic rename.
 
-Audio, networking, mouse input, save/load, configuration persistence, demo
+Audio, networking, mouse input, configuration persistence, demo
 recording, timedemo reporting and alternate render formats/scaling are outside
-this first port. `-loadgame`, `-record`, `-timedemo`, `-gfxmode` and `-scaling`
+this first port. `-record`, `-timedemo`, `-gfxmode` and `-scaling`
 are rejected explicitly. The renderer remains single-buffered and can tear.
 A second patch gives the deferred demo name static storage: the generic entry
 point returns while playback still borrows that name. It also restores immediate
 exit on a recursive error rather than recursing through shutdown callbacks.
+
+A third patch restores save/load menus and engine dispatch. F2/F3 save/load;
+F6 selects a quicksave slot on first use, then F6/F9 confirm quicksave/quickload.
+`-loadgame N` loads slot N (0–5). Saves live in
+`home://doom/saves/<iwad-name>/`: `doom1.wad` for shareware, `doom.wad` for
+registered/Ultimate Doom, and upstream's canonical mission name otherwise.
+This uses the detected game mode, not the input filename. Directories are
+created on the first save, independently of disabled configuration persistence.
+Saves survive process exit, not reboot.
+
+Each save exclusively reserves a temporary name, checks writes and close, then
+atomically replaces the slot. Failure reports an error and retains the previous
+save; simultaneous successful saves to one slot use last-replacement-wins.
+An interrupted save can leave a `temp-*.dsg` file; later saves skip it. Load
+errors stop on short reads, and menu descriptions are bounded. The upstream
+save format still assumes trusted, matching game data; this is not a hardened
+save-file parser or isolation between different PWADs on the same IWAD.
 
 Upstream compiler warnings remain visible; no broad cleanup or warning blanket
 is applied to the vendored engine.

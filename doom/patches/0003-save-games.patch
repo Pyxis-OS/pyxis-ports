@@ -1,0 +1,347 @@
+diff --git a/doomgeneric/d_main.c b/doomgeneric/d_main.c
+index 9d459bb..ec17887 100644
+--- a/doomgeneric/d_main.c
++++ b/doomgeneric/d_main.c
+@@ -1557,7 +1557,8 @@ void D_DoomMain (void)
+     else
+ #endif
+     {
+-        savegamedir = M_GetSaveGameDir(D_SaveGameIWADName(gamemission));
++        savegamedir = M_GetSaveGameDir(gamemode == shareware ? "doom1.wad"
++                                        : D_SaveGameIWADName(gamemission));
+     }
+ 
+     // Check for -file in shareware
+diff --git a/doomgeneric/g_game.c b/doomgeneric/g_game.c
+index a5e779b..28381ab 100644
+--- a/doomgeneric/g_game.c
++++ b/doomgeneric/g_game.c
+@@ -1547,8 +1547,57 @@ void G_LoadGame (char* name)
+ 
+ void G_DoLoadGame (void) 
+ {
++    int savedleveltime;
++
+     gameaction = ga_nothing;
+-    players[consoleplayer].message = "SAVE/LOAD UNAVAILABLE IN THIS PORT";
++
++    save_stream = fopen(savename, "rb");
++
++    if (save_stream == NULL)
++    {
++        perror("Doom: open save");
++        players[consoleplayer].message = "LOAD FAILED";
++        return;
++    }
++
++    savegame_error = false;
++
++    if (!P_ReadSaveGameHeader())
++    {
++        fclose(save_stream);
++        save_stream = NULL;
++        fprintf(stderr, "Doom: incompatible save version\n");
++        players[consoleplayer].message = "INCOMPATIBLE SAVE VERSION";
++        return;
++    }
++
++    savedleveltime = leveltime;
++
++    // load a base level
++    G_InitNew (gameskill, gameepisode, gamemap);
++
++    leveltime = savedleveltime;
++
++    // dearchive all the modifications
++    P_UnArchivePlayers ();
++    P_UnArchiveWorld ();
++    P_UnArchiveThinkers ();
++    P_UnArchiveSpecials ();
++
++    if (!P_ReadSaveGameEOF())
++	I_Error ("Bad savegame");
++
++    if (fclose(save_stream) != 0)
++    {
++        I_Error("Failed to close loaded savegame");
++    }
++    save_stream = NULL;
++
++    if (setsizeneeded)
++        R_ExecuteSetViewSize ();
++
++    // draw the pattern into the back screen
++    R_FillBackScreen ();
+ } 
+  
+ 
+@@ -1567,12 +1616,81 @@ G_SaveGame
+     sendsave = true;
+ }
+ 
+-void G_DoSaveGame (void) 
++void G_DoSaveGame (void)
+ {
++    char *savegame_file = P_SaveGameFile(savegameslot);
++    char *temp_savegame_file = P_TempSaveGameFile();
++    long length;
++
+     gameaction = ga_nothing;
+-    players[consoleplayer].message = "SAVE/LOAD UNAVAILABLE IN THIS PORT";
+-} 
+- 
++    if (temp_savegame_file == NULL)
++    {
++        goto failed;
++    }
++
++    save_stream = fopen(temp_savegame_file, "wb");
++    if (save_stream == NULL)
++    {
++        perror("Doom: open temporary save");
++        goto failed;
++    }
++
++    savegame_error = false;
++    P_WriteSaveGameHeader(savedescription);
++    P_ArchivePlayers ();
++    P_ArchiveWorld ();
++    P_ArchiveThinkers ();
++    P_ArchiveSpecials ();
++    P_WriteSaveGameEOF();
++
++    length = ftell(save_stream);
++    if (length < 0 || ferror(save_stream))
++    {
++        savegame_error = true;
++    }
++    if (vanilla_savegame_limit && length > SAVEGAMESIZE)
++    {
++        fprintf(stderr, "Doom: save exceeds the vanilla size limit\n");
++        savegame_error = true;
++    }
++    if (fclose(save_stream) != 0)
++    {
++        perror("Doom: close temporary save");
++        savegame_error = true;
++    }
++    save_stream = NULL;
++    if (savegame_error)
++    {
++        goto failed;
++    }
++
++    // Publish only a complete, closed save. Failure leaves the old slot intact.
++    if (rename(temp_savegame_file, savegame_file) != 0)
++    {
++        perror("Doom: replace save");
++        goto failed;
++    }
++
++    free(temp_savegame_file);
++    M_StringCopy(savedescription, "", sizeof(savedescription));
++    players[consoleplayer].message = DEH_String(GGSAVED);
++    R_FillBackScreen ();
++    return;
++
++failed:
++    if (temp_savegame_file != NULL)
++    {
++        if (remove(temp_savegame_file) != 0)
++        {
++            perror("Doom: remove failed temporary save");
++        }
++        free(temp_savegame_file);
++    }
++    M_StringCopy(savedescription, "", sizeof(savedescription));
++    players[consoleplayer].message = "SAVE FAILED - PREVIOUS SAVE UNCHANGED";
++    fprintf(stderr, "Doom: save failed; previous slot unchanged\n");
++}
++
+ 
+ //
+ // G_InitNew
+diff --git a/doomgeneric/m_config.c b/doomgeneric/m_config.c
+index d3c1eaa..d85e3e1 100644
+--- a/doomgeneric/m_config.c
++++ b/doomgeneric/m_config.c
+@@ -19,6 +19,8 @@
+ 
+ 
+ #include <stdio.h>
++
++#include "doomgeneric_pyxis.h"
+ #include <stdlib.h>
+ #include <string.h>
+ #include <ctype.h>
+@@ -2064,7 +2066,6 @@ void M_SetConfigDir(char *dir)
+ 
+ char *M_GetSaveGameDir(char *iwadname)
+ {
+-    // No save files are read or written in the first Pyxis port.
+-    return M_StringDuplicate("");
++    return DG_SaveGameDir(iwadname);
+ }
+ 
+diff --git a/doomgeneric/m_menu.c b/doomgeneric/m_menu.c
+index 3265ad2..4d972fb 100644
+--- a/doomgeneric/m_menu.c
++++ b/doomgeneric/m_menu.c
+@@ -517,9 +517,16 @@ void M_ReadSaveStrings(void)
+             LoadMenu[i].status = 0;
+             continue;
+         }
+-	fread(&savegamestrings[i], 1, SAVESTRINGSIZE, handle);
+-	fclose(handle);
+-	LoadMenu[i].status = 1;
++        size_t length = fread(savegamestrings[i], 1, SAVESTRINGSIZE, handle);
++        int closed = fclose(handle);
++        savegamestrings[i][SAVESTRINGSIZE - 1] = '\0';
++        if (length != SAVESTRINGSIZE || closed != 0)
++        {
++            M_StringCopy(savegamestrings[i], "INVALID SAVE", SAVESTRINGSIZE);
++            LoadMenu[i].status = 0;
++            continue;
++        }
++        LoadMenu[i].status = 1;
+     }
+ }
+ 
+@@ -584,7 +591,14 @@ void M_LoadSelect(int choice)
+ //
+ void M_LoadGame (int choice)
+ {
+-    M_StartMessage("SAVE/LOAD UNAVAILABLE IN THIS PORT", NULL, false);
++    if (netgame)
++    {
++	M_StartMessage(DEH_String(LOADNET),NULL,false);
++	return;
++    }
++
++    M_SetupNextMenu(&LoadDef);
++    M_ReadSaveStrings();
+ }
+ 
+ 
+@@ -642,7 +656,17 @@ void M_SaveSelect(int choice)
+ //
+ void M_SaveGame (int choice)
+ {
+-    M_StartMessage("SAVE/LOAD UNAVAILABLE IN THIS PORT", NULL, false);
++    if (!usergame)
++    {
++	M_StartMessage(DEH_String(SAVEDEAD),NULL,false);
++	return;
++    }
++
++    if (gamestate != GS_LEVEL)
++	return;
++
++    M_SetupNextMenu(&SaveDef);
++    M_ReadSaveStrings();
+ }
+ 
+ 
+@@ -663,7 +687,25 @@ void M_QuickSaveResponse(int key)
+ 
+ void M_QuickSave(void)
+ {
+-    M_StartMessage("SAVE/LOAD UNAVAILABLE IN THIS PORT", NULL, false);
++    if (!usergame)
++    {
++	S_StartSound(NULL,sfx_oof);
++	return;
++    }
++
++    if (gamestate != GS_LEVEL)
++	return;
++
++    if (quickSaveSlot < 0)
++    {
++	M_StartControlPanel();
++	M_ReadSaveStrings();
++	M_SetupNextMenu(&SaveDef);
++	quickSaveSlot = -2;	// means to pick a slot now
++	return;
++    }
++    DEH_snprintf(tempstring, 80, QSPROMPT, savegamestrings[quickSaveSlot]);
++    M_StartMessage(tempstring,M_QuickSaveResponse,true);
+ }
+ 
+ 
+@@ -683,7 +725,19 @@ void M_QuickLoadResponse(int key)
+ 
+ void M_QuickLoad(void)
+ {
+-    M_StartMessage("SAVE/LOAD UNAVAILABLE IN THIS PORT", NULL, false);
++    if (netgame)
++    {
++	M_StartMessage(DEH_String(QLOADNET),NULL,false);
++	return;
++    }
++
++    if (quickSaveSlot < 0)
++    {
++	M_StartMessage(DEH_String(QSAVESPOT),NULL,false);
++	return;
++    }
++    DEH_snprintf(tempstring, 80, QLPROMPT, savegamestrings[quickSaveSlot]);
++    M_StartMessage(tempstring,M_QuickLoadResponse,true);
+ }
+ 
+ 
+diff --git a/doomgeneric/p_saveg.c b/doomgeneric/p_saveg.c
+index 5cb8196..9225a35 100644
+--- a/doomgeneric/p_saveg.c
++++ b/doomgeneric/p_saveg.c
+@@ -18,6 +18,8 @@
+ 
+ 
+ #include <stdio.h>
++
++#include "doomgeneric_pyxis.h"
+ #include <stdlib.h>
+ 
+ #include "dstrings.h"
+@@ -46,14 +48,8 @@ boolean savegame_error;
+ 
+ char *P_TempSaveGameFile(void)
+ {
+-    static char *filename = NULL;
+-
+-    if (filename == NULL)
+-    {
+-        filename = M_StringJoin(savegamedir, "temp.dsg", NULL);
+-    }
+-
+-    return filename;
++    // Each save owns a separately reserved name, including across processes.
++    return DG_TempSaveGameFile();
+ }
+ 
+ // Get the filename of the save game file to use for the specified slot.
+@@ -84,13 +80,8 @@ static byte saveg_read8(void)
+ 
+     if (fread(&result, 1, 1, save_stream) < 1)
+     {
+-        if (!savegame_error)
+-        {
+-            fprintf(stderr, "saveg_read8: Unexpected end of file while "
+-                            "reading save game\n");
+-
+-            savegame_error = true;
+-        }
++        // Continuing would decode uninitialized bytes into pointers and indexes.
++        I_Error("Unexpected end of file or read error in savegame");
+     }
+ 
+     return result;
+@@ -1393,7 +1384,7 @@ boolean P_ReadSaveGameHeader(void)
+ 
+     memset(vcheck, 0, sizeof(vcheck));
+     M_snprintf(vcheck, sizeof(vcheck), "version %i", G_VanillaVersionCode());
+-    if (strcmp(read_vcheck, vcheck) != 0)
++    if (memcmp(read_vcheck, vcheck, sizeof(vcheck)) != 0)
+ 	return false;				// bad version 
+ 
+     gameskill = saveg_read8();
