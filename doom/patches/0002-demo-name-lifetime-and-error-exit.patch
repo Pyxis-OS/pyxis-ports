@@ -1,0 +1,29 @@
+diff --git a/doomgeneric/d_main.c b/doomgeneric/d_main.c
+index 9012e5f..9d459bb 100644
+--- a/doomgeneric/d_main.c
++++ b/doomgeneric/d_main.c
+@@ -1164,7 +1164,9 @@ void D_DoomMain (void)
+ {
+     int p;
+     char file[256];
+-    char demolumpname[9];
++    // doomgeneric returns from initialization before playback completes.
++    // G_DeferedPlayDemo borrows this name through demo teardown.
++    static char demolumpname[9];
+ #if ORIGCODE
+     int numiwadlumps;
+ #endif
+diff --git a/doomgeneric/i_system.c b/doomgeneric/i_system.c
+index b1fc815..7bb3125 100644
+--- a/doomgeneric/i_system.c
++++ b/doomgeneric/i_system.c
+@@ -278,9 +278,7 @@ void I_Error (char *error, ...)
+     if (already_quitting)
+     {
+         fprintf(stderr, "Warning: recursive call to I_Error detected.\n");
+-#if ORIGCODE
+         exit(-1);
+-#endif
+     }
+     else
+     {
