@@ -10,7 +10,7 @@ return {
   },
   patches = {
     "patches/0001-upstream-gc-parameter-fix.patch",
-    "patches/0002-pyxis-expression-runtime.patch",
+    "patches/0002-pyxis-runtime.patch",
   },
   outputs = {
     executable = "bin/lua.pxe",
