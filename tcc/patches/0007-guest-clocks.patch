@@ -1,0 +1,161 @@
+diff --git a/libtcc.c b/libtcc.c
+index 8affe50..aa7c8ac 100644
+--- a/libtcc.c
++++ b/libtcc.c
+@@ -2021,11 +2021,7 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
+         case TCC_OPTION_dumpmachine: case TCC_OPTION_dumpversion:
+             break;
+         case TCC_OPTION_bench:
+-#ifdef __pyxis__
+-            return tcc_error_noabort("-bench requires an elapsed-time clock on Pyxis");
+-#else
+             break;
+-#endif
+         default:
+             return tcc_error_noabort("unsupported option on Pyxis: '%s'", r);
+         }
+diff --git a/tcc.c b/tcc.c
+index d0c9086..f8a3321 100644
+--- a/tcc.c
++++ b/tcc.c
+@@ -23,6 +23,10 @@
+ #endif
+ 
+ #include "tcc.h"
++#ifdef __pyxis__
++#include <clock.h>
++#include <startup.h>
++#endif
+ #if ONE_SOURCE
+ # include "libtcc.c"
+ #endif
+@@ -55,7 +59,7 @@ static const char help[] =
+ #endif
+     "-run, -ar, dependencies and coverage are unavailable.\n"
+ #ifdef __pyxis__
+-    "-bench requires an elapsed-time clock on Pyxis.\n"
++    "-bench uses the monotonic clock on Pyxis.\n"
+ #else
+     "-bench uses the host clock.\n"
+ #endif
+@@ -332,10 +336,16 @@ static char *default_outputfile(TCCState *s, const char *first_file)
+     return tcc_strdup(buf);
+ }
+ 
+-#ifndef __pyxis__
+ static unsigned getclock_ms(void)
+ {
+-#ifdef _WIN32
++#ifdef __pyxis__
++    uint64_t nanoseconds;
++    if (clock_now(startup_resource("clock"), &nanoseconds) != CALL_OK) {
++        fprintf(stderr, "tcc: cannot read the monotonic clock\n");
++        exit(1);
++    }
++    return nanoseconds / 1000000;
++#elif defined(_WIN32)
+     return GetTickCount();
+ #else
+     struct timeval tv;
+@@ -344,15 +354,11 @@ static unsigned getclock_ms(void)
+ #endif
+ }
+ 
+-#endif
+-
+ int main(int argc, char **argv)
+ {
+     TCCState *s, *s1;
+     int ret, opt, n = 0, t = 0, done;
+-#ifndef __pyxis__
+     unsigned start_time = 0, end_time = 0;
+-#endif
+     const char *first_file;
+     int argc0 = argc;
+     char **argv0 = argv;
+@@ -424,10 +430,8 @@ redo:
+         }
+         if (s->nb_errors)
+             goto err;
+-#ifndef __pyxis__
+         if (s->do_bench)
+             start_time = getclock_ms();
+-#endif
+     }
+ 
+     set_environment(s);
+@@ -467,10 +471,8 @@ redo:
+             break;
+     }
+ 
+-#ifndef __pyxis__
+     if (s->do_bench)
+         end_time = getclock_ms();
+-#endif
+ 
+     if (s->run_test) {
+         t = 0;
+@@ -504,10 +506,8 @@ redo:
+         /* else keep the original exit code from tcc_run() */
+     } else if (n < s->nb_files)
+         done = 0; /* compile more files with -c */
+-#ifndef __pyxis__
+     else if (s->do_bench)
+         tcc_print_stats(s, end_time - start_time);
+-#endif
+ 
+     if (s->output_type == TCC_OUTPUT_PREPROCESS && ferror(s->ppfp))
+         ret = tcc_error_noabort("could not write preprocessor output");
+diff --git a/tcc.h b/tcc.h
+index 9f4897a..a9b2052 100644
+--- a/tcc.h
++++ b/tcc.h
+@@ -41,9 +41,7 @@
+ #include <fcntl.h>
+ #endif
+ #include <setjmp.h>
+-#ifndef __pyxis__
+ #include <time.h>
+-#endif
+ 
+ #if !defined _WIN32 && !defined __pyxis__
+ # include <unistd.h>
+diff --git a/tccpp.c b/tccpp.c
+index 5588a54..c4a76ae 100644
+--- a/tccpp.c
++++ b/tccpp.c
+@@ -3416,25 +3416,30 @@ static int macro_subst_tok(
+             goto add_cstr;
+ 
+         } else if (v == TOK___DATE__ || v == TOK___TIME__) {
++            struct tm *tm;
+ #ifdef __pyxis__
+-            tcc_error("%s requires wall-clock support on Pyxis", get_tok_str(v, NULL));
++            struct timespec now;
++            if (!timespec_get(&now, TIME_UTC))
++                tcc_error("cannot read UTC for %s", get_tok_str(v, NULL));
++            tm = gmtime(&now.tv_sec);
++            if (!tm || tm->tm_year < -1900 || tm->tm_year > 8099)
++                tcc_error("UTC date is out of range for %s", get_tok_str(v, NULL));
+ #else
+             time_t ti;
+-            struct tm *tm;
+             time(&ti);
+             tm = localtime(&ti);
++#endif
+             if (v == TOK___DATE__) {
+                 static char const ab_month_name[12][4] = {
+                     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+                 };
+-                snprintf(buf, sizeof(buf), "%s %2d %d",
++                snprintf(buf, sizeof(buf), "%s %2d %04d",
+                     ab_month_name[tm->tm_mon], tm->tm_mday, tm->tm_year + 1900);
+             } else {
+                 snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
+                     tm->tm_hour, tm->tm_min, tm->tm_sec);
+             }
+-#endif
+         add_cstr:
+             t = TOK_STR;
+         add_cstr1:
