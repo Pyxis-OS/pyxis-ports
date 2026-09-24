@@ -11,6 +11,7 @@ return {
   patches = {
     "patches/0001-pyxis-terminal-and-file-access.patch",
     "patches/0002-editor-allocation-and-bounds.patch",
+    "patches/0003-monotonic-status-expiry.patch",
   },
   outputs = {
     executable = "bin/kilo.pxe",
