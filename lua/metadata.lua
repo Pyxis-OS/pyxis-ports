@@ -15,5 +15,10 @@ return {
   outputs = {
     executable = "bin/lua.pxe",
     license = "share/licenses/lua/lua.h",
+    library = "dev/lib/liblua.a",
+    api_header = "dev/include/lua.h",
+    config_header = "dev/include/luaconf.h",
+    auxiliary_header = "dev/include/lauxlib.h",
+    library_header = "dev/include/lualib.h",
   },
 }
