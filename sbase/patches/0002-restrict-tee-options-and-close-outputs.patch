@@ -1,0 +1,137 @@
+--- a/tee.c
++++ b/tee.c
+@@ -1,6 +1,6 @@
+ /* See LICENSE file for copyright and license details. */
+ #include <fcntl.h>
+-#include <signal.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ 
+ #include "util.h"
+@@ -8,53 +8,81 @@
+ static void
+ usage(void)
+ {
+-	eprintf("usage: %s [-ai] [file ...]\n", argv0);
++	eprintf("usage: %s [file ...]\n", argv0);
++}
++
++static int
++close_output(int fd, const char *name)
++{
++	if (close(fd) < 0) {
++		weprintf("close %s:", name);
++		return 1;
++	}
++	return 0;
+ }
+ 
+ int
+ main(int argc, char *argv[])
+ {
+ 	int *fds = NULL;
+-	size_t i, nfds;
+-	ssize_t n;
+-	int ret = 0, aflag = O_TRUNC, iflag = 0;
++	size_t i, nfds, active = 0;
++	ssize_t n = 0;
++	int ret = 0;
+ 	char buf[BUFSIZ];
+ 
+ 	ARGBEGIN {
+-	case 'a':
+-		aflag = O_APPEND;
+-		break;
+-	case 'i':
+-		iflag = 1;
+-		break;
+ 	default:
+ 		usage();
+ 	} ARGEND
+ 
+-	if (iflag && signal(SIGINT, SIG_IGN) == SIG_ERR)
+-		eprintf("signal:");
+-	nfds = argc + 1;
++	/* Check standard descriptors before an open can reuse an absent slot. */
++	if (read(0, NULL, 0) < 0)
++		eprintf("read <stdin>:");
++	nfds = (size_t)argc + 1;
+ 	fds = ecalloc(nfds, sizeof(*fds));
++	fds[argc] = -1;
++	if (write(1, NULL, 0) < 0) {
++		weprintf("write <stdout>:");
++		ret = 1;
++	} else {
++		fds[argc] = 1;
++		active++;
++	}
+ 
+ 	for (i = 0; i < argc; i++) {
+-		if ((fds[i] = open(argv[i], O_WRONLY|O_CREAT|aflag, 0666)) < 0) {
++		if ((fds[i] = open(argv[i], O_WRONLY|O_CREAT|O_TRUNC, 0666)) < 0) {
+ 			weprintf("open %s:", argv[i]);
+ 			ret = 1;
++		} else {
++			active++;
+ 		}
+ 	}
+-	fds[i] = 1;
+ 
+-	while ((n = read(0, buf, sizeof(buf))) > 0) {
++	while (active && (n = read(0, buf, sizeof(buf))) > 0) {
+ 		for (i = 0; i < nfds; i++) {
+ 			if (fds[i] >= 0 && writeall(fds[i], buf, n) < 0) {
+ 				weprintf("write %s:", (i != argc) ? argv[i] : "<stdout>");
++				ret |= close_output(fds[i], (i != argc) ? argv[i] : "<stdout>");
+ 				fds[i] = -1;
++				active--;
+ 				ret = 1;
+ 			}
+ 		}
+ 	}
+-	if (n < 0)
+-		eprintf("read <stdin>:");
++	if (n < 0) {
++		weprintf("read <stdin>:");
++		ret = 1;
++	}
++	/* Stop holding the upstream reader when no output can accept more data. */
++	if (close(0) < 0) {
++		weprintf("close <stdin>:");
++		ret = 1;
++	}
++	for (i = 0; i < nfds; i++) {
++		if (fds[i] >= 0)
++			ret |= close_output(fds[i], (i != argc) ? argv[i] : "<stdout>");
++	}
++	free(fds);
+ 
+ 	return ret;
+ }
+--- a/util.h
++++ b/util.h
+@@ -1,6 +1,7 @@
+ /* See LICENSE file for copyright and license details. */
+ #include <stdarg.h>
+ #include <stdio.h>
++#include <unistd.h>
+ 
+ #include "arg.h"
+ 
+@@ -12,3 +13,16 @@
+ void eprintf(const char *, ...);
+ void weprintf(const char *, ...);
+ void xvprintf(const char *, va_list);
++
++void *ecalloc(size_t, size_t);
++void *emalloc(size_t);
++void *erealloc(void *, size_t);
++char *estrdup(const char *);
++char *estrndup(const char *, size_t);
++void *encalloc(int, size_t, size_t);
++void *enmalloc(int, size_t);
++void *enrealloc(int, void *, size_t);
++char *enstrdup(int, const char *);
++char *enstrndup(int, const char *, size_t);
++
++ssize_t writeall(int, const void *, size_t);

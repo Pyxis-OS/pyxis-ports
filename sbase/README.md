@@ -1,16 +1,19 @@
-# sbase cksum
+# sbase cksum and tee
 
 [Upstream sbase](https://git.suckless.org/sbase) is pinned to
-`c546c3a5724c81cee9a11d816a38ccdf17472129`. This recipe builds only cksum,
-libutil/eprintf.c and libutil/fshut.c. It stages `bin/cksum.pxe`, the complete
+`c546c3a5724c81cee9a11d816a38ccdf17472129`. This recipe builds cksum and a
+restricted tee, plus their eprintf/fshut/ealloc/writeall helpers. It stages
+`bin/cksum.pxe`, `bin/tee.pxe`, the complete
 MIT license/contributor list and arg.h's individual notice under
 `share/licenses/sbase`. Retain both notice files with the executable.
 
-The single patch narrows private util.h to the declarations used by those
-translation units, retaining its license notice. It avoids unrelated regex,
-mode and offset declarations. Command/helper bodies and arg.h are unchanged;
-open/read/close, stdio output, BUFSIZ and PRIu32 come from the real Pyxis SDK.
+Patch 0001 narrows private util.h for cksum; 0002 adds tee's helper declarations
+and its option/lifetime adaptation. The header retains its license notice and
+avoids unrelated regex and offset APIs. Cksum, helper bodies and arg.h are
+unchanged. Conventional I/O, BUFSIZ and PRIu32 come from the real Pyxis SDK.
 No compatibility headers are installed, and the SDK is never modified.
+
+## Cksum
 
 The shell resolves `cksum` to `app://cksum.pxe`:
 
@@ -35,5 +38,38 @@ stdio's EPIPE/error indicator without a SIGPIPE facility. Input close results
 are ignored by upstream; libc still invalidates the descriptor under its close
 policy. The existing signedness warning in the byte-processing loop is retained.
 
-No other sbase command is built. Tee's writable-open, creation-mode, append and
-signal requirements remain a separate scope decision after cksum acceptance.
+## Tee
+
+The shell resolves `tee` to `app://tee.pxe`:
+
+```text
+cat host://input | tee home://first home://second | cksum
+```
+
+Tee copies stdin to stdout and each named output. Named outputs use
+O_WRONLY|O_CREAT|O_TRUNC with 0666; creation and truncation follow the caller's
+grants. In the current SDK, 0666 requests native creation policy and promises no
+Unix permission bits. No permission or user model is added by this port.
+
+Only file operands are accepted. Options -a and -i fail before opening outputs;
+there is no non-atomic O_APPEND approximation or fake signal handler. Use `--`
+before an operand beginning with a dash. This is a restricted upstream port,
+not the full POSIX tee interface.
+
+Patch 0002 validates stdin and snapshots stdout availability with zero-length
+calls before opening files. Thus reuse of an absent standard slot cannot make a
+named output act as stdout. Missing stdin fails before any file is touched;
+missing stdout is an error but named outputs can still work.
+
+Failed outputs are diagnosed and closed once while surviving outputs continue.
+Once all outputs have failed, tee stops reading and closes stdin so an upstream
+writer can observe closure. On EOF or input error it closes stdin and all live
+outputs, reporting close failures without retrying. Detected open/read/write/
+close errors produce a nonzero status. A broken stdout does not prevent named
+outputs from receiving the rest of the input. Writeall retains its upstream
+loop over positive short writes. Output can be partial after an error; opening
+an output that aliases the input can destroy its contents, as in upstream tee.
+
+Terminal input can be forwarded as it arrives, but cannot finish through EOF
+until the console protocol supplies that operation. No other sbase tools are
+built, and no kernel or signal interface is introduced.
