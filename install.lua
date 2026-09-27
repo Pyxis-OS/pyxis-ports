@@ -3,6 +3,8 @@
 return function(inputs)
   local root = inputs.ports
   return {
+    { tree = root .. "/sbase/stage/bin", at = "" },
+    { tree = root .. "/sbase/stage/share", at = "share" },
     { tree = root .. "/kilo/stage/bin", at = "" },
     { tree = root .. "/kilo/stage/share", at = "share" },
     { tree = root .. "/lua/stage/bin", at = "" },
