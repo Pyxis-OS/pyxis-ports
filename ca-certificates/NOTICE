@@ -1,0 +1,24 @@
+Mozilla-derived public CA certificates
+
+This package preserves curl's 2026-09-25 PEM conversion of Mozilla's public
+CA certificate data without changes. The complete upstream header and all
+certificate labels remain in cacert.pem. The bundle is governed by the Mozilla
+Public License, Version 2.0; a copy is included as LICENSE.
+
+Upstream PEM and corresponding source information:
+https://curl.se/ca/cacert-2026-09-25.pem
+https://curl.se/docs/caextract.html
+https://raw.githubusercontent.com/mozilla-firefox/firefox/refs/heads/release/security/nss/lib/ckfw/builtins/certdata.txt
+
+The dated PEM snapshot and its SHA-256 checksum identify the distributed data.
+share/ca-certificates/source.txt records conversion details and the source-data
+SHA-256 from the upstream PEM header. The Mozilla source URL names an upstream
+branch for provenance; it is not consulted during a Pyxis build.
+
+curl documents that this PEM conversion omits Mozilla's additional trust-store
+constraints. It is not the complete browser trust policy. Pyxis performs no
+boot-time download or automatic trust update; updating the recipe requires
+reviewing a new dated snapshot, rebuilding the image and restarting providers.
+
+License text obtained from:
+https://www.mozilla.org/media/MPL/2.0/index.815ca599c9df.txt
