@@ -13,6 +13,8 @@ return function(ctx)
     ctx.run({ "cp", "-R", "--", ctx.source .. "/tf-psa-crypto/include/" .. name,
       ctx.stage .. "/dev/include/" })
   end
+  ctx.run({ "cp", "-R", "--", ctx.source .. "/tf-psa-crypto/drivers/builtin/include/mbedtls",
+    ctx.stage .. "/dev/include/" })
   for _, name in ipairs({ "pyxis_tls_config.h", "pyxis_crypto_config.h" }) do
     ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/" .. name,
       ctx.stage .. "/dev/include/mbedtls/" .. name })

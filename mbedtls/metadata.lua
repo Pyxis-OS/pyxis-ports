@@ -24,6 +24,7 @@ return {
     crypto_library = "dev/lib/libtfpsacrypto.a",
     tls_header = "dev/include/mbedtls/ssl.h",
     crypto_header = "dev/include/psa/crypto.h",
+    driver_header = "dev/include/mbedtls/private_access.h",
     tls_config = "dev/include/mbedtls/pyxis_tls_config.h",
     crypto_config = "dev/include/mbedtls/pyxis_crypto_config.h",
     make_config = "dev/share/mbedtls.mk",
