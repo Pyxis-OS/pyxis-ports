@@ -25,6 +25,13 @@ build and stage paths, metadata and an argument-array command runner.
 Recipes are trusted Lua code; dependencies are prerequisites, not a package
 resolver. See each recipe's README for adaptation notes and limitations.
 
+A recipe may use `source.archive = { url = "https://...", sha256 = "..." }`
+instead of a Git checkout. The checksum is mandatory and verified before tar
+extraction, which removes the release archive's single top-level directory.
+`source.url` and the exact `source.commit` remain upstream provenance; the
+archive checksum identifies the actual build input. Archive recipes list curl,
+sha256sum, tar and the relevant decompressor as host dependencies.
+
 Boot-archive inclusion is handled by Pyxis; this repository only stages files.
 
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's
