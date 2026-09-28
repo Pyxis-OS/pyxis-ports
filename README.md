@@ -32,6 +32,12 @@ extraction, which removes the release archive's single top-level directory.
 archive checksum identifies the actual build input. Archive recipes list curl,
 sha256sum, tar and the relevant decompressor as host dependencies.
 
+A standalone data recipe uses `source.file = { url = "https://...",
+sha256 = "...", name = "filename" }`. The runner downloads and verifies this
+file without extraction. Its checksum replaces the Git commit requirement;
+standalone file recipes do not apply patches. They list curl and sha256sum as
+host dependencies and retain upstream provenance beside the recipe.
+
 Boot-archive inclusion is handled by Pyxis; this repository only stages files.
 
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's

@@ -77,14 +77,25 @@ local function main()
   assert(catalog[name], "unknown port: " .. name)
   local recipe = make_path(root .. "/" .. relative(catalog[name]))
   local metadata = dofile(recipe .. "/metadata.lua")
-  local revision = metadata.source.commit
-  assert(#revision == 40 and revision:match("^[0-9a-f]+$"), "source needs an exact Git commit")
   local archive = metadata.source.archive
-  if archive then
-    assert(type(archive.url) == "string" and archive.url:match("^https://"),
-      "source archive needs an HTTPS URL")
-    assert(type(archive.sha256) == "string" and #archive.sha256 == 64 and
-      archive.sha256:match("^[0-9a-f]+$"), "source archive needs a SHA-256 pin")
+  local source_file = metadata.source.file
+  assert(not (archive and source_file), "select an archive or standalone file")
+  local revision = metadata.source.commit
+  if not source_file then
+    assert(type(revision) == "string" and #revision == 40 and
+      revision:match("^[0-9a-f]+$"), "source needs an exact Git commit")
+  else
+    assert(not revision, "standalone files use a checksum instead of a Git commit")
+    assert(type(source_file.name) == "string" and
+      source_file.name:match("^[%w_][%w_.%-]*$"), "source file needs a plain filename")
+    assert(#metadata.patches == 0, "standalone file recipes do not apply patches")
+  end
+  local download = archive or source_file
+  if download then
+    assert(type(download.url) == "string" and download.url:match("^https://"),
+      "source download needs an HTTPS URL")
+    assert(type(download.sha256) == "string" and #download.sha256 == 64 and
+      download.sha256:match("^[0-9a-f]+$"), "source download needs a SHA-256 pin")
   end
   assert(metadata.license and metadata.outputs.license, "record and stage the upstream license")
 
@@ -111,14 +122,16 @@ local function main()
   run({ "mkdir", "--", work })
   local source, build, stage = work .. "/source", work .. "/build", work .. "/stage"
   run({ "mkdir", "--", source, build, stage })
-  if archive then
-    local downloaded = work .. "/source.tar"
+  if download then
+    local downloaded = source_file and source .. "/" .. source_file.name or work .. "/source.tar"
     run({ "curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https",
-      "--output", downloaded, "--", archive.url })
-    assert(capture({ "sha256sum", "--", downloaded }):match("^([0-9a-f]+)") == archive.sha256,
-      "source archive checksum mismatch")
-    run({ "tar", "--extract", "--file", downloaded, "--directory", source,
-      "--strip-components=1", "--no-same-owner" })
+      "--output", downloaded, "--", download.url })
+    assert(capture({ "sha256sum", "--", downloaded }):match("^([0-9a-f]+)") == download.sha256,
+      "source download checksum mismatch")
+    if archive then
+      run({ "tar", "--extract", "--file", downloaded, "--directory", source,
+        "--strip-components=1", "--no-same-owner" })
+    end
   else
     run({ "git", "init", "--quiet", source })
     run({ "git", "-C", source, "fetch", "--depth=1", "--", metadata.source.url, revision })

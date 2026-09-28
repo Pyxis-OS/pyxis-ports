@@ -1,4 +1,5 @@
 return {
+  ["ca-certificates"] = "ca-certificates",
   doom = "doom",
   kilo = "kilo",
   lua = "lua",
