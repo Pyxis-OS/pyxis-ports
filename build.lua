@@ -79,6 +79,13 @@ local function main()
   local metadata = dofile(recipe .. "/metadata.lua")
   local revision = metadata.source.commit
   assert(#revision == 40 and revision:match("^[0-9a-f]+$"), "source needs an exact Git commit")
+  local archive = metadata.source.archive
+  if archive then
+    assert(type(archive.url) == "string" and archive.url:match("^https://"),
+      "source archive needs an HTTPS URL")
+    assert(type(archive.sha256) == "string" and #archive.sha256 == 64 and
+      archive.sha256:match("^[0-9a-f]+$"), "source archive needs a SHA-256 pin")
+  end
   assert(metadata.license and metadata.outputs.license, "record and stage the upstream license")
 
   local sdk = make_path(capture({ "realpath", "-e", "--", options["--sdk"] }))
@@ -104,10 +111,20 @@ local function main()
   run({ "mkdir", "--", work })
   local source, build, stage = work .. "/source", work .. "/build", work .. "/stage"
   run({ "mkdir", "--", source, build, stage })
-  run({ "git", "init", "--quiet", source })
-  run({ "git", "-C", source, "fetch", "--depth=1", "--", metadata.source.url, revision })
-  run({ "git", "-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD" })
-  assert(capture({ "git", "-C", source, "rev-parse", "HEAD" }) == revision, "source pin mismatch")
+  if archive then
+    local downloaded = work .. "/source.tar"
+    run({ "curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https",
+      "--output", downloaded, "--", archive.url })
+    assert(capture({ "sha256sum", "--", downloaded }):match("^([0-9a-f]+)") == archive.sha256,
+      "source archive checksum mismatch")
+    run({ "tar", "--extract", "--file", downloaded, "--directory", source,
+      "--strip-components=1", "--no-same-owner" })
+  else
+    run({ "git", "init", "--quiet", source })
+    run({ "git", "-C", source, "fetch", "--depth=1", "--", metadata.source.url, revision })
+    run({ "git", "-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD" })
+    assert(capture({ "git", "-C", source, "rev-parse", "HEAD" }) == revision, "source pin mismatch")
+  end
   for _, patch in ipairs(metadata.patches) do
     run({ "git", "-C", source, "apply", "--whitespace=error-all", "--", recipe .. "/" .. relative(patch) })
   end

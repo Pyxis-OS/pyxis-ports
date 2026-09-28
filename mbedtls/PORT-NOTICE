@@ -1,0 +1,14 @@
+Mbed TLS 4.1.1 and bundled TF-PSA-Crypto 1.1.1
+
+Mbed TLS: https://github.com/Mbed-TLS/mbedtls
+Commit: 0a8fda272a5a0abef3b47c91bed37185d5a726b1
+TF-PSA-Crypto: https://github.com/Mbed-TLS/TF-PSA-Crypto
+Commit: a0632be94d883daa0295ac1eabf70359ad94f91b
+
+Built from the official mbedtls-4.1.1.tar.bz2 release archive, SHA-256:
+3359a349e23db3d5536fcee032ae7b2ecbfc08972fab643089b5cbf2a375c98c
+
+Both upstream projects offer Apache-2.0 OR GPL-2.0-or-later. This package
+selects Apache-2.0. Complete upstream LICENSE files accompany this notice.
+Upstream sources are unchanged. Pyxis supplies external client configuration,
+build packaging and native hooks in its separately versioned userland library.

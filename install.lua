@@ -10,6 +10,7 @@ return function(inputs)
     { tree = root .. "/lua/stage/bin", at = "" },
     { tree = root .. "/lua/stage/share", at = "share" },
     { tree = root .. "/picohttpparser/stage/share", at = "share" },
+    { tree = root .. "/mbedtls/stage/share", at = "share" },
     { tree = root .. "/doom/stage/bin", at = "" },
     { tree = root .. "/doom/stage/share", at = "share" },
     { tree = root .. "/tcc/stage/bin", at = "" },
