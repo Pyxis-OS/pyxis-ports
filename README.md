@@ -43,3 +43,8 @@ Boot-archive inclusion is handled by Pyxis; this repository only stages files.
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's
 manifest runner. It includes executables, notices and TCC target support, while
 excluding the host compiler and intermediate build files.
+
+## License
+
+Original Pyxis material is licensed under [MPL-2.0](LICENSE). See
+[LICENSING.md](LICENSING.md) for scope and third-party exceptions.
