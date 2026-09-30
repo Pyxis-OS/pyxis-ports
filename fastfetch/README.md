@@ -26,7 +26,7 @@ host://fastfetch.pxe --structure OS:Kernel:CPU:Memory:Uptime:TerminalSize
 Fastfetch 2.69.0 is pinned to
 `0c3b852bf7bad2837a814c7a31bf332092048a2b`. The ordered patch
 `patches/0001-pyxis-native-port.patch` contains the bounded CMake branch, native
-runtime and detectors, module/error adaptations, allocation checks and ASCII
+runtime and detectors, module/error adaptations, allocation wrappers and ASCII
 logo. Existing Fastfetch files retain upstream formatting and MIT terms.
 New Pyxis native adapters/build support and the project logo use MPL-2.0; see
 `PORT-NOTICE`. Bundled yyjson is unchanged and retains its MIT notice. The recipe
@@ -57,9 +57,10 @@ Only these nine modules are registered:
 These are separate native observations, not an atomic snapshot. CPU count is
 not physical cores or process CPU allowance; allocator memory is not installed
 RAM or Linux-style available memory. Extra upstream fields have JSON null values
-when unavailable. Uptime's `bootTime` is null. Named, positional and evaluated
-automatic format placeholders that request unavailable fields report an error;
-explicit references are also rejected inside skipped conditional branches.
+when unavailable. Uptime's `bootTime` is null. Evaluated named, positional and
+automatic format placeholders that request unavailable values report an error;
+conditions treat unavailable fields as unset and skipped branches are not evaluated.
+For example, `{name}{?freq-max} @ {freq-max}{?}` omits the unavailable frequency.
 Duration fields and the upstream `formatted` uptime field remain usable.
 
 Default terminal text prints six data modules, a break, color swatches and the
@@ -107,17 +108,21 @@ normal namespace/provider behavior; this port adds no networking authority.
 The compiled upstream help includes options outside this bounded port; its
 opening notice and this reference identify the supported boundary.
 
-Allocation failure and checked buffer/list growth overflow produce a stderr
-diagnostic and terminate nonzero. Core allocation sites are checked explicitly;
-link wrappers cover bundled JSON and other allocator calls. Fatal exit may leave
-partial stdout; it restores any cursor/line-wrap modes the program enabled.
+Allocation failure produces a stderr diagnostic and terminates nonzero.
+Process-local malloc/calloc/realloc link wrappers cover bundled JSON and other
+allocator calls; upstream container allocation and growth code is retained.
+The existing negative vasprintf/vsnprintf result checks handle formatting errors
+independently of allocation failure. Fatal exit may leave partial stdout; it
+restores any cursor/line-wrap modes the program enabled.
 Normal teardown releases owned Fastfetch state, and native process teardown
 reclaims remaining resources. There are no atexit/signal facilities or global
 changes to libc allocation semantics.
 
 Failed selected module queries and unsupported fields report errors and permit
 other modules to run, with a nonzero aggregate exit status. Text diagnostics go
-to stderr; JSON represents failed module queries as error objects. Malformed
+to stderr when `showErrors` is enabled; disabling it through CLI or JSON suppresses
+module and format diagnostics without clearing failure status. JSON represents
+failed module queries as error objects regardless of `showErrors`. Malformed
 config and unsupported global options terminate nonzero. Output errors also
 fail; partially written output is possible. Optional fields represented by null
 do not themselves fail a query. Requested `--stat` requires clock READ and fails
@@ -135,9 +140,8 @@ AHCI fix, CPU max, 256 MiB, Fedora OVMF, entropy, virtio-net and a private HOST
 export. Local text showed the complete logo and 160x48 dimensions; remote text
 reported 100x30. JSON reported online count 4 and null unavailable values.
 Explicit JSONC module formats worked. Unsupported named/positional/calendar
-fields failed while a later module still printed; an inactive conditional did
-not hide an explicit unavailable field. A command-logo request failed even with
-JSON output. Redirected JSON and text with timing/key-width/right-logo options
+fields failed while a later module still printed. A command-logo request failed
+even with JSON output. Redirected JSON and text with timing/key-width/right-logo options
 contained no escape bytes. GDB observed the native CPU adapter return its BSP
 brand and online count 4 in userspace.
 
@@ -147,3 +151,9 @@ clock and named output grants, and the child exited with status 1. Allocation ex
 reviewed, not fault-injected. No tests, self-tests, CI changes or boot automation
 were added. Default image installation, narrow-console/pipeline coverage and
 broader repeated-run acceptance remain the following integration task.
+
+The four-point review follow-up restores upstream conditional evaluation,
+honors diagnostic visibility, removes redundant allocation helpers/container
+rewrites and preserves upstream I/O/time declarations behind Pyxis branches.
+The existing standalone recipe was rebuilt; guest checks above describe the
+initial port and were not rerun for this reduction.

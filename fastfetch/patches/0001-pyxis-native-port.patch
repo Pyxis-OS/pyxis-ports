@@ -183,81 +183,8 @@ index 0000000..b826bc6
 +    DEPENDS fastfetch "${PYXIS_SDK}/bin/elf2pxe"
 +    VERBATIM)
 +add_custom_target(fastfetch_pxe ALL DEPENDS "${PROJECT_BINARY_DIR}/fastfetch.pxe")
-diff --git a/src/common/FFlist.h b/src/common/FFlist.h
-index be98668..3f45801 100644
---- a/src/common/FFlist.h
-+++ b/src/common/FFlist.h
-@@ -5,6 +5,7 @@
- #include <assert.h>
- #include <stdlib.h>
- #include <string.h>
-+#include "common/mallocHelper.h"
- 
- #define FF_LIST_DEFAULT_ALLOC 16
- 
-@@ -28,8 +29,11 @@ typedef struct FFlist {
- 
- [[gnu::nonnull(1)]] static inline void ffListInitA(FFlist* list, uint32_t elementSize, uint32_t capacity) {
-     ffListInit(list);
-+    if (capacity > 0 && (elementSize == 0 || (size_t) capacity > SIZE_MAX / elementSize)) {
-+        ffPyxisFatal("list allocation size overflow");
-+    }
-     list->capacity = capacity;
--    list->data = __builtin_expect(capacity == 0, 0) ? nullptr : (uint8_t*) malloc((size_t) capacity * elementSize);
-+    list->data = __builtin_expect(capacity == 0, 0) ? nullptr : (uint8_t*) ffCheckedMalloc((size_t) capacity * elementSize);
- }
- 
- [[nodiscard]] static inline FFlist ffListCreate() {
-@@ -46,7 +50,7 @@ typedef struct FFlist {
- 
- [[gnu::nonnull(1), gnu::pure, nodiscard]] static inline void* ffListGet(const FFlist* list, uint32_t elementSize, uint32_t index) {
-     assert(list->capacity > index);
--    return list->data + (index * elementSize);
-+    return list->data + ((size_t) index * elementSize);
- }
- 
- // Not `pure`: `compFunc` is caller-supplied and may have side effects
-@@ -101,12 +105,18 @@ typedef struct FFlist {
-         return;
-     }
- 
--    list->data = (uint8_t*) realloc(list->data, (size_t) newCapacity * elementSize);
-+    if (elementSize == 0 || (size_t) newCapacity > SIZE_MAX / elementSize) {
-+        ffPyxisFatal("list allocation size overflow");
-+    }
-+    list->data = (uint8_t*) ffCheckedRealloc(list->data, (size_t) newCapacity * elementSize);
-     list->capacity = newCapacity;
- }
- 
- [[gnu::nonnull(1)]] static inline void* ffListAdd(FFlist* list, uint32_t elementSize) {
-     if (__builtin_expect(list->length == list->capacity, false)) {
-+        if (list->capacity > UINT32_MAX / 2) {
-+            ffPyxisFatal("list capacity overflow");
-+        }
-         ffListReserve(list, elementSize, list->capacity == 0 ? FF_LIST_DEFAULT_ALLOC : list->capacity * 2);
-     }
- 
-@@ -116,15 +126,15 @@ typedef struct FFlist {
- 
- [[gnu::nonnull(1)]] static inline void ffListRemoveAt(FFlist* list, uint32_t elementSize, uint32_t index) {
-     assert(list->length > index);
--    memmove(list->data + (index * elementSize), list->data + ((index + 1) * elementSize), (size_t) (list->length - index - 1) * elementSize);
-+    memmove(list->data + ((size_t) index * elementSize), list->data + ((size_t) (index + 1) * elementSize), (size_t) (list->length - index - 1) * elementSize);
-     --list->length;
- }
- 
- [[gnu::nonnull(1, 4)]] static inline void ffListInsertAt(FFlist* list, uint32_t elementSize, uint32_t index, const void* element) {
-     assert(list->length >= index);
-     ffListAdd(list, elementSize);
--    memmove(list->data + ((index + 1) * elementSize), list->data + (index * elementSize), (size_t) (list->length - index - 1) * elementSize);
--    memcpy(list->data + (index * elementSize), element, elementSize);
-+    memmove(list->data + ((size_t) (index + 1) * elementSize), list->data + ((size_t) index * elementSize), (size_t) (list->length - index - 1) * elementSize);
-+    memcpy(list->data + ((size_t) index * elementSize), element, elementSize);
- }
- 
- #define FF_LIST_FOR_EACH(itemType, itemVarName, listVar)                        \
 diff --git a/src/common/FFstrbuf.h b/src/common/FFstrbuf.h
-index 879508a..bb55e8c 100644
+index 879508a..62dde95 100644
 --- a/src/common/FFstrbuf.h
 +++ b/src/common/FFstrbuf.h
 @@ -5,6 +5,7 @@
@@ -268,17 +195,8 @@ index 879508a..bb55e8c 100644
  #include <stdlib.h>
  #include <assert.h>
  #include "common/memrchr.h"
-@@ -58,7 +59,7 @@ typedef struct FFstrbuf {
- [[gnu::nonnull(1)]] static inline void ffStrbufInit(FFstrbuf* strbuf);
- [[gnu::nonnull(1)]] void ffStrbufInitA(FFstrbuf* strbuf, uint32_t allocate);
- [[gnu::nonnull(1, 2), gnu::format(printf, 2, 0)]] void ffStrbufInitVF(FFstrbuf* strbuf, const char* format, va_list arguments);
--[[gnu::nonnull(1, 3)]] void ffStrbufInitMoveNS(FFstrbuf* strbuf, uint32_t length, char* heapStr);
-+[[gnu::nonnull(1)]] void ffStrbufInitMoveNS(FFstrbuf* strbuf, uint32_t length, char* heapStr);
- [[gnu::format(printf, 2, 3), gnu::nonnull(1, 2)]] void ffStrbufInitF(FFstrbuf* strbuf, const char* format, ...);
- [[gnu::format(printf, 1, 2), gnu::nonnull(1), nodiscard]] FFstrbuf ffStrbufCreateF(const char* format, ...);
- 
 diff --git a/src/common/argType.h b/src/common/argType.h
-index 5851be7..408f825 100644
+index 5851be7..06ab99e 100644
 --- a/src/common/argType.h
 +++ b/src/common/argType.h
 @@ -11,7 +11,7 @@ typedef struct FFArgBuffer {
@@ -286,7 +204,7 @@ index 5851be7..408f825 100644
  
  typedef enum FFArgType: uint8_t {
 -    FF_ARG_TYPE_NULL = 0,
-+    FF_ARG_TYPE_NULL = 0, // Unavailable native field; referencing it in a format is an error.
++    FF_ARG_TYPE_NULL = 0, // Unavailable native field; rendering its value is an error, conditions treat it as unset.
      FF_ARG_TYPE_UINT,
      FF_ARG_TYPE_UINT64,
      FF_ARG_TYPE_UINT16,
@@ -391,121 +309,29 @@ index 0000000..c59ccb3
 +    ffStrbufDestroy(&platform->sysinfo.architecture);
 +}
 diff --git a/src/common/impl/FFstrbuf.c b/src/common/impl/FFstrbuf.c
-index 494e487..2ccff7a 100644
+index 494e487..97fcd21 100644
 --- a/src/common/impl/FFstrbuf.c
 +++ b/src/common/impl/FFstrbuf.c
-@@ -1,7 +1,6 @@
- #include "common/FFstrbuf.h"
+@@ -2,6 +2,7 @@
  #include "common/mallocHelper.h"
  #include "common/strutil.h"
--#include "common/debug.h"
+ #include "common/debug.h"
++#include "common/pyxis.h"
  
  #include <ctype.h>
  #include <inttypes.h>
-@@ -13,7 +12,7 @@ void ffStrbufInitA(FFstrbuf* strbuf, uint32_t allocate) {
-     strbuf->allocated = allocate;
- 
-     if (strbuf->allocated > 0) {
--        strbuf->chars = (char*) malloc(sizeof(char) * strbuf->allocated);
-+        strbuf->chars = (char*) ffCheckedMalloc(sizeof(char) * strbuf->allocated);
-     }
- 
-     // This will set the length to zero and the null byte.
-@@ -23,7 +22,9 @@ void ffStrbufInitA(FFstrbuf* strbuf, uint32_t allocate) {
+@@ -23,7 +24,9 @@ void ffStrbufInitA(FFstrbuf* strbuf, uint32_t allocate) {
  void ffStrbufInitVF(FFstrbuf* strbuf, const char* format, va_list arguments) {
      char* buffer = nullptr;
      int len = vasprintf(&buffer, format, arguments);
 -    assert(len >= 0);
-+    if (len < 0 || buffer == nullptr) {
-+        ffPyxisFatal("formatted string allocation failed");
++    if (len < 0) {
++        ffPyxisFatal("formatted string conversion failed");
 +    }
  
      ffStrbufInitMoveNS(strbuf, (uint32_t) len, buffer);
  }
-@@ -31,6 +32,12 @@ void ffStrbufInitVF(FFstrbuf* strbuf, const char* format, va_list arguments) {
- // Takes ownership of `heapStr`. The caller must not free `heapStr` after calling this
- // function; the memory will be managed and freed via the associated FFstrbuf.
- void ffStrbufInitMoveNS(FFstrbuf* strbuf, uint32_t length, char* heapStr) {
-+    if (heapStr == nullptr) {
-+        ffPyxisFatal("memory allocation failed");
-+    }
-+    if (length == UINT32_MAX) {
-+        ffPyxisFatal("string allocation size overflow");
-+    }
-     strbuf->length = length;
-     size_t allocSize = ffMallocUsableSize(heapStr);
-     if (allocSize == 0) {
-@@ -63,18 +70,15 @@ FFstrbuf ffStrbufCreateF(const char* format, ...) {
- void ffStrbufEnsureFreeNoCheck(FFstrbuf* strbuf, uint32_t free) {
-     uint32_t allocate;
-     if (__builtin_expect(__builtin_uadd_overflow(strbuf->length, free, &allocate), false)) {
--        FF_DEBUG("Error: Integer overflow when calculating allocation size. Aborting");
--        abort();
-+        ffPyxisFatal("string allocation size overflow");
-     }
- 
-     if (allocate < FASTFETCH_STRBUF_DEFAULT_ALLOC) { // `<` for null terminator
-         allocate = FASTFETCH_STRBUF_DEFAULT_ALLOC;
-     } else {
-         if (__builtin_expect(allocate > (UINT32_MAX >> 1), false)) {
--            // User tried to allocate more than 2GB of memory, which exceeds the maximum size supported by FFstrbuf.
--            // This is likely an error or an attempt to exploit the program. Abort to prevent potential issues.
--            FF_DEBUG("Error: Attempted to allocate %" PRIu32 " bytes more than 2GB of memory in FFstrbuf. Aborting", allocate);
--            abort();
-+            // The terminating byte and power-of-two growth must remain representable.
-+            ffPyxisFatal("string exceeds supported allocation size");
-         }
- 
-         // Round up to the next power of 2.
-@@ -84,7 +88,7 @@ void ffStrbufEnsureFreeNoCheck(FFstrbuf* strbuf, uint32_t free) {
-     }
- 
-     if (strbuf->allocated == 0) {
--        char* newbuf = malloc(sizeof(*strbuf->chars) * allocate);
-+        char* newbuf = ffCheckedMalloc(sizeof(*strbuf->chars) * allocate);
-         if (strbuf->length == 0) {
-             *newbuf = '\0';
-         } else {
-@@ -92,7 +96,7 @@ void ffStrbufEnsureFreeNoCheck(FFstrbuf* strbuf, uint32_t free) {
-         }
-         strbuf->chars = newbuf;
-     } else {
--        strbuf->chars = realloc(strbuf->chars, sizeof(*strbuf->chars) * allocate);
-+        strbuf->chars = ffCheckedRealloc(strbuf->chars, sizeof(*strbuf->chars) * allocate);
-     }
- 
-     strbuf->allocated = allocate;
-@@ -105,13 +109,11 @@ void ffStrbufEnsureFixedLengthFree(FFstrbuf* strbuf, uint32_t free) {
-     uint32_t newCap;
- 
-     if (strbuf->allocated == 0) {
--        assert(strbuf->length < UINT32_MAX - 1); // We don't use static strings with length >= UINT32_MAX - 1, so this should never happen
--        if (__builtin_expect(__builtin_uadd_overflow(strbuf->length + 1, free, &newCap), false)) {
--            FF_DEBUG("Error: Integer overflow when calculating new capacity. Aborting");
--            abort();
-+        if (strbuf->length == UINT32_MAX || __builtin_uadd_overflow(strbuf->length + 1, free, &newCap)) {
-+            ffPyxisFatal("string allocation size overflow");
-         }
- 
--        char* newbuf = malloc(sizeof(*strbuf->chars) * newCap);
-+        char* newbuf = ffCheckedMalloc(sizeof(*strbuf->chars) * newCap);
-         if (strbuf->length == 0) {
-             *newbuf = '\0';
-         } else {
-@@ -125,10 +127,9 @@ void ffStrbufEnsureFixedLengthFree(FFstrbuf* strbuf, uint32_t free) {
-         }
- 
-         if (__builtin_expect(__builtin_uadd_overflow(strbuf->allocated, free - oldFree, &newCap), false)) {
--            FF_DEBUG("Error: Integer overflow when calculating new capacity. Aborting");
--            abort();
-+            ffPyxisFatal("string allocation size overflow");
-         }
--        strbuf->chars = realloc(strbuf->chars, sizeof(*strbuf->chars) * newCap);
-+        strbuf->chars = ffCheckedRealloc(strbuf->chars, sizeof(*strbuf->chars) * newCap);
-     }
- 
-     strbuf->allocated = newCap;
-@@ -166,6 +167,9 @@ void ffStrbufAppendVF(FFstrbuf* strbuf, const char* format, va_list arguments) {
+@@ -166,6 +169,9 @@ void ffStrbufAppendVF(FFstrbuf* strbuf, const char* format, va_list arguments) {
  
      va_end(copy);
  
@@ -515,20 +341,6 @@ index 494e487..2ccff7a 100644
      if (written > 0) {
          strbuf->length += (uint32_t) written;
      }
-@@ -231,8 +235,12 @@ void ffStrbufSetNS(FFstrbuf* strbuf, uint32_t length, const char* value) {
-         return;
-     }
- 
-+    if (length == UINT32_MAX) {
-+        ffPyxisFatal("string allocation size overflow");
-+    }
-+
-     if (strbuf->allocated <= length) {
--        char* newBuf = malloc(sizeof(char) * (length + 1));
-+        char* newBuf = ffCheckedMalloc(sizeof(char) * (length + 1));
-         memcpy(newBuf, value, length);
-         if (strbuf->allocated > 0) {
-             free(strbuf->chars);
 diff --git a/src/common/impl/commandoption.c b/src/common/impl/commandoption.c
 index bc5ee9e..22640df 100644
 --- a/src/common/impl/commandoption.c
@@ -588,14 +400,14 @@ index bc5ee9e..22640df 100644
                  char str[64];
                  int len = snprintf(str, sizeof str, "%.3fms", ms);
 diff --git a/src/common/impl/format.c b/src/common/impl/format.c
-index 450870c..66242cf 100644
+index 450870c..f7e8c9c 100644
 --- a/src/common/impl/format.c
 +++ b/src/common/impl/format.c
 @@ -4,6 +4,7 @@
  #include "common/textModifier.h"
  #include "common/strutil.h"
  #include "common/library.h"
-+#include "common/pyxis.h"
++#include "common/printing.h"
  
  #include <inttypes.h>
  
@@ -616,7 +428,7 @@ index 450870c..66242cf 100644
      } else if (ffCharIsEnglishAlphabet(firstChar)) {
          for (uint32_t i = 0; i < numArgs; ++i) {
              const FFformatarg* arg = &arguments[i];
-@@ -99,6 +100,64 @@ static uint32_t getArgumentIndex(const char* placeholderValue, uint32_t numArgs,
+@@ -99,6 +100,19 @@ static uint32_t getArgumentIndex(const char* placeholderValue, uint32_t numArgs,
      return UINT32_MAX;
  }
  
@@ -626,84 +438,17 @@ index 450870c..66242cf 100644
 +    }
 +
 +    if (arg->name) {
-+        FF_STRBUF_AUTO_DESTROY error = ffStrbufCreateF("format field '%s' is unavailable on Pyxis", arg->name);
-+        ffPyxisError(error.chars);
++        ffPrintError("Format", 0, nullptr, FF_PRINT_TYPE_DEFAULT, "format field '%s' is unavailable on Pyxis", arg->name);
 +    } else {
-+        ffPyxisError("format field is unavailable on Pyxis");
++        ffPrintError("Format", 0, nullptr, FF_PRINT_TYPE_DEFAULT, "format field is unavailable on Pyxis");
 +    }
 +    return false;
-+}
-+
-+// Explicit references must not become silently valid by hiding them in a conditional.
-+// Automatic placeholders select their field during rendering, when skipped branches are known.
-+static bool validateFormatArguments(const FFstrbuf* formatstr, uint32_t numArgs, const FFformatarg* arguments) {
-+    FF_STRBUF_AUTO_DESTROY placeholder = ffStrbufCreate();
-+
-+    for (uint32_t i = 0; i < formatstr->length; ++i) {
-+        if (formatstr->chars[i] != '{') {
-+            continue;
-+        }
-+        if (++i >= formatstr->length) {
-+            break;
-+        }
-+        if (formatstr->chars[i] == '{') {
-+            continue;
-+        }
-+
-+        uint32_t end = ffStrbufNextIndexC(formatstr, i, '}');
-+        ffStrbufSetNS(&placeholder, end - i, formatstr->chars + i);
-+        i = end;
-+        if (ffStrbufEqualS(&placeholder, "-")) {
-+            break;
-+        }
-+
-+        char* selector = placeholder.chars;
-+        if (*selector == '#' || *selector == '$') {
-+            continue;
-+        }
-+        if (*selector == '?' || *selector == '/') {
-+            ++selector;
-+        } else {
-+            char* separator = strpbrk(selector, ":<>|~");
-+            if (separator) {
-+                *separator = '\0';
-+            }
-+        }
-+
-+        uint32_t index = getArgumentIndex(selector, numArgs, arguments);
-+        if (index >= 1 && index <= numArgs && !formatArgAvailable(&arguments[index - 1])) {
-+            return false;
-+        }
-+    }
-+    return true;
 +}
 +
  static inline void appendInvalidPlaceholder(FFstrbuf* buffer, const char* start, const FFstrbuf* placeholderValue, uint32_t index, uint32_t formatStringLength) {
      ffStrbufAppendS(buffer, start);
      ffStrbufAppend(buffer, placeholderValue);
-@@ -610,6 +669,10 @@ static bool parseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint3
-                 continue;
-             }
- 
-+            if (!formatArgAvailable(&arguments[index - 1])) {
-+                return false;
-+            }
-+
-             // continue normally if an format arg is set and the value is > 0
-             if (formatArgSet(&arguments[index - 1])) {
-                 ++numOpenIfs;
-@@ -633,6 +696,10 @@ static bool parseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint3
-                 continue;
-             }
- 
-+            if (!formatArgAvailable(&arguments[index - 1])) {
-+                return false;
-+            }
-+
-             // continue normally if an format arg is not set or the value is 0
-             if (!formatArgSet(&arguments[index - 1])) {
-                 ++numOpenNotIfs;
-@@ -707,6 +774,10 @@ static bool parseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint3
+@@ -707,6 +721,10 @@ static bool parseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint3
              continue;
          }
  
@@ -714,26 +459,22 @@ index 450870c..66242cf 100644
          if (!cSep) {
              ffFormatAppendFormatArg(buffer, &arguments[index - 1]);
          } else if (cSep == '~') {
-@@ -813,6 +884,10 @@ static bool parseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint3
+@@ -813,6 +831,10 @@ static bool parseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint3
  }
  
  bool ffParseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint32_t numArgs, const FFformatarg* arguments) {
 +    if (ffStrbufStartsWithS(formatstr, "lua:") || ffStrbufStartsWithS(formatstr, "qjs:")) {
-+        ffPyxisError("script formats are unavailable on Pyxis");
++        ffPrintError("Format", 0, nullptr, FF_PRINT_TYPE_DEFAULT, "script formats are unavailable on Pyxis");
 +        return false;
 +    }
  #if FF_HAVE_QUICKJS
      if (ffStrbufStartsWithS(formatstr, "qjs:")) {
          return parseQuickJSString(buffer, formatstr->chars + 4, formatstr->length - 4, numArgs, arguments);
-@@ -826,5 +901,14 @@ bool ffParseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint32_t n
+@@ -826,5 +848,10 @@ bool ffParseFormatString(FFstrbuf* buffer, const FFstrbuf* formatstr, uint32_t n
      }
  #endif
  
 -    return parseFormatString(buffer, formatstr, numArgs, arguments);
-+    if (!validateFormatArguments(formatstr, numArgs, arguments)) {
-+        return false;
-+    }
-+
 +    FF_STRBUF_AUTO_DESTROY result = ffStrbufCreate();
 +    if (!parseFormatString(&result, formatstr, numArgs, arguments)) {
 +        return false;
@@ -983,7 +724,7 @@ index 232d155..143e8cb 100644
              yyjson_mut_val* obj = yyjson_mut_obj(jsonDoc);
              yyjson_mut_obj_add_str(jsonDoc, obj, "error", error);
 diff --git a/src/common/impl/printing.c b/src/common/impl/printing.c
-index 2980544..8a55f94 100644
+index 2980544..e41ec57 100644
 --- a/src/common/impl/printing.c
 +++ b/src/common/impl/printing.c
 @@ -1,4 +1,5 @@
@@ -1015,7 +756,7 @@ index 2980544..8a55f94 100644
                  printf("\e[%uG", (unsigned) (keyWidth + instance.state.logoWidth));
              }
          }
-@@ -96,33 +97,23 @@ bool ffPrintFormat(const char* moduleName, uint32_t moduleIndex, const FFModuleA
+@@ -96,33 +97,26 @@ bool ffPrintFormat(const char* moduleName, uint32_t moduleIndex, const FFModuleA
          ffPrintLogoAndKey(moduleName, moduleIndex, moduleArgs, printType);
          ffStrbufPutTo(&buffer, stdout);
      } else {
@@ -1027,9 +768,13 @@ index 2980544..8a55f94 100644
  }
  
  void ffPrintError(const char* moduleName, uint32_t moduleIndex, const FFModuleArgs* moduleArgs, FFPrintType printType, const char* message, ...) {
--    if (!instance.config.display.showErrors) {
--        return;
--    }
++    (void) moduleIndex;
++    (void) moduleArgs;
++    (void) printType;
++    ffPyxisFailed = true;
+     if (!instance.config.display.showErrors) {
+         return;
+     }
 -
 -    ffPrintLogoAndKey(moduleName, moduleIndex, moduleArgs, printType);
 -
@@ -1037,10 +782,6 @@ index 2980544..8a55f94 100644
 -        fputs(FASTFETCH_TEXT_MODIFIER_ERROR, stdout);
 -    }
 -
-+    (void) moduleIndex;
-+    (void) moduleArgs;
-+    (void) printType;
-+    ffPyxisFailed = true;
 +    fprintf(stderr, "%s: ", moduleName ? moduleName : "fastfetch");
      va_list arguments;
      va_start(arguments, message);
@@ -1077,349 +818,30 @@ index 0000000..357b57a
 +  return (double)nanoseconds / 1000000.0;
 +}
 diff --git a/src/common/io.h b/src/common/io.h
-index 78da571..41f3866 100644
+index 78da571..02573fb 100644
 --- a/src/common/io.h
 +++ b/src/common/io.h
-@@ -1,307 +1,10 @@
+@@ -1,5 +1,15 @@
  #pragma once
  
- #include "common/FFstrbuf.h"
--#include "common/FFlist.h"
++#ifdef __pyxis__
++#include "common/FFstrbuf.h"
 +#include <unistd.h>
- 
--#ifdef _WIN32
--    #include <fileapi.h>
--    #include <handleapi.h>
--    #include <io.h>
--    #include "common/windows/nt.h"
--typedef HANDLE FFNativeFD;
--    #define FF_INVALID_FD INVALID_HANDLE_VALUE
--#else
--    #include <unistd.h>
--    #include <dirent.h>
--    #include <sys/stat.h>
--    #include <errno.h>
--    #include <limits.h>
--    #include <fcntl.h>
- typedef int FFNativeFD;
--    #define FF_INVALID_FD (-1)
--    // procfs's file can be changed between read calls such as /proc/meminfo and /proc/uptime.
--    // one safe way to read correct data is reading the whole file in a single read syscall
--    #define PROC_FILE_BUFFSIZ (32 * 1024)
--#endif
--
--#ifdef _WIN32
--    #ifndef O_CLOEXEC
--        #define O_CLOEXEC 0
--    #endif
--    #ifndef O_RDONLY
--        #define O_RDONLY 0
--    #endif
--    #ifndef O_DIRECTORY
--        #define O_DIRECTORY 0200000
--    #endif
--
--// Only O_RDONLY is supported
--[[gnu::nonnull(2)]] HANDLE openat(HANDLE dfd, const char* fileName, int oflag);
--[[gnu::nonnull(2)]] HANDLE openatW(HANDLE dfd, const wchar_t* fileName, uint16_t fileNameLen, bool directory);
--#endif
--
--static inline bool ffIsValidNativeFD(FFNativeFD fd) {
--#ifndef _WIN32
--    return fd >= 0;
--#else
--    // https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443
--    return fd != INVALID_HANDLE_VALUE && fd != nullptr;
--#endif
--}
--
--[[gnu::always_inline, gnu::nonnull(1)]]
--static inline void wrapClose(FFNativeFD* pfd) {
--    if (ffIsValidNativeFD(*pfd)) {
--#ifndef _WIN32
--        close(*pfd);
--#else
--        NtClose(*pfd);
--#endif
--    }
--}
--#define FF_AUTO_CLOSE_FD [[gnu::cleanup(wrapClose)]]
--
--static inline FFNativeFD FFUnixFD2NativeFD(int unixfd) {
--#ifndef _WIN32
--    return unixfd;
--#else
--    return (FFNativeFD) _get_osfhandle(unixfd);
--#endif
--}
--
--[[gnu::nonnull(3)]]
--static inline bool ffWriteFDData(FFNativeFD fd, size_t dataSize, const void* data) {
--#ifndef _WIN32
--    return write(fd, data, dataSize) != -1;
--#else
--    DWORD written;
--    return WriteFile(fd, data, (DWORD) dataSize, &written, nullptr) && written == dataSize;
--#endif
--}
--
--[[gnu::nonnull(2)]]
--static inline bool ffWriteFDBuffer(FFNativeFD fd, const FFstrbuf* content) {
--    return ffWriteFDData(fd, content->length, content->chars);
--}
--
--[[gnu::nonnull(1, 3)]]
--bool ffWriteFileData(const char* fileName, size_t dataSize, const void* data);
--
--[[gnu::nonnull(1, 2)]]
--static inline bool ffWriteFileBuffer(const char* fileName, const FFstrbuf* buffer) {
--    return ffWriteFileData(fileName, buffer->length, buffer->chars);
--}
--
--[[gnu::nonnull(3)]]
--static inline ssize_t ffReadFDData(FFNativeFD fd, size_t dataSize, void* data) {
--#ifndef _WIN32
--    return read(fd, data, dataSize);
--#else
--    DWORD bytesRead;
--    if (!ReadFile(fd, data, (DWORD) dataSize, &bytesRead, nullptr)) {
--        return -1;
--    }
--
--    return (ssize_t) bytesRead;
--#endif
--}
--
--[[gnu::nonnull(2)]] bool ffAppendFDBuffer(FFNativeFD fd, FFstrbuf* buffer);
--
--[[gnu::nonnull(1, 3)]] static inline ssize_t ffReadFileData(const char* fileName, size_t dataSize, void* data) {
--    FF_AUTO_CLOSE_FD FFNativeFD fd =
--#ifndef _WIN32
--        open(fileName, O_RDONLY | O_CLOEXEC);
--#else
--        CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
--#endif
--
--    if (!ffIsValidNativeFD(fd)) {
--        return -1;
--    }
--
--    return ffReadFDData(fd, dataSize, data);
--}
--
--[[gnu::nonnull(2, 4)]] static inline ssize_t ffReadFileDataRelative(FFNativeFD dfd, const char* fileName, size_t dataSize, void* data) {
--    FF_AUTO_CLOSE_FD FFNativeFD fd = openat(dfd, fileName, O_RDONLY | O_CLOEXEC);
--    if (!ffIsValidNativeFD(fd)) {
--        return -1;
--    }
--
--    return ffReadFDData(fd, dataSize, data);
--}
--
--// `CreateFileA` reads the path in the ANSI code page, so a UTF-8 path holding anything outside ASCII
--// names a different file, or none at all. The wide API is the one that takes what UTF-8 decodes to,
--// and the conversion is done the same way ffPathExists() below does it.
--[[gnu::nonnull(1, 2)]] static inline bool ffAppendFileBuffer(const char* fileName, FFstrbuf* buffer) {
--#ifdef _WIN32
--    wchar_t fileNameW[MAX_PATH];
--    if (!NT_SUCCESS(RtlUTF8ToUnicodeN(fileNameW, (ULONG) sizeof(fileNameW), nullptr, fileName, (ULONG) strlen(fileName) + 1))) {
--        return false;
--    }
--    FF_AUTO_CLOSE_FD FFNativeFD fd = CreateFileW(fileNameW, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
--#else
--    FF_AUTO_CLOSE_FD FFNativeFD fd = open(fileName, O_RDONLY | O_CLOEXEC);
--#endif
--
--    if (!ffIsValidNativeFD(fd)) {
--        return false;
--    }
--
--    return ffAppendFDBuffer(fd, buffer);
--}
--
--[[gnu::nonnull(2, 3)]] static inline bool ffAppendFileBufferRelative(FFNativeFD dfd, const char* fileName, FFstrbuf* buffer) {
--    FF_AUTO_CLOSE_FD FFNativeFD fd = openat(dfd, fileName, O_RDONLY | O_CLOEXEC);
--    if (!ffIsValidNativeFD(fd)) {
--        return false;
--    }
--
--    return ffAppendFDBuffer(fd, buffer);
--}
--
--[[gnu::nonnull(2)]] static inline bool ffReadFDBuffer(FFNativeFD fd, FFstrbuf* buffer) {
--    ffStrbufClear(buffer);
--    return ffAppendFDBuffer(fd, buffer);
--}
--
--[[gnu::nonnull(1, 2)]] static inline bool ffReadFileBuffer(const char* fileName, FFstrbuf* buffer) {
--    ffStrbufClear(buffer);
--    return ffAppendFileBuffer(fileName, buffer);
--}
--
--[[gnu::nonnull(2, 3)]] static inline bool ffReadFileBufferRelative(FFNativeFD dfd, const char* fileName, FFstrbuf* buffer) {
--    ffStrbufClear(buffer);
--    return ffAppendFileBufferRelative(dfd, fileName, buffer);
--}
--
--typedef enum FFPathType: uint8_t {
--    FF_PATHTYPE_FILE = 1 << 0,
--    FF_PATHTYPE_DIRECTORY = 1 << 1,
--    FF_PATHTYPE_ANY = FF_PATHTYPE_FILE | FF_PATHTYPE_DIRECTORY,
--} FFPathType;
--
--[[gnu::nonnull(1)]] static inline bool ffPathExists(const char* path, FFPathType pathType) {
--#ifdef _WIN32
--
--    wchar_t wPath[MAX_PATH];
--    if (!NT_SUCCESS(RtlUTF8ToUnicodeN(wPath, (ULONG) sizeof(wPath), nullptr, path, (ULONG) strlen(path) + 1))) {
--        return false;
--    }
--
--    DWORD attr = GetFileAttributesW(wPath);
--
--    if (attr == INVALID_FILE_ATTRIBUTES) {
--        return false;
--    }
--
--    if (pathType & FF_PATHTYPE_FILE && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
--        return true;
--    }
--
--    if (pathType & FF_PATHTYPE_DIRECTORY && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
--        return true;
--    }
--
--#else
--
--    if (pathType == FF_PATHTYPE_ANY) {
--        // Zero overhead
--        return access(path, F_OK) == 0;
--    } else {
--        struct stat fileStat;
--        if (stat(path, &fileStat) != 0) {
--            return false;
--        }
--
--        unsigned int mode = fileStat.st_mode & S_IFMT;
--
--        if (pathType & FF_PATHTYPE_FILE && mode != S_IFDIR) {
--            return true;
--        }
--
--        if (pathType & FF_PATHTYPE_DIRECTORY && mode == S_IFDIR) {
--            return true;
--        }
--    }
--
--#endif
--
--    return false;
--}
--
--[[gnu::nonnull(1, 2)]] bool ffPathExpandEnv(const char* in, FFstrbuf* out);
--
--#define FF_IO_TERM_RESP_WAIT_MS 1000 // Terminal may respond slowly, especially when printing large image/gif logos. Found on iTerm
--
--[[gnu::format(scanf, 3, 4), gnu::nonnull(1, 3)]] const char* ffGetTerminalResponse(const char* request, int nParams, const char* format, ...);
--
--// Not thread safe!
--// Returns the previous state, which callers routinely discard (see ffUnsuppressIO), so not `nodiscard`
--bool ffSuppressIO(bool suppress);
--
--static inline void ffUnsuppressIO(bool* suppressed) {
--    if (!*suppressed) {
--        return;
--    }
--    ffSuppressIO(false);
--    *suppressed = false;
--}
--
--#define FF_SUPPRESS_IO() [[maybe_unused, gnu::cleanup(ffUnsuppressIO)]] bool io_suppressed__ = ffSuppressIO(true)
--
--[[gnu::nonnull(1)]] void ffListFilesRecursively(const char* path, bool pretty);
--
--[[gnu::nonnull(1), gnu::always_inline]] static inline void wrapFclose(FILE** pfile) {
--    if (*pfile) {
--        fclose(*pfile);
--    }
--}
--#define FF_AUTO_CLOSE_FILE [[gnu::cleanup(wrapFclose)]]
--
--[[gnu::nonnull(1), gnu::always_inline]]
--#ifndef _WIN32
--static inline void wrapClosedir(DIR** pdir) {
--    if (*pdir) {
--        closedir(*pdir);
--    }
--}
--#else
--static inline void wrapClosedir(HANDLE* pdir) {
--    if (*pdir) {
--        FindClose(*pdir);
--    }
--}
--#endif
--#define FF_AUTO_CLOSE_DIR [[gnu::cleanup(wrapClosedir)]]
--
--[[gnu::nonnull(1, 2, 3)]] static inline bool ffSearchUserConfigFile(const FFlist* configDirs, const char* fileSubpath, FFstrbuf* result) {
--    // configDirs is a list of FFstrbufs include the trailing slash
--    FF_LIST_FOR_EACH (FFstrbuf, dir, *configDirs) {
--        ffStrbufClear(result);
--        ffStrbufAppend(result, dir);
--        ffStrbufAppendS(result, fileSubpath);
--        if (ffPathExists(result->chars, FF_PATHTYPE_FILE)) {
--            return true;
--        }
--    }
--
--    return false;
--}
--
--FFNativeFD ffGetNullFD(void);
--// Whether a descriptor is attached to a real terminal, i.e. whether a human is looking at it.
--//
--// Do not use `isatty()` for this on Windows. It is `_isatty()`, which answers "is this a character
--// device" rather than "is this a console", and `NUL` -- as well as MSYS2's `/dev/null` -- is a
--// character device. A redirected run therefore looks interactive, which is how
--// `fastfetch --gen-config <path> > /dev/null` ends up on the interactive path and blocks forever.
++
++typedef int FFNativeFD;
 +bool ffAppendFDBuffer(FFNativeFD fd, FFstrbuf* buffer);
 +bool ffAppendFileBuffer(const char* path, FFstrbuf* buffer);
 +bool ffWriteFDBuffer(FFNativeFD fd, const FFstrbuf* buffer);
- bool ffIsTerminal(int fd);
--// Returns whether the file was removed; callers that only want it gone discard that, so not `nodiscard`
--[[gnu::nonnull(1)]] bool ffRemoveFile(const char* fileName);
--// Modification time of a file, in milliseconds since the Unix epoch, or 0 if it can not be read.
--// The representation is uniform across platforms so that a value derived from it means the
--// same thing everywhere, which matters for callers that store it as a cache key.
--[[gnu::nonnull(1)]] uint64_t ffPathGetMtime(const char* path);
-diff --git a/src/common/mallocHelper.h b/src/common/mallocHelper.h
-index e3d8321..dfb44e3 100644
---- a/src/common/mallocHelper.h
-+++ b/src/common/mallocHelper.h
-@@ -2,6 +2,23 @@
++bool ffIsTerminal(int fd);
++#else
+ #include "common/FFstrbuf.h"
+ #include "common/FFlist.h"
  
- #include <stdlib.h>
- #include <assert.h>
-+#include "common/pyxis.h"
-+
-+[[nodiscard]] static inline void* ffCheckedMalloc(size_t size) {
-+    void* result = malloc(size);
-+    if (size > 0 && result == nullptr) {
-+        ffPyxisFatal("memory allocation failed");
-+    }
-+    return result;
-+}
-+
-+[[nodiscard]] static inline void* ffCheckedRealloc(void* ptr, size_t size) {
-+    void* result = realloc(ptr, size);
-+    if (size > 0 && result == nullptr) {
-+        ffPyxisFatal("memory allocation failed");
-+    }
-+    return result;
-+}
- 
- #if FF_HAVE_MALLOC_USABLE_SIZE || FF_HAVE_MSVC_MSIZE
-     #if __has_include(<malloc.h>)
+@@ -305,3 +315,4 @@ bool ffIsTerminal(int fd);
+ // The representation is uniform across platforms so that a value derived from it means the
+ // same thing everywhere, which matters for callers that store it as a cache key.
+ [[gnu::nonnull(1)]] uint64_t ffPathGetMtime(const char* path);
++#endif
 diff --git a/src/common/pyxis.h b/src/common/pyxis.h
 new file mode 100644
 index 0000000..778ff04
@@ -1449,91 +871,23 @@ index ee30dbc..94a6150 100644
  #include <stdint.h>
  #include <string.h>
 diff --git a/src/common/time.h b/src/common/time.h
-index a4d2534..49c61b3 100644
+index a4d2534..eb996ef 100644
 --- a/src/common/time.h
 +++ b/src/common/time.h
-@@ -1,80 +1,3 @@
+@@ -1,5 +1,8 @@
  #pragma once
  
--#include <stdbool.h>
--#include <stdint.h>
--#include <time.h>
--#ifdef _WIN32
--    #include <ntstatus.h>
--    #include "common/windows/nt.h"
--    #include <profileapi.h>
--#elif defined(__HAIKU__)
--    #include <OS.h>
--#endif
--
--#include "common/arrutil.h"
--
--static inline double ffTimeGetTick(void) // In msec
--{
--#ifdef _WIN32
--    extern double ffQpcMultiplier;
--    LARGE_INTEGER start;
--    RtlQueryPerformanceCounter(&start);
--    return (double) start.QuadPart * ffQpcMultiplier;
--#elif defined(__HAIKU__)
--    return (double) system_time() / 1000.;
--#else
--    struct timespec timeNow;
--    clock_gettime(CLOCK_MONOTONIC, &timeNow);
--    return (double) timeNow.tv_sec * 1000. + (double) timeNow.tv_nsec / 1000000.;
--#endif
--}
--
--#if _WIN32
--static inline uint64_t ffFileTimeToUnixMs(uint64_t value) {
--    if (__builtin_expect(__builtin_usubll_overflow(value, 116444736000000000ull, &value), false)) {
--        return 0;
--    }
--    return value / 10000ull;
--}
--#endif
--
--static inline uint64_t ffTimeGetNow(void) {
--#ifdef _WIN32
--    uint64_t timeNow = ffKSystemTimeToUInt64(&SharedUserData->SystemTime);
--    return ffFileTimeToUnixMs((uint64_t) timeNow);
--#elif defined(__HAIKU__)
--    return (uint64_t) real_time_clock_usecs() / 1000u;
--#else
--    struct timespec timeNow;
--    clock_gettime(CLOCK_REALTIME, &timeNow);
--    return (uint64_t) (((uint64_t) timeNow.tv_sec * 1000u) + ((uint64_t) timeNow.tv_nsec / 1000000u));
--#endif
--}
--
--// Returns true if not interrupted
--static inline bool ffTimeSleep(uint32_t msec) {
--#ifdef _WIN32
--    LARGE_INTEGER interval;
--    interval.QuadPart = -(int64_t) msec * 10000; // Relative time in 100-nanosecond intervals
--    return NT_SUCCESS(NtDelayExecution(TRUE, &interval));
--#else
--    return nanosleep(&(struct timespec) { msec / 1000, (long) (msec % 1000) * 1000000 }, nullptr) == 0;
--#endif
--}
--
--// Not thread-safe
--const char* ffTimeToFullStr(uint64_t msec);
--
--// Not thread-safe
--const char* ffTimeToShortStr(uint64_t msec);
--
--// Not thread-safe
--const char* ffTimeToTimeStr(uint64_t msec);
--
--typedef struct FFTimeGetAgeResult {
--    uint32_t years;
--    uint32_t daysOfYear;
--    double yearsFraction;
--} FFTimeGetAgeResult;
--
--FFTimeGetAgeResult ffTimeGetAge(uint64_t birthMs, uint64_t nowMs);
++#ifdef __pyxis__
 +double ffTimeGetTick(void);
++#else
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <time.h>
+@@ -78,3 +81,4 @@ typedef struct FFTimeGetAgeResult {
+ } FFTimeGetAgeResult;
+ 
+ FFTimeGetAgeResult ffTimeGetAge(uint64_t birthMs, uint64_t nowMs);
++#endif
 diff --git a/src/detection/cpu/cpu_pyxis.c b/src/detection/cpu/cpu_pyxis.c
 new file mode 100644
 index 0000000..22ef999
