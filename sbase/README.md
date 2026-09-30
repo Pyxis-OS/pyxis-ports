@@ -34,12 +34,14 @@ Results contain CRC and byte count, plus the input name for named operands.
 Missing or unreadable inputs report errors and processing continues with later
 operands; input or detected output errors produce a nonzero exit status.
 
-Cksum emits a result only after EOF. Pyxis console input currently has no EOF
-operation, so use a finite file redirect or pipeline for stdin. Positive short
-reads are accumulated by the upstream loop. Broken pipe is reported through
-stdio's EPIPE/error indicator without a SIGPIPE facility. Input close results
-are ignored by upstream; libc still invalidates the descriptor under its close
-policy. The existing signedness warning in the byte-processing loop is retained.
+Cksum emits a result only after EOF. The framebuffer console has no EOF
+operation, so use a finite file redirect or pipeline for stdin there.
+Independent terminal sessions, including remote `END_INPUT`, deliver EOF;
+Ctrl+D is an ordinary byte. Positive short reads are accumulated by the
+upstream loop. Broken pipe is reported through stdio's EPIPE/error indicator
+without a SIGPIPE facility. Input close results are ignored by upstream; libc
+still invalidates the descriptor under its close policy. The existing signedness
+warning in the byte-processing loop is retained.
 
 ## Tee
 
@@ -73,8 +75,8 @@ outputs from receiving the rest of the input. Writeall retains its upstream
 loop over positive short writes. Output can be partial after an error; opening
 an output that aliases the input can destroy its contents, as in upstream tee.
 
-Terminal input can be forwarded as it arrives, but cannot finish through EOF
-until the console protocol supplies that operation.
+Terminal input is forwarded as it arrives. Framebuffer console input cannot
+finish through EOF; independent terminal sessions can, as for cksum.
 
 ## Uniq
 
@@ -103,8 +105,10 @@ newline is compared and written without one. Lines are read with libc
 large inputs are slow, especially from `host://` or native filesystems.
 
 A missing input or unopenable output reports an error and exits 1 before any
-output. Read and write errors, including a closed output pipe, are reported by
-upstream `fshut` with status 1 after input reaches EOF; there is no SIGPIPE.
-Console input has the same EOF limit as cksum. GCC's `loff` may-be-uninitialized
-warning in upstream code is a false positive and is retained. No other sbase
-tools are built, and no kernel or signal interface is introduced.
+output. A read error stops input immediately; upstream `fshut` then reports it
+with status 1. Output errors, including a closed output pipe, do not stop the
+input loop: uniq reads to EOF, then `fshut` reports them with status 1. There is
+no SIGPIPE. Framebuffer console input has the same EOF limit as cksum. GCC's
+`loff` may-be-uninitialized warning in upstream code is a false positive and is
+retained. No other sbase tools are built, and no kernel or signal interface is
+introduced.
