@@ -31,6 +31,11 @@ key-read helper until the deadline, redraws on expiry, then blocks indefinitely
 again. Escape-sequence decoding can finish after that deadline. Search prompts
 stay visible until the search ends. No calendar clock or polling loop is needed.
 
+`0004` handles terminal input EOF explicitly, including inside search prompts.
+It exits cleanly when there are no unsaved edits; otherwise it reports their loss
+and exits unsuccessfully. It never treats EOF as a key or retries it indefinitely.
+Ctrl-D remains an ordinary input byte, not terminal closure.
+
 This is an ASCII text editor. It reads LF and CRLF, rejects NUL bytes, and
 saves LF with a final newline for each row. Saves use create/truncate/write;
 an error can leave a partial file. Read-only files can be viewed but not saved.
