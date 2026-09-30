@@ -1,18 +1,19 @@
-# sbase cksum, tee and uniq
+# sbase cksum, tee, uniq and sha256sum
 
 [Upstream sbase](https://git.suckless.org/sbase) is pinned to
 `c546c3a5724c81cee9a11d816a38ccdf17472129`. This recipe builds cksum, a
-restricted tee and uniq, plus their eprintf/fshut/ealloc/writeall/strtonum
-helpers. It stages `bin/cksum.pxe`, `bin/tee.pxe`, `bin/uniq.pxe`, the complete
-MIT license/contributor list, arg.h's individual notice and `libutil/strtonum.c`
-with its OpenBSD ISC notice under `share/licenses/sbase`. Retain the notice
-files with the executables.
+restricted tee, uniq and sha256sum, plus their eprintf/fshut/ealloc/writeall/
+strtonum/crypt/sha256 helpers. It stages `bin/cksum.pxe`, `bin/tee.pxe`,
+`bin/uniq.pxe`, `bin/sha256sum.pxe`, the complete MIT license/contributor list,
+arg.h's individual notice and `libutil/strtonum.c` with its OpenBSD ISC notice
+under `share/licenses/sbase`. `libutil/sha256.c` is marked public domain and
+needs no separate notice. Retain the notice files with the executables.
 
 Patch 0001 narrows private util.h for cksum; 0002 adds tee's helper declarations
 and its option/lifetime adaptation. Patch 0003 restores upstream util.h's
 `compat.h` include (for `INT_MAX`) and strtonum declarations for uniq, unchanged
 from upstream. The header retains its license notice and avoids unrelated regex
-and offset APIs. Cksum, uniq, helper bodies and arg.h are unchanged.
+and offset APIs. Cksum, uniq, sha256sum, helper bodies and arg.h are unchanged.
 Conventional I/O, `getline`, `isblank`, BUFSIZ and PRIu32 come from the real
 Pyxis SDK. No compatibility headers are installed, and the SDK is never modified.
 
@@ -110,5 +111,33 @@ with status 1. Output errors, including a closed output pipe, do not stop the
 input loop: uniq reads to EOF, then `fshut` reports them with status 1. There is
 no SIGPIPE. Framebuffer console input has the same EOF limit as cksum. GCC's
 `loff` may-be-uninitialized warning in upstream code is a false positive and is
-retained. No other sbase tools are built, and no kernel or signal interface is
-introduced.
+retained.
+
+## Sha256sum
+
+The shell resolves `sha256sum` to `app://sha256sum.pxe`:
+
+```text
+sha256sum host://image.raw
+cat host://input | sha256sum
+sha256sum a b c > home://SHA256SUMS
+sha256sum -c home://SHA256SUMS
+```
+
+Each operand prints its lowercase SHA-256 digest, two spaces and its name; stdin
+is labelled `<stdin>`, including an explicit `-`. Unopenable operands are
+reported and later operands continue, with status 1. `-b` and `-t` are accepted
+and ignored, as upstream. Files are hashed through `read` in BUFSIZ blocks, not
+byte by byte.
+
+With `-c`, each operand (or stdin, or `-`) is a manifest of `digest  name` or
+`digest *name` lines; trailing CR/LF is stripped. Listed names are opened
+relative to the working directory. It prints `name: OK` or `name: FAILED`, then
+reports counts of malformed lines, unreadable files and mismatches, each giving
+status 1. An unopenable manifest is reported and skipped with status 1.
+Manifest lines use libc `getline`, one native read per byte, which matters only
+for very large manifests. A listed file whose read fails keeps its descriptor
+open until exit, as upstream. Each digest is written with unbuffered `printf`
+calls. The existing signedness warning in `libutil/crypt.c` is retained.
+
+No other sbase tools are built, and no kernel or signal interface is introduced.
