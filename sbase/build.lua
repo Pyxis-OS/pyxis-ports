@@ -8,6 +8,8 @@ return function(ctx)
     ctx.stage .. "/" .. ctx.metadata.outputs.tee })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/uniq.pxe",
     ctx.stage .. "/" .. ctx.metadata.outputs.uniq })
+  ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/sha256sum.pxe",
+    ctx.stage .. "/" .. ctx.metadata.outputs.sha256sum })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/arg.h",

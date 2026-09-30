@@ -17,6 +17,7 @@ return {
     executable = "bin/cksum.pxe",
     tee = "bin/tee.pxe",
     uniq = "bin/uniq.pxe",
+    sha256sum = "bin/sha256sum.pxe",
     license = "share/licenses/sbase/LICENSE",
     argument_notice = "share/licenses/sbase/arg.h",
     strtonum_notice = "share/licenses/sbase/strtonum.c",
