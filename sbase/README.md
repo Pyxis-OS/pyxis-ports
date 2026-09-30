@@ -1,17 +1,20 @@
-# sbase cksum and tee
+# sbase cksum, tee and uniq
 
 [Upstream sbase](https://git.suckless.org/sbase) is pinned to
-`c546c3a5724c81cee9a11d816a38ccdf17472129`. This recipe builds cksum and a
-restricted tee, plus their eprintf/fshut/ealloc/writeall helpers. It stages
-`bin/cksum.pxe`, `bin/tee.pxe`, the complete
-MIT license/contributor list and arg.h's individual notice under
-`share/licenses/sbase`. Retain both notice files with the executable.
+`c546c3a5724c81cee9a11d816a38ccdf17472129`. This recipe builds cksum, a
+restricted tee and uniq, plus their eprintf/fshut/ealloc/writeall/strtonum
+helpers. It stages `bin/cksum.pxe`, `bin/tee.pxe`, `bin/uniq.pxe`, the complete
+MIT license/contributor list, arg.h's individual notice and `libutil/strtonum.c`
+with its OpenBSD ISC notice under `share/licenses/sbase`. Retain the notice
+files with the executables.
 
 Patch 0001 narrows private util.h for cksum; 0002 adds tee's helper declarations
-and its option/lifetime adaptation. The header retains its license notice and
-avoids unrelated regex and offset APIs. Cksum, helper bodies and arg.h are
-unchanged. Conventional I/O, BUFSIZ and PRIu32 come from the real Pyxis SDK.
-No compatibility headers are installed, and the SDK is never modified.
+and its option/lifetime adaptation. Patch 0003 restores upstream util.h's
+`compat.h` include (for `INT_MAX`) and strtonum declarations for uniq, unchanged
+from upstream. The header retains its license notice and avoids unrelated regex
+and offset APIs. Cksum, uniq, helper bodies and arg.h are unchanged.
+Conventional I/O, `getline`, `isblank`, BUFSIZ and PRIu32 come from the real
+Pyxis SDK. No compatibility headers are installed, and the SDK is never modified.
 
 ## Cksum
 
@@ -71,5 +74,37 @@ loop over positive short writes. Output can be partial after an error; opening
 an output that aliases the input can destroy its contents, as in upstream tee.
 
 Terminal input can be forwarded as it arrives, but cannot finish through EOF
-until the console protocol supplies that operation. No other sbase tools are
-built, and no kernel or signal interface is introduced.
+until the console protocol supplies that operation.
+
+## Uniq
+
+The shell resolves `uniq` to `app://uniq.pxe`:
+
+```text
+uniq host://input
+cat host://input | uniq -c
+uniq -d -f 1 host://input home://duplicates
+uniq -u - home://unique < host://input
+```
+
+Uniq writes each run of adjacent identical lines once. It does not sort input or
+detect non-adjacent repeats. The upstream options are supported: `-c` prefixes
+counts, `-d` prints only repeated lines, `-u` prints only unrepeated lines,
+`-f N` skips N blank-separated fields and `-s N` skips N further characters
+before comparing. Both `-d` and `-u` together print nothing, as upstream.
+Operands are `[input [output]]`; `-` selects stdin or stdout. A named output is
+opened with `fopen(..., "w")`, creating or truncating it through the caller's
+grants after the input opens successfully.
+
+Field skipping uses libc `isblank`, so only ASCII space and tab separate fields.
+Lines are compared as bytes, including embedded NULs; a final line without a
+newline is compared and written without one. Lines are read with libc
+`getline`, which issues one native read per byte because streams are unbuffered;
+large inputs are slow, especially from `host://` or native filesystems.
+
+A missing input or unopenable output reports an error and exits 1 before any
+output. Read and write errors, including a closed output pipe, are reported by
+upstream `fshut` with status 1 after input reaches EOF; there is no SIGPIPE.
+Console input has the same EOF limit as cksum. GCC's `loff` may-be-uninitialized
+warning in upstream code is a false positive and is retained. No other sbase
+tools are built, and no kernel or signal interface is introduced.

@@ -1,0 +1,19 @@
+--- a/util.h
++++ b/util.h
+@@ -4,6 +4,7 @@
+ #include <unistd.h>
+ 
+ #include "arg.h"
++#include "compat.h"
+ 
+ void enfshut(int, FILE *, const char *);
+ void efshut(FILE *, const char *);
+@@ -26,3 +27,8 @@ char *enstrdup(int, const char *);
+ char *enstrndup(int, const char *, size_t);
+ 
+ ssize_t writeall(int, const void *, size_t);
++#undef strtonum
++#define strtonum xstrtonum
++long long strtonum(const char *, long long, long long, const char **);
++long long enstrtonum(int, const char *, long long, long long);
++long long estrtonum(const char *, long long, long long);
