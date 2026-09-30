@@ -1,0 +1,394 @@
+diff --git a/cmake/pyxis.cmake b/cmake/pyxis.cmake
+index 875e0da..2d2041e 100644
+--- a/cmake/pyxis.cmake
++++ b/cmake/pyxis.cmake
+@@ -12,7 +12,7 @@ if(NOT CMAKE_BUILD_TYPE)
+     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+ endif()
+ 
+-set(PYXIS_MODULES os kernel cpu memory uptime terminalsize colors break separator)
++set(PYXIS_MODULES os kernel cpu memory uptime terminalsize disk colors break separator)
+ file(GLOB FF_MODULE_SRCS CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/src/modules"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/*/*.c")
+ set(PYXIS_MODULE_DEFINITIONS "")
+@@ -40,7 +40,7 @@ set(BUILD_FLASHFETCH OFF CACHE BOOL "Build flashfetch" FORCE)
+ set(BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
+ set(SET_TWEAK OFF CACHE BOOL "Add tweak to project version" FORCE)
+ set(BINARY_LINK_TYPE static CACHE STRING "How to link fastfetch" FORCE)
+-set(DEFAULT_STRUCTURE "OS:Kernel:CPU:Memory:Uptime:TerminalSize"
++set(DEFAULT_STRUCTURE "OS:Kernel:CPU:Memory:Uptime:TerminalSize:Disk"
+     CACHE STRING "Default module structure for detection")
+ set(PROJECT_VERSION_TWEAK_NUM 0)
+ set(TARGET_DIR_ROOT "")
+@@ -104,12 +104,14 @@ set(LIBFASTFETCH_SRC
+     src/detection/version/version.c
+     src/detection/os/os.c
+     src/detection/cpu/cpu.c
++    src/detection/disk/disk.c
+     src/modules/os/os.c
+     src/modules/kernel/kernel.c
+     src/modules/cpu/cpu.c
+     src/modules/memory/memory.c
+     src/modules/uptime/uptime.c
+     src/modules/terminalsize/terminalsize.c
++    src/modules/disk/disk.c
+     src/modules/colors/colors.c
+     src/modules/break/break.c
+     src/modules/separator/separator.c
+@@ -124,6 +126,7 @@ set(LIBFASTFETCH_SRC
+     src/detection/memory/memory_pyxis.c
+     src/detection/uptime/uptime_pyxis.c
+     src/detection/terminalsize/terminalsize_pyxis.c
++    src/detection/disk/disk_pyxis.c
+ )
+ 
+ add_library(libfastfetch OBJECT ${LIBFASTFETCH_SRC})
+diff --git a/src/detection/disk/disk.c b/src/detection/disk/disk.c
+index b1ad006..9d23549 100644
+--- a/src/detection/disk/disk.c
++++ b/src/detection/disk/disk.c
+@@ -19,6 +19,7 @@ const char* ffDetectDisks(FFDiskOptions* options, FFlist* disks) {
+     // Note that we sort alphabetically here for a better ordering when printing the list,
+     //  so the check must be done in reverse order
+     ffListSort(disks, sizeof(FFDisk), (void*) compareDisks);
++#ifndef __pyxis__
+     FF_LIST_FOR_EACH (FFDisk, disk, *disks) {
+         if (disk->bytesTotal == 0) {
+             disk->type |= FF_DISK_VOLUME_TYPE_UNKNOWN_BIT;
+@@ -26,11 +27,12 @@ const char* ffDetectDisks(FFDiskOptions* options, FFlist* disks) {
+             disk->bytesUsed = disk->bytesTotal - (options->calcType == FF_DISK_CALC_TYPE_FREE ? disk->bytesFree : disk->bytesAvailable);
+         }
+     }
++#endif
+ 
+     return nullptr;
+ }
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+     #include <fnmatch.h>
+ 
+ bool ffDiskMatchesFolderPatterns(FFstrbuf* folders, const char* path, char separator) {
+diff --git a/src/detection/disk/disk.h b/src/detection/disk/disk.h
+index 57aaf2f..d767ff5 100644
+--- a/src/detection/disk/disk.h
++++ b/src/detection/disk/disk.h
+@@ -25,16 +25,24 @@ typedef struct FFDisk {
+     uint32_t filesTotal;
+ 
+     uint64_t createTime;
++#ifdef __pyxis__
++    char poolId[33];
++    char volumeId[33];
++    uint64_t selectedGeneration;
++    uint64_t poolAllocatableBytes;
++    bool gptDegraded;
++    bool filesystemDegraded;
++#endif
+ } FFDisk;
+ 
+ /**
+  * Returns a List of FFDisk, sorted alphabetically by mountpoint.
+- * If error is not set, disks contains at least one disk.
++ * An empty list means no observable disks; errors leave no Pyxis rows.
+  */
+ const char* ffDetectDisks(FFDiskOptions* options, FFlist* disks /* list of FFDisk */);
+ 
+ const char* ffDetectDisksImpl(FFDiskOptions* options, FFlist* disks);
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+ bool ffDiskMatchesFolderPatterns(FFstrbuf* folders, const char* path, char separator);
+ #endif
+diff --git a/src/detection/disk/disk_pyxis.c b/src/detection/disk/disk_pyxis.c
+new file mode 100644
+index 0000000..8c58e6a
+--- /dev/null
++++ b/src/detection/disk/disk_pyxis.c
+@@ -0,0 +1,78 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "disk.h"
++
++#include <directory.h>
++#include <handle.h>
++#include <startup.h>
++
++static void format_id(const uint8_t id[16], char text[33])
++{
++  static const char digits[] = "0123456789abcdef";
++  for (uint32_t i = 0; i < 16; ++i) {
++    text[i * 2] = digits[id[i] >> 4];
++    text[i * 2 + 1] = digits[id[i] & 15];
++  }
++  text[32] = '\0';
++}
++
++static const char *clear_disks(FFlist *disks, const char *error)
++{
++  FF_LIST_FOR_EACH (FFDisk, disk, *disks) {
++    ffStrbufDestroy(&disk->mountFrom);
++    ffStrbufDestroy(&disk->mountpoint);
++    ffStrbufDestroy(&disk->filesystem);
++    ffStrbufDestroy(&disk->name);
++  }
++  disks->length = 0;
++  return error;
++}
++
++const char *ffDetectDisksImpl(FFDiskOptions *options, FFlist *disks)
++{
++  if (options->folders.length || options->hideFolders.length) {
++    return "Folder filters are unsupported on Pyxis";
++  }
++
++  const struct startup_binding *roots = startup_roots();
++  size_t count = startup_root_count();
++  for (size_t i = 0; i < count; ++i) {
++    struct handle_info grant;
++    if (handle_query(roots[i].handle, &grant) != CALL_OK) {
++      return clear_disks(disks, "Native root grant query failed");
++    }
++    if (grant.kind != HANDLE_KIND_NATIVE || grant.protocol != PROTOCOL_DIRECTORY ||
++        !(grant.rights & DIRECTORY_RIGHT_FILESYSTEM_INFO)) {
++      continue;
++    }
++
++    struct directory_filesystem_info info;
++    if (directory_filesystem_info(roots[i].handle, &info) != CALL_OK) {
++      return clear_disks(disks, "Native filesystem information query failed");
++    }
++    if (info.type != FILESYSTEM_TYPE_PYXIS) {
++      return clear_disks(disks, "Unsupported native filesystem type");
++    }
++    if (ffStrbufSeparatedContainS(&options->hideFS, "Pyxis", ':')) {
++      continue;
++    }
++
++    // Startup handles are borrowed; querying does not acquire another reference.
++    FFDisk *disk = ffListAdd(disks, sizeof(*disk));
++    *disk = (FFDisk) {};
++    ffStrbufInit(&disk->mountFrom);
++    ffStrbufInitF(&disk->mountpoint, "%s://", (const char *) roots[i].name);
++    ffStrbufInitS(&disk->filesystem, "Pyxis");
++    ffStrbufInitS(&disk->name, info.volume_name);
++    disk->type = FF_DISK_VOLUME_TYPE_REGULAR_BIT;
++    if (info.flags & FILESYSTEM_FLAG_READ_ONLY) {
++      disk->type |= FF_DISK_VOLUME_TYPE_READONLY_BIT;
++    }
++    format_id(info.pool_id, disk->poolId);
++    format_id(info.volume_id, disk->volumeId);
++    disk->selectedGeneration = info.generation;
++    disk->poolAllocatableBytes = info.pool_allocatable_bytes;
++    disk->gptDegraded = !!(info.flags & FILESYSTEM_FLAG_GPT_DEGRADED);
++    disk->filesystemDegraded = !!(info.flags & FILESYSTEM_FLAG_DEGRADED);
++  }
++  return nullptr;
++}
+diff --git a/src/modules/disk/disk.c b/src/modules/disk/disk.c
+index c9c42e2..bf75763 100644
+--- a/src/modules/disk/disk.c
++++ b/src/modules/disk/disk.c
+@@ -2,11 +2,13 @@
+ #include "common/jsonconfig.h"
+ #include "common/percent.h"
+ #include "common/size.h"
+-#include "common/time.h"
++#ifndef __pyxis__
++    #include "common/time.h"
++#endif
+ #include "detection/disk/disk.h"
+ #include "modules/disk/disk.h"
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+     #include <fnmatch.h>
+ #endif
+ 
+@@ -18,6 +20,7 @@ static void printDisk(FFDiskOptions* options, const FFDisk* disk, uint32_t index
+     if (options->moduleArgs.key.length == 0) {
+         ffStrbufSetF(&key, "%s (%s)", FF_MODULE_GET_DISPLAY_NAME(Disk), disk->mountpoint.chars);
+     } else {
++#ifndef __pyxis__
+         FF_STRBUF_AUTO_DESTROY mountpointLink = ffStrbufCreate();
+         FF_STRBUF_AUTO_DESTROY nameLink = ffStrbufCreate();
+ #ifdef __linux__
+@@ -36,19 +39,92 @@ static void printDisk(FFDiskOptions* options, const FFDisk* disk, uint32_t index
+             ffStrbufSetF(&nameLink, "\e]8;;file://%s\e\\%s\e]8;;\e\\", disk->mountpoint.chars, disk->name.chars);
+         }
+ 
++#endif
++
+         FF_PARSE_FORMAT_STRING_CHECKED(&key, &options->moduleArgs.key, ((FFformatarg[]) {
+                                                                            FF_ARG(disk->mountpoint, "mountpoint"),
+                                                                            FF_ARG(disk->name, "name"),
++#ifdef __pyxis__
++                                                                           { FF_ARG_TYPE_NULL, nullptr, "mount-from" },
++#else
+                                                                            FF_ARG(disk->mountFrom, "mount-from"),
++#endif
+                                                                            FF_ARG(options->moduleArgs.keyIcon, "icon"),
+                                                                            FF_ARG(index, "index"),
+                                                                            FF_ARG(disk->filesystem, "filesystem"),
++#ifdef __pyxis__
++                                                                           { FF_ARG_TYPE_NULL, nullptr, "mountpoint-link" },
++                                                                           { FF_ARG_TYPE_NULL, nullptr, "name-link" },
++#else
+                                                                            FF_ARG(mountpointLink, "mountpoint-link"),
+                                                                            FF_ARG(nameLink, "name-link"),
++#endif
+                                                                            FF_ARG(FF_MODULE_GET_DISPLAY_NAME(Disk), "module-name"),
+                                                                        }));
+     }
+ 
++#ifdef __pyxis__
++    FF_STRBUF_AUTO_DESTROY poolCapacityPretty = ffStrbufCreate();
++    ffSizeAppendNum(disk->poolAllocatableBytes, &poolCapacityPretty);
++    bool isReadOnly = !!(disk->type & FF_DISK_VOLUME_TYPE_READONLY_BIT);
++
++    if (options->moduleArgs.outputFormat.length == 0) {
++        ffPrintLogoAndKey(key.chars, 0, &options->moduleArgs, FF_PRINT_TYPE_NO_CUSTOM_KEY);
++        FF_STRBUF_AUTO_DESTROY str = ffStrbufCreateS(disk->filesystem.chars);
++        if (isReadOnly || disk->gptDegraded || disk->filesystemDegraded) {
++            ffStrbufAppendS(&str, " [");
++            if (isReadOnly) {
++                ffStrbufAppendS(&str, "Read-only, ");
++            }
++            if (disk->gptDegraded) {
++                ffStrbufAppendS(&str, "GPT degraded, ");
++            }
++            if (disk->filesystemDegraded) {
++                ffStrbufAppendS(&str, "Filesystem degraded, ");
++            }
++            ffStrbufSubstrBefore(&str, str.length - 2);
++            ffStrbufAppendC(&str, ']');
++        }
++        ffStrbufAppendF(&str, " - shared pool capacity: %s", poolCapacityPretty.chars);
++        ffStrbufPutTo(&str, stdout);
++    } else {
++        FF_PRINT_FORMAT_CHECKED(key.chars, 0, &options->moduleArgs, FF_PRINT_TYPE_NO_CUSTOM_KEY, ((FFformatarg[]) {
++            { FF_ARG_TYPE_NULL, nullptr, "size-used" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-total" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-percentage" },
++            { FF_ARG_TYPE_NULL, nullptr, "files-used" },
++            { FF_ARG_TYPE_NULL, nullptr, "files-total" },
++            { FF_ARG_TYPE_NULL, nullptr, "files-percentage" },
++            { FF_ARG_TYPE_NULL, nullptr, "is-external" },
++            { FF_ARG_TYPE_NULL, nullptr, "is-hidden" },
++            FF_ARG(disk->filesystem, "filesystem"),
++            FF_ARG(disk->name, "name"),
++            FF_ARG(isReadOnly, "is-readonly"),
++            { FF_ARG_TYPE_NULL, nullptr, "create-time" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-percentage-bar" },
++            { FF_ARG_TYPE_NULL, nullptr, "files-percentage-bar" },
++            { FF_ARG_TYPE_NULL, nullptr, "days" },
++            { FF_ARG_TYPE_NULL, nullptr, "hours" },
++            { FF_ARG_TYPE_NULL, nullptr, "minutes" },
++            { FF_ARG_TYPE_NULL, nullptr, "seconds" },
++            { FF_ARG_TYPE_NULL, nullptr, "milliseconds" },
++            FF_ARG(disk->mountpoint, "mountpoint"),
++            { FF_ARG_TYPE_NULL, nullptr, "mount-from" },
++            { FF_ARG_TYPE_NULL, nullptr, "years" },
++            { FF_ARG_TYPE_NULL, nullptr, "days-of-year" },
++            { FF_ARG_TYPE_NULL, nullptr, "years-fraction" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-free" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-available" },
++            { FF_ARG_TYPE_STRING, disk->poolId, "pool-id" },
++            { FF_ARG_TYPE_STRING, disk->volumeId, "volume-id" },
++            FF_ARG(disk->selectedGeneration, "generation"),
++            FF_ARG(poolCapacityPretty, "pool-capacity"),
++            FF_ARG(disk->poolAllocatableBytes, "pool-capacity-bytes"),
++            FF_ARG(disk->gptDegraded, "is-gpt-degraded"),
++            FF_ARG(disk->filesystemDegraded, "is-filesystem-degraded"),
++        }));
++    }
++#else
+     FF_STRBUF_AUTO_DESTROY usedPretty = ffStrbufCreate();
+     ffSizeAppendNum(disk->bytesUsed, &usedPretty);
+ 
+@@ -181,6 +257,7 @@ static void printDisk(FFDiskOptions* options, const FFDisk* disk, uint32_t index
+                                                                                                      FF_ARG(availPretty, "size-available"),
+                                                                                                  }));
+     }
++#endif
+ }
+ 
+ bool ffPrintDisk(FFDiskOptions* options) {
+@@ -373,10 +450,17 @@ bool ffGenerateDiskJsonResult(FFDiskOptions* options, yyjson_mut_doc* doc, yyjso
+         yyjson_mut_val* obj = yyjson_mut_arr_add_obj(doc, arr);
+ 
+         yyjson_mut_val* bytes = yyjson_mut_obj_add_obj(doc, obj, "bytes");
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, bytes, "available");
++        yyjson_mut_obj_add_null(doc, bytes, "free");
++        yyjson_mut_obj_add_null(doc, bytes, "total");
++        yyjson_mut_obj_add_null(doc, bytes, "used");
++#else
+         yyjson_mut_obj_add_uint(doc, bytes, "available", item->bytesAvailable);
+         yyjson_mut_obj_add_uint(doc, bytes, "free", item->bytesFree);
+         yyjson_mut_obj_add_uint(doc, bytes, "total", item->bytesTotal);
+         yyjson_mut_obj_add_uint(doc, bytes, "used", item->bytesUsed);
++#endif
+ 
+         yyjson_mut_val* files = yyjson_mut_obj_add_obj(doc, obj, "files");
+         if (item->filesTotal == 0 && item->filesUsed == 0) {
+@@ -389,7 +473,11 @@ bool ffGenerateDiskJsonResult(FFDiskOptions* options, yyjson_mut_doc* doc, yyjso
+ 
+         yyjson_mut_obj_add_strbuf(doc, obj, "filesystem", &item->filesystem);
+         yyjson_mut_obj_add_strbuf(doc, obj, "mountpoint", &item->mountpoint);
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, obj, "mountFrom");
++#else
+         yyjson_mut_obj_add_strbuf(doc, obj, "mountFrom", &item->mountFrom);
++#endif
+         yyjson_mut_obj_add_strbuf(doc, obj, "name", &item->name);
+         yyjson_mut_val* typeArr = yyjson_mut_obj_add_arr(doc, obj, "volumeType");
+         if (item->type & FF_DISK_VOLUME_TYPE_REGULAR_BIT) {
+@@ -411,12 +499,23 @@ bool ffGenerateDiskJsonResult(FFDiskOptions* options, yyjson_mut_doc* doc, yyjso
+             yyjson_mut_arr_add_str(doc, typeArr, "Unknown");
+         }
+ 
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, obj, "createTime");
++        yyjson_mut_val* native = yyjson_mut_obj_add_obj(doc, obj, "native");
++        yyjson_mut_obj_add_strcpy(doc, native, "poolId", item->poolId);
++        yyjson_mut_obj_add_strcpy(doc, native, "volumeId", item->volumeId);
++        yyjson_mut_obj_add_uint(doc, native, "selectedGeneration", item->selectedGeneration);
++        yyjson_mut_obj_add_uint(doc, native, "poolAllocatableBytes", item->poolAllocatableBytes);
++        yyjson_mut_obj_add_bool(doc, native, "gptDegraded", item->gptDegraded);
++        yyjson_mut_obj_add_bool(doc, native, "filesystemDegraded", item->filesystemDegraded);
++#else
+         const char* pstr = ffTimeToFullStr(item->createTime);
+         if (*pstr) {
+             yyjson_mut_obj_add_strcpy(doc, obj, "createTime", pstr);
+         } else {
+             yyjson_mut_obj_add_null(doc, obj, "createTime");
+         }
++#endif
+     }
+ 
+     FF_LIST_FOR_EACH (FFDisk, item, disks) {
+@@ -433,7 +532,7 @@ void ffInitDiskOptions(FFDiskOptions* options) {
+     ffOptionInitModuleArg(&options->moduleArgs, "");
+ 
+     ffStrbufInit(&options->folders);
+-#if _WIN32 || __APPLE__ || __ANDROID__
++#if _WIN32 || __APPLE__ || __ANDROID__ || __pyxis__
+     ffStrbufInit(&options->hideFolders);
+ #else
+     ffStrbufInitS(&options->hideFolders, "/efi:/boot:/boot/*");
+@@ -509,6 +608,15 @@ FFModuleBaseInfo ffDiskModuleInfo = {
+         { "Years fraction after creation", "years-fraction" },
+         { "Size free", "size-free" },
+         { "Size available", "size-available" },
++#ifdef __pyxis__
++        { "Native pool ID (hex bytes in filesystem order)", "pool-id" },
++        { "Native volume ID (hex bytes in filesystem order)", "volume-id" },
++        { "Selected filesystem generation", "generation" },
++        { "Shared pool capacity (formatted)", "pool-capacity" },
++        { "Shared pool allocatable bytes (including metadata/reserves)", "pool-capacity-bytes" },
++        { "True if GPT opening was degraded", "is-gpt-degraded" },
++        { "True if filesystem opening was degraded", "is-filesystem-degraded" },
++#endif
+     })),
+     .defaultOrder = 42,
+ };
