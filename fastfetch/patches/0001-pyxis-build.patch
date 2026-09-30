@@ -1,0 +1,188 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2acd937..5aaeec6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -9,6 +9,11 @@ project(fastfetch
+ 
+ set(PROJECT_LICENSE "MIT license")
+ 
++if(CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
++    include(cmake/pyxis.cmake)
++    return()
++endif()
++
+ string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CMAKE_SYSTEM_PROCESSOR)
+ if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+     set(CMAKE_SYSTEM_PROCESSOR "amd64")
+diff --git a/cmake/pyxis.cmake b/cmake/pyxis.cmake
+new file mode 100644
+index 0000000..875e0da
+--- /dev/null
++++ b/cmake/pyxis.cmake
+@@ -0,0 +1,166 @@
++# SPDX-License-Identifier: MPL-2.0
++# The recipe supplies compile and link flags from the consumed SDK's pyxis.mk.
++if(NOT PYXIS_SDK OR NOT CMAKE_SYSROOT)
++    message(FATAL_ERROR "The Pyxis build requires PYXIS_SDK and CMAKE_SYSROOT")
++endif()
++
++set(CMAKE_C_STANDARD 23)
++set(CMAKE_C_STANDARD_REQUIRED ON)
++set(CMAKE_C_EXTENSIONS ON)
++set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
++if(NOT CMAKE_BUILD_TYPE)
++    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
++endif()
++
++set(PYXIS_MODULES os kernel cpu memory uptime terminalsize colors break separator)
++file(GLOB FF_MODULE_SRCS CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/src/modules"
++    "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/*/*.c")
++set(PYXIS_MODULE_DEFINITIONS "")
++foreach(FF_MODULE_SRC ${FF_MODULE_SRCS})
++    get_filename_component(FF_MODULE_DIR "${FF_MODULE_SRC}" DIRECTORY)
++    get_filename_component(FF_MODULE_NAME "${FF_MODULE_SRC}" NAME_WE)
++    if(FF_MODULE_DIR STREQUAL FF_MODULE_NAME)
++        string(TOUPPER "${FF_MODULE_DIR}" FF_MODULE_UPPER)
++        if(FF_MODULE_DIR IN_LIST PYXIS_MODULES)
++            set(MODULE_DISABLE_${FF_MODULE_UPPER} OFF CACHE BOOL "Disable module ${FF_MODULE_DIR}" FORCE)
++        else()
++            set(MODULE_DISABLE_${FF_MODULE_UPPER} ON CACHE BOOL "Disable module ${FF_MODULE_DIR}" FORCE)
++            list(APPEND PYXIS_MODULE_DEFINITIONS FF_MODULE_DISABLE_${FF_MODULE_UPPER}=1)
++        endif()
++    endif()
++endforeach()
++
++foreach(FEATURE VULKAN WAYLAND XCB_RANDR XRANDR DRM VADRM VAX11 VDPAU GIO DCONF EET DBUS
++    SQLITE3 RPM EGL GLX OPENCL FREETYPE PULSE DDCUTIL ELF THREADS IMAGE_LOGO IMAGEMAGICK7
++    IMAGEMAGICK6 SIXEL CHAFA ZLIB SYSTEM_YYJSON ASAN TRACER LTO EMBEDDED_PCIIDS
++    EMBEDDED_AMDGPUIDS WORDEXP LUA QUICKJS LIBZFS WCWIDTH)
++    set(ENABLE_${FEATURE} OFF CACHE BOOL "Unavailable in the bounded Pyxis port" FORCE)
++endforeach()
++set(BUILD_FLASHFETCH OFF CACHE BOOL "Build flashfetch" FORCE)
++set(BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
++set(SET_TWEAK OFF CACHE BOOL "Add tweak to project version" FORCE)
++set(BINARY_LINK_TYPE static CACHE STRING "How to link fastfetch" FORCE)
++set(DEFAULT_STRUCTURE "OS:Kernel:CPU:Memory:Uptime:TerminalSize"
++    CACHE STRING "Default module structure for detection")
++set(PROJECT_VERSION_TWEAK_NUM 0)
++set(TARGET_DIR_ROOT "")
++set(TARGET_DIR_USR "")
++set(TARGET_DIR_HOME "")
++set(TARGET_DIR_ETC "")
++set(CMAKE_INSTALL_SYSCONFDIR "")
++
++function(fastfetch_encode_c_string STR OUTVAR)
++    string(REGEX REPLACE "\n$" "" TEMP "${STR}")
++    string(REPLACE "\\" "\\\\" TEMP "${TEMP}")
++    string(REPLACE "\n" "\\n" TEMP "${TEMP}")
++    string(REPLACE "\"" "\\\"" TEMP "${TEMP}")
++    set(${OUTVAR} "\"${TEMP}\"" PARENT_SCOPE)
++endfunction()
++
++function(fastfetch_load_text FILENAME OUTVAR)
++    file(READ "${FILENAME}" TEMP)
++    fastfetch_encode_c_string("${TEMP}" TEMP)
++    set(${OUTVAR} "${TEMP}" PARENT_SCOPE)
++endfunction()
++
++file(READ "${CMAKE_CURRENT_SOURCE_DIR}/doc/help.json" DATATEXT_JSON_HELP)
++fastfetch_encode_c_string("${DATATEXT_JSON_HELP}" DATATEXT_JSON_HELP)
++configure_file(src/fastfetch_config.h.in fastfetch_config.h @ONLY)
++configure_file(src/fastfetch_datatext.h.in fastfetch_datatext.h @ONLY)
++file(GLOB LOGO_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/logo/ascii/[a-z_]/*.txt")
++set(LOGO_BUILTIN_H "#pragma once\n#pragma GCC diagnostic ignored \"-Wtrigraphs\"\n\n")
++foreach(file ${LOGO_FILES})
++    fastfetch_load_text("${file}" content)
++    get_filename_component(file "${file}" NAME_WE)
++    string(TOUPPER "${file}" file)
++    string(APPEND LOGO_BUILTIN_H "#define FASTFETCH_DATATEXT_LOGO_${file} ${content}\n")
++endforeach()
++file(GENERATE OUTPUT logo_builtin.h CONTENT "${LOGO_BUILTIN_H}")
++
++set(LIBFASTFETCH_SRC
++    src/common/impl/commandoption.c
++    src/common/impl/duration.c
++    src/common/impl/format.c
++    src/common/impl/frequency.c
++    src/common/impl/jsonconfig.c
++    src/common/impl/lua.c
++    src/common/impl/option.c
++    src/common/impl/parsing.c
++    src/common/impl/percent.c
++    src/common/impl/printing.c
++    src/common/impl/size.c
++    src/common/impl/temps.c
++    src/common/impl/FFcache.c
++    src/common/impl/FFlist.c
++    src/common/impl/FFstrbuf.c
++    src/common/impl/FFPlatform.c
++    src/common/impl/strutil.c
++    src/options/general.c
++    src/options/logo.c
++    src/options/display.c
++    src/logo/logo.c
++    src/logo/builtin.c
++    src/modules/modules.c
++    src/detection/version/version.c
++    src/detection/os/os.c
++    src/detection/cpu/cpu.c
++    src/modules/os/os.c
++    src/modules/kernel/kernel.c
++    src/modules/cpu/cpu.c
++    src/modules/memory/memory.c
++    src/modules/uptime/uptime.c
++    src/modules/terminalsize/terminalsize.c
++    src/modules/colors/colors.c
++    src/modules/break/break.c
++    src/modules/separator/separator.c
++    src/3rdparty/yyjson/yyjson.c
++    src/common/impl/memrchr.c
++    src/common/impl/init.c
++    src/common/impl/io_pyxis.c
++    src/common/impl/time_pyxis.c
++    src/common/impl/FFPlatform_pyxis.c
++    src/detection/os/os_pyxis.c
++    src/detection/cpu/cpu_pyxis.c
++    src/detection/memory/memory_pyxis.c
++    src/detection/uptime/uptime_pyxis.c
++    src/detection/terminalsize/terminalsize_pyxis.c
++)
++
++add_library(libfastfetch OBJECT ${LIBFASTFETCH_SRC})
++target_include_directories(libfastfetch PUBLIC "${PROJECT_BINARY_DIR}" src)
++target_compile_definitions(libfastfetch PUBLIC ${PYXIS_MODULE_DEFINITIONS}
++    FF_DISABLE_DLOPEN=1 FF_HAVE_CUSTOM_MEMRCHR=1)
++target_compile_options(libfastfetch PUBLIC -ffunction-sections -fdata-sections
++    -Wall -Wextra -Wconversion -Werror=uninitialized -Werror=return-type -Werror=vla
++    -Werror=incompatible-pointer-types -Werror=implicit-function-declaration -Werror=int-conversion)
++
++include(CheckCSourceCompiles)
++check_c_source_compiles("int main(void){int arr[1];return _Countof(arr);}" COMPILER_SUPPORTS_COUNT_OF)
++if(COMPILER_SUPPORTS_COUNT_OF)
++    target_compile_definitions(libfastfetch PUBLIC FF_SUPPORTS_COUNT_OF=1)
++endif()
++check_c_source_compiles("enum my_enum: long{MY_ENUM_ZERO}; void test(void*p){} int main(int,const char**){[[gnu::cleanup(test)]] void* x=nullptr; auto v=12.34; return (int)MY_ENUM_ZERO+(int)v;}" COMPILER_SUPPORTS_C23)
++if(NOT COMPILER_SUPPORTS_C23)
++    message(FATAL_ERROR "The Pyxis build requires a compiler with C23 support")
++endif()
++
++set(PYXIS_START "${CMAKE_SYSROOT}/usr/lib/crt0.o")
++set(PYXIS_LINKER_SCRIPT "${CMAKE_SYSROOT}/usr/lib/pyxis.ld")
++set(PYXIS_LIBRARIES
++    "${CMAKE_SYSROOT}/usr/lib/libc.a"
++    "${CMAKE_SYSROOT}/usr/lib/libterm.a"
++    "${CMAKE_SYSROOT}/usr/lib/libpyxis.a")
++add_executable(fastfetch src/fastfetch.c "${PYXIS_START}")
++set_target_properties(fastfetch PROPERTIES SUFFIX ".elf"
++    LINK_DEPENDS "${PYXIS_LINKER_SCRIPT};${PYXIS_LIBRARIES};${PYXIS_START}")
++target_compile_definitions(fastfetch PRIVATE FASTFETCH_TARGET_BINARY_NAME=fastfetch)
++target_link_libraries(fastfetch PRIVATE libfastfetch "-Wl,--start-group"
++    ${PYXIS_LIBRARIES} gcc "-Wl,--end-group")
++target_link_options(fastfetch PRIVATE "LINKER:--gc-sections")
++
++add_custom_command(OUTPUT "${PROJECT_BINARY_DIR}/fastfetch.pxe"
++    COMMAND "${PYXIS_SDK}/bin/elf2pxe" --format p1f
++        -o "${PROJECT_BINARY_DIR}/fastfetch.pxe" "$<TARGET_FILE:fastfetch>"
++    DEPENDS fastfetch "${PYXIS_SDK}/bin/elf2pxe"
++    VERBATIM)
++add_custom_target(fastfetch_pxe ALL DEPENDS "${PROJECT_BINARY_DIR}/fastfetch.pxe")

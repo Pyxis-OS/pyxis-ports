@@ -22,7 +22,7 @@ those recipes fetch, adapt or package.
 - Each port's `metadata.lua`, README and source notices identify its upstream
   license, pinned revision and local changes.
 - Upstream-derived files and patches, including `doom/patches/`, `kilo/patches/`,
-  `lua/patches/`, `sbase/patches/` and `tcc/patches/`, retain the licenses of the
+  `lua/patches/`, `sbase/patches/`, `fastfetch/patches/` and `tcc/patches/`, retain the licenses of the
   upstream files they modify. This includes applicable runtime exceptions.
 - `lua/main.c` retains Lua's MIT terms for its upstream-derived CLI flow and
   local adaptation, as documented in [lua/README.md](lua/README.md). The staged
@@ -31,6 +31,9 @@ those recipes fetch, adapt or package.
   in [ca-certificates/NOTICE](ca-certificates/NOTICE) and
   [LICENSE](ca-certificates/LICENSE). This project-wide choice does not replace
   that upstream attribution.
+- Fastfetch's new native adapter/build files and project ASCII logo are original
+  Pyxis material under MPL-2.0, as marked in the patch and `fastfetch/PORT-NOTICE`.
+  Bundled yyjson remains MIT; its staged header preserves its notice.
 - Imported libraries, generated trust/zone data, staged headers, game assets and
   other downloaded inputs retain their individual upstream terms. Consult each
   recipe and staged license directory rather than treating a bundle as all MPL.
