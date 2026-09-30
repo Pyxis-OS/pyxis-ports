@@ -6,6 +6,8 @@ return function(inputs)
     { tree = root .. "/ca-certificates/stage/share", at = "share" },
     { tree = root .. "/sbase/stage/bin", at = "" },
     { tree = root .. "/sbase/stage/share", at = "share" },
+    { tree = root .. "/fastfetch/stage/bin", at = "" },
+    { tree = root .. "/fastfetch/stage/share", at = "share" },
     { tree = root .. "/kilo/stage/bin", at = "" },
     { tree = root .. "/kilo/stage/share", at = "share" },
     { tree = root .. "/lua/stage/bin", at = "" },
