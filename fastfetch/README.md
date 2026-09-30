@@ -1,22 +1,28 @@
 # Fastfetch for Pyxis
 
-Build against an exported SDK with the Fastfetch libc prerequisites:
+The Pyxis image installs `app://fastfetch.pxe` and its notices under
+`app://share/licenses/fastfetch`. The shell resolves the command `fastfetch`.
+
+For a standalone build, use an exported SDK with the Fastfetch libc prerequisites:
 
 ```sh
 lua build.lua fastfetch --sdk /absolute/path/to/build/sdk --work /tmp/fastfetch-build
 ```
 
 The work directory must not exist. The recipe uses the prebuilt Pyxis compiler,
-CMake 3.21 or newer and GNU Make. It stages `bin/fastfetch.pxe` and licenses;
-default-image installation remains the next integration task. Expose the staged
-executable through `host://` for development:
+CMake 3.21 or newer and GNU Make. It stages `bin/fastfetch.pxe` and licenses.
+The normal image build selects this recipe and `install.lua` packages its stage.
+Run in the guest:
 
 ```text
-host://fastfetch.pxe
-host://fastfetch.pxe --json
-host://fastfetch.pxe --config home://fastfetch.jsonc
-host://fastfetch.pxe --structure OS:Kernel:CPU:Memory:Uptime:TerminalSize:Colors
+fastfetch
+fastfetch --json
+fastfetch --config home://fastfetch.jsonc
+fastfetch --structure OS:Kernel:CPU:Memory:Uptime:TerminalSize:Colors
 ```
+
+A standalone staged executable can also be exposed through `host://` and run
+by its explicit URI.
 
 ## Adaptation
 
@@ -117,6 +123,15 @@ remote console's 100x30 dimensions.
 The logo SHA-256 matches the owner's source:
 `657381d8eda6cba5aa5e872a24e283d8dae144e406f160d32363cb0b8d885e1d`.
 Missing-grant paths were reviewed in code; no allocation fault injection or new
-tests were added. Default installation and broader local/narrow-console acceptance
-remain the next task. Earlier validation of the superseded patch does not establish
+tests were added. Earlier validation of the superseded patch does not establish
 behavior of this reconstruction.
+
+Default-image integration subsequently passed an ordinary image build and
+interactive local 160x48 and remote 100x30/40x12 runs of the packaged command.
+JSONC, file redirection, a cat pipeline and repeated runs worked. A disposable
+launcher omitting system_info, clock and named output grants received six JSON
+module errors and exit status zero, as upstream permits. GDB matched CPU data
+and allocator bytes to native kernel observations and uptime to clock
+nanoseconds divided by one million. The narrow terminal retains upstream
+layout: long logo/data lines may wrap; use `--logo none` and shorter formats.
+No port patches changed for this integration.
