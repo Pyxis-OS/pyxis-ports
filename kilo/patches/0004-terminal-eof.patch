@@ -1,0 +1,15 @@
+diff --git a/kilo.c b/kilo.c
+--- a/kilo.c
++++ b/kilo.c
+@@ -249,6 +249,11 @@ int editorReadKey(void) {
+         return KEY_NULL;
+     }
+     if (status != CALL_OK) fail("terminal input failed");
++    if (key == TERM_KEY_EOF) {
++        if (E.dirty) fail("terminal input closed; unsaved edits lost");
++        restore_terminal();
++        exit(EXIT_SUCCESS);
++    }
+     switch (key) {
+     case TERM_KEY_LEFT: return ARROW_LEFT;
+     case TERM_KEY_RIGHT: return ARROW_RIGHT;
