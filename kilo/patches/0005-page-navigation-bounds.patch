@@ -1,0 +1,22 @@
+diff --git a/kilo.c b/kilo.c
+--- a/kilo.c
++++ b/kilo.c
+@@ -1093,7 +1093,7 @@ void editorMoveCursor(int key) {
+             if (E.coloff) {
+                 E.coloff--;
+             } else {
+-                if (filerow > 0) {
++                if (filerow > 0 && filerow <= E.numrows) {
+                     if (E.cy) E.cy--;
+                     else E.rowoff--;
+                     E.cx = E.row[filerow-1].size;
+@@ -1213,6 +1213,9 @@ void editorProcessKeypress(void) {
+             E.cy = 0;
+         else if (c == PAGE_DOWN && E.cy != E.screenrows-1)
+             E.cy = E.screenrows-1;
++        /* The EOF row is valid; blank screen rows beyond it are not. */
++        if (E.cy > E.numrows-E.rowoff)
++            E.cy = E.numrows-E.rowoff;
+         {
+         int times = E.screenrows;
+         while(times--)
