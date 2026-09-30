@@ -2,7 +2,7 @@ Fastfetch 2.69.0 for Pyxis
 Upstream: https://github.com/fastfetch-cli/fastfetch.git
 Revision: 0c3b852bf7bad2837a814c7a31bf332092048a2b
 Patches: 0001-pyxis-build.patch, 0002-pyxis-native-adapters.patch,
-         0003-pyxis-logo.patch
+         0003-pyxis-logo.patch, 0004-pyxis-disk.patch
 
 Fastfetch and adaptations of its existing files retain upstream MIT terms
 in LICENSE. Bundled yyjson is unchanged; its complete MIT notice is retained
@@ -12,6 +12,6 @@ Original Pyxis native adapters, bounded CMake build, recipe and project ASCII
 logo use MPL-2.0, included alongside this notice. The owner supplied the logo
 as /shared/pyxis-logo/logo; its bytes are unchanged. PNG/SVG artwork is not used.
 
-The patches select SDK interfaces, nine modules and one-shot text/JSON output.
+The patches select SDK interfaces, ten modules and one-shot text/JSON output.
 Upstream formatting, containers, allocation and diagnostic behavior are retained.
 See the recipe README for supported facilities and native observations.
