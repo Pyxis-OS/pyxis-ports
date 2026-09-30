@@ -1,0 +1,1163 @@
+diff --git a/src/common/FFstrbuf.h b/src/common/FFstrbuf.h
+index 879508a..ae7100f 100644
+--- a/src/common/FFstrbuf.h
++++ b/src/common/FFstrbuf.h
+@@ -5,6 +5,9 @@
+ #include <stdbool.h>
+ #include <stdio.h>
+ #include <string.h>
++#ifdef __pyxis__
++    #include <strings.h>
++#endif
+ #include <stdlib.h>
+ #include <assert.h>
+ #include "common/memrchr.h"
+diff --git a/src/common/impl/FFPlatform_pyxis.c b/src/common/impl/FFPlatform_pyxis.c
+new file mode 100644
+index 0000000..d15b6df
+--- /dev/null
++++ b/src/common/impl/FFPlatform_pyxis.c
+@@ -0,0 +1,40 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "FFPlatform_private.h"
++#include "common/pyxis.h"
++
++#include <abi/memory.h>
++#include <startup.h>
++#include <system_info.h>
++
++static struct system_info_identity identity;
++static const char *identity_error;
++
++const char *ffPyxisIdentityError(void)
++{
++  return identity_error;
++}
++
++const char *ffPyxisOSName(void)
++{
++  return identity.os_name;
++}
++
++void ffPlatformInitImpl(FFPlatform *platform)
++{
++  platform->sysinfo.pageSizeShift = (uint32_t) __builtin_ctzll(MEMORY_PAGE_SIZE);
++
++  identity = (struct system_info_identity) {};
++  handle_t handle = startup_resource("system_info");
++  if (handle == HANDLE_INVALID) {
++    identity_error = "Missing system_info READ grant";
++    return;
++  }
++  if (system_info_get_identity(handle, &identity) != CALL_OK) {
++    identity_error = "Native system identity query failed";
++    return;
++  }
++  identity_error = nullptr;
++  ffStrbufSetS(&platform->sysinfo.name, identity.kernel_name);
++  ffStrbufSetS(&platform->sysinfo.release, identity.build_revision);
++  ffStrbufSetS(&platform->sysinfo.architecture, identity.architecture);
++}
+diff --git a/src/common/impl/init.c b/src/common/impl/init.c
+index 16932e1..75ff8d8 100644
+--- a/src/common/impl/init.c
++++ b/src/common/impl/init.c
+@@ -9,11 +9,13 @@
+ 
+ #include <stdlib.h>
+ #include <unistd.h>
++#ifndef __pyxis__
+ #include <locale.h>
++#endif
+ #ifdef _WIN32
+     #include <windows.h>
+     #include "common/windows/unicode.h"
+-#else
++#elif !defined(__pyxis__)
+     #include <signal.h>
+ #endif
+ #if __linux__
+@@ -62,7 +64,7 @@ void ffInitInstance(void) {
+             atexit(resetConsoleCP);
+         }
+     }
+-#else
++#elif !defined(__pyxis__)
+     // Never use `setlocale(LC_ALL, "")`
+     setlocale(LC_TIME, "");
+ #endif
+@@ -101,7 +103,7 @@ BOOL WINAPI consoleHandler([[maybe_unused]] DWORD signal) {
+     resetConsole();
+     exit(0);
+ }
+-#else
++#elif !defined(__pyxis__)
+ static void exitSignalHandler([[maybe_unused]] int signal) {
+     resetConsole();
+     exit(0);
+@@ -120,7 +122,7 @@ void ffStart(void) {
+         setvbuf(stdout, nullptr, _IOFBF, 4096);
+     }
+     SetConsoleCtrlHandler(consoleHandler, TRUE);
+-#else
++#elif !defined(__pyxis__)
+     if (instance.config.display.noBuffer) {
+         setvbuf(stdout, nullptr, _IONBF, 0);
+     }
+diff --git a/src/common/impl/io_pyxis.c b/src/common/impl/io_pyxis.c
+new file mode 100644
+index 0000000..add1a24
+--- /dev/null
++++ b/src/common/impl/io_pyxis.c
+@@ -0,0 +1,94 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "common/io.h"
++
++#include <handle.h>
++#include <path.h>
++#include <startup.h>
++#include <stdlib.h>
++
++bool ffIsTerminal(int fd)
++{
++  if (fd < STDIN_FILENO || fd > STDERR_FILENO) {
++    return false;
++  }
++  struct startup_stream stream = startup_stream((enum startup_stream_index) fd);
++  return stream.protocol == PROTOCOL_CONSOLE && stream.handle != HANDLE_INVALID;
++}
++
++bool ffAppendFDBuffer(FFNativeFD fd, FFstrbuf *buffer)
++{
++  char bytes[4096];
++  ssize_t count;
++  while ((count = read(fd, bytes, sizeof(bytes))) > 0) {
++    ffStrbufAppendNS(buffer, (uint32_t) count, bytes);
++  }
++  return count == 0;
++}
++
++bool ffAppendFileBuffer(const char *path, FFstrbuf *buffer)
++{
++  FILE *file = fopen(path, "r");
++  if (!file) {
++    return false;
++  }
++  char bytes[4096];
++  size_t count;
++  while ((count = fread(bytes, 1, sizeof(bytes), file)) > 0) {
++    ffStrbufAppendNS(buffer, (uint32_t) count, bytes);
++  }
++  bool success = !ferror(file);
++  if (fclose(file) != 0) {
++    success = false;
++  }
++  return success;
++}
++
++bool ffWriteFDBuffer(FFNativeFD fd, const FFstrbuf *buffer)
++{
++  size_t offset = 0;
++  while (offset < buffer->length) {
++    ssize_t count = write(fd, buffer->chars + offset, buffer->length - offset);
++    if (count <= 0) {
++      return false;
++    }
++    offset += (size_t) count;
++  }
++  return true;
++}
++
++bool ffPathExists(const char *path, FFPathType path_type)
++{
++  size_t length = strlen(path);
++  size_t depth = startup_working_directory_count();
++  if (length == SIZE_MAX || depth > SIZE_MAX - length - 1 ||
++      depth + length + 1 > SIZE_MAX / sizeof(handle_t)) {
++    return false;
++  }
++  size_t slots = depth + length + 1;
++  handle_t *directories = malloc(slots * sizeof(*directories));
++  char *component = malloc(length + 1);
++  if (!directories || !component) {
++    free(component);
++    free(directories);
++    return false;
++  }
++  struct path_workspace workspace = { directories, slots, component, length + 1 };
++  // Borrow the initial cwd chain; path_resolve owns only its temporary handles.
++  struct path_context context = {
++    .directories = (handle_t *) startup_working_directories(), .count = depth,
++  };
++  handle_t handle;
++  bool exists = false;
++  if (path_type & FF_PATHTYPE_FILE) {
++    exists = path_resolve(&context, path, DIRECTORY_KIND_FILE, 0, &workspace, &handle) == CALL_OK;
++  }
++  if (!exists && (path_type & FF_PATHTYPE_DIRECTORY)) {
++    exists = path_resolve(&context, path, DIRECTORY_KIND_DIRECTORY, 0, &workspace, &handle) == CALL_OK;
++  }
++  if (exists) {
++    handle_close(handle);
++  }
++  free(component);
++  free(directories);
++  return exists;
++}
+diff --git a/src/common/impl/time_pyxis.c b/src/common/impl/time_pyxis.c
+new file mode 100644
+index 0000000..a959db2
+--- /dev/null
++++ b/src/common/impl/time_pyxis.c
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "common/time.h"
++
++#include <clock.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <startup.h>
++
++double ffTimeGetTick(void)
++{
++  uint64_t nanoseconds;
++  if (clock_now(startup_resource("clock"), &nanoseconds) != CALL_OK) {
++    fputs("Native monotonic clock query failed\n", stderr);
++    exit(1);
++  }
++  return (double) nanoseconds / 1000000.0;
++}
+diff --git a/src/common/io.h b/src/common/io.h
+index 78da571..0b7f32d 100644
+--- a/src/common/io.h
++++ b/src/common/io.h
+@@ -3,6 +3,23 @@
+ #include "common/FFstrbuf.h"
+ #include "common/FFlist.h"
+ 
++#if defined(__pyxis__)
++#include <unistd.h>
++
++typedef int FFNativeFD;
++typedef enum FFPathType: uint8_t {
++    FF_PATHTYPE_FILE = 1 << 0,
++    FF_PATHTYPE_DIRECTORY = 1 << 1,
++    FF_PATHTYPE_ANY = FF_PATHTYPE_FILE | FF_PATHTYPE_DIRECTORY,
++} FFPathType;
++
++#define FFUnixFD2NativeFD(fd) (fd)
++bool ffIsTerminal(int fd);
++bool ffAppendFDBuffer(FFNativeFD fd, FFstrbuf* buffer);
++bool ffAppendFileBuffer(const char* path, FFstrbuf* buffer);
++bool ffWriteFDBuffer(FFNativeFD fd, const FFstrbuf* buffer);
++bool ffPathExists(const char* path, FFPathType pathType);
++#else
+ #ifdef _WIN32
+     #include <fileapi.h>
+     #include <handleapi.h>
+@@ -305,3 +322,5 @@ bool ffIsTerminal(int fd);
+ // The representation is uniform across platforms so that a value derived from it means the
+ // same thing everywhere, which matters for callers that store it as a cache key.
+ [[gnu::nonnull(1)]] uint64_t ffPathGetMtime(const char* path);
++
++#endif
+diff --git a/src/common/pyxis.h b/src/common/pyxis.h
+new file mode 100644
+index 0000000..e35241f
+--- /dev/null
++++ b/src/common/pyxis.h
+@@ -0,0 +1,5 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#pragma once
++
++const char* ffPyxisIdentityError(void);
++const char* ffPyxisOSName(void);
+diff --git a/src/common/strutil.h b/src/common/strutil.h
+index ee30dbc..87ffc26 100644
+--- a/src/common/strutil.h
++++ b/src/common/strutil.h
+@@ -3,6 +3,9 @@
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <string.h>
++#ifdef __pyxis__
++    #include <strings.h>
++#endif
+ #include <ctype.h>
+ 
+ #ifdef _WIN32
+diff --git a/src/common/time.h b/src/common/time.h
+index a4d2534..37d65ad 100644
+--- a/src/common/time.h
++++ b/src/common/time.h
+@@ -1,5 +1,9 @@
+ #pragma once
+ 
++#if defined(__pyxis__)
++double ffTimeGetTick(void);
++#else
++
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <time.h>
+@@ -78,3 +82,5 @@ typedef struct FFTimeGetAgeResult {
+ } FFTimeGetAgeResult;
+ 
+ FFTimeGetAgeResult ffTimeGetAge(uint64_t birthMs, uint64_t nowMs);
++
++#endif
+diff --git a/src/detection/cpu/cpu.c b/src/detection/cpu/cpu.c
+index 896bbbc..5b07cb1 100644
+--- a/src/detection/cpu/cpu.c
++++ b/src/detection/cpu/cpu.c
+@@ -23,7 +23,7 @@ const char* ffDetectCPU(const FFCPUOptions* options, FFCPUResult* cpu) {
+     ffStrbufTrimRight(&cpu->name, ' ');          // If we removed the @ in previous step there was most likely a space before it
+     ffStrbufRemoveDupWhitespaces(&cpu->name);
+ 
+-#if __i386__ || __x86_64__
++#if (__i386__ || __x86_64__) && !defined(__pyxis__)
+     ffCPUDetectX86Specific(cpu);
+ #endif
+ 
+diff --git a/src/detection/cpu/cpu_pyxis.c b/src/detection/cpu/cpu_pyxis.c
+new file mode 100644
+index 0000000..a6b6568
+--- /dev/null
++++ b/src/detection/cpu/cpu_pyxis.c
+@@ -0,0 +1,23 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "cpu.h"
++
++#include <startup.h>
++#include <system_info.h>
++
++const char *ffDetectCPUImpl([[maybe_unused]] const FFCPUOptions *options, FFCPUResult *cpu)
++{
++  handle_t handle = startup_resource("system_info");
++  if (handle == HANDLE_INVALID) {
++    return "Missing system_info READ grant";
++  }
++  struct system_info_cpu info;
++  if (system_info_get_cpu(handle, &info) != CALL_OK) {
++    return "Native CPU query failed";
++  }
++  if (info.online_count > UINT16_MAX) {
++    return "Online CPU count exceeds Fastfetch's representation";
++  }
++  ffStrbufSetS(&cpu->name, info.brand);
++  cpu->coresOnline = (uint16_t) info.online_count;
++  return nullptr;
++}
+diff --git a/src/detection/memory/memory_pyxis.c b/src/detection/memory/memory_pyxis.c
+new file mode 100644
+index 0000000..bb21cef
+--- /dev/null
++++ b/src/detection/memory/memory_pyxis.c
+@@ -0,0 +1,20 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "memory.h"
++
++#include <startup.h>
++#include <system_info.h>
++
++const char *ffDetectMemory(FFMemoryResult *memory)
++{
++  handle_t handle = startup_resource("system_info");
++  if (handle == HANDLE_INVALID) {
++    return "Missing system_info READ grant";
++  }
++  struct system_info_memory info;
++  if (system_info_get_memory(handle, &info) != CALL_OK) {
++    return "Native allocator memory query failed";
++  }
++  memory->bytesTotal = info.total_bytes;
++  memory->bytesUsed = info.allocated_bytes;
++  return nullptr;
++}
+diff --git a/src/detection/os/os_pyxis.c b/src/detection/os/os_pyxis.c
+new file mode 100644
+index 0000000..b9fb6d7
+--- /dev/null
++++ b/src/detection/os/os_pyxis.c
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "os.h"
++#include "common/pyxis.h"
++
++void ffDetectOSImpl(FFOSResult *os)
++{
++  if (!ffPyxisIdentityError()) {
++    // The native identity snapshot owns this string until process exit.
++    ffStrbufSetStatic(&os->name, ffPyxisOSName());
++  }
++}
+diff --git a/src/detection/terminalsize/terminalsize_pyxis.c b/src/detection/terminalsize/terminalsize_pyxis.c
+new file mode 100644
+index 0000000..801597d
+--- /dev/null
++++ b/src/detection/terminalsize/terminalsize_pyxis.c
+@@ -0,0 +1,23 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "terminalsize.h"
++
++#include <console.h>
++#include <startup.h>
++
++bool ffDetectTerminalSize(FFTerminalSizeResult *result, [[maybe_unused]] bool fast_only)
++{
++  handle_t output = startup_resource("output");
++  if (output == HANDLE_INVALID) {
++    return false;
++  }
++  size_t columns, rows;
++  if (console_size(output, &columns, &rows) != CALL_OK ||
++      columns == 0 || rows == 0 || columns > UINT16_MAX || rows > UINT16_MAX) {
++    return false;
++  }
++  *result = (FFTerminalSizeResult) {
++    .columns = (uint16_t) columns,
++    .rows = (uint16_t) rows,
++  };
++  return true;
++}
+diff --git a/src/detection/uptime/uptime_pyxis.c b/src/detection/uptime/uptime_pyxis.c
+new file mode 100644
+index 0000000..1c63451
+--- /dev/null
++++ b/src/detection/uptime/uptime_pyxis.c
+@@ -0,0 +1,19 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "uptime.h"
++
++#include <clock.h>
++#include <startup.h>
++
++const char *ffDetectUptime(FFUptimeResult *result)
++{
++  handle_t handle = startup_resource("clock");
++  if (handle == HANDLE_INVALID) {
++    return "Missing clock READ grant";
++  }
++  uint64_t nanoseconds;
++  if (clock_now(handle, &nanoseconds) != CALL_OK) {
++    return "Native monotonic clock query failed";
++  }
++  result->uptime = nanoseconds / UINT64_C(1000000);
++  return nullptr;
++}
+diff --git a/src/detection/version/version.c b/src/detection/version/version.c
+index b3c3514..00ef235 100644
+--- a/src/detection/version/version.c
++++ b/src/detection/version/version.c
+@@ -35,7 +35,9 @@
+     #define FF_ARCHITECTURE "Unknown"
+ #endif
+ 
+-#if defined(__ANDROID__)
++#if defined(__pyxis__)
++    #define FF_SYSNAME "Pyxis"
++#elif defined(__ANDROID__)
+     #define FF_SYSNAME "Android"
+ #elif defined(__linux__)
+     #define FF_SYSNAME "Linux"
+diff --git a/src/fastfetch.c b/src/fastfetch.c
+index 4591301..470fa18 100644
+--- a/src/fastfetch.c
++++ b/src/fastfetch.c
+@@ -330,6 +330,11 @@ static void printCommandHelp(const char* command) {
+ 
+ [[gnu::cold]]
+ static void listAvailablePresets(bool pretty) {
++#if defined(__pyxis__)
++    (void) pretty;
++    fputs("Listing presets is unsupported on Pyxis\n", stderr);
++    exit(1);
++#else
+     FF_LIST_FOR_EACH (FFstrbuf, path, instance.state.platform.dataDirs) {
+         ffStrbufAppendS(path, "fastfetch/presets/");
+         ffListFilesRecursively(path->chars, pretty);
+@@ -341,18 +346,28 @@ static void listAvailablePresets(bool pretty) {
+         ffStrbufAppendS(&absolutePath, "/presets/");
+         ffListFilesRecursively(absolutePath.chars, pretty);
+     }
++#endif
+ }
+ 
+ [[gnu::cold]]
+ static void listAvailableLogos(void) {
++#if defined(__pyxis__)
++    fputs("Listing logos is unsupported on Pyxis\n", stderr);
++    exit(1);
++#else
+     FF_LIST_FOR_EACH (FFstrbuf, path, instance.state.platform.dataDirs) {
+         ffStrbufAppendS(path, "fastfetch/logos/");
+         ffListFilesRecursively(path->chars, true);
+     }
++#endif
+ }
+ 
+ [[gnu::cold]]
+ static void listConfigPaths(void) {
++#if defined(__pyxis__)
++    fputs("Listing config paths is unsupported on Pyxis\n", stderr);
++    exit(1);
++#else
+     FF_LIST_FOR_EACH (FFstrbuf, folder, instance.state.platform.configDirs) {
+         bool exists = false;
+         uint32_t length = folder->length + (uint32_t) strlen("fastfetch") + 1 /* trailing slash */;
+@@ -361,14 +376,20 @@ static void listConfigPaths(void) {
+         ffStrbufSubstrBefore(folder, length);
+         printf("%s%s\n", folder->chars, exists ? " (*)" : "");
+     }
++#endif
+ }
+ 
+ [[gnu::cold]]
+ static void listDataPaths(void) {
++#if defined(__pyxis__)
++    fputs("Listing data paths is unsupported on Pyxis\n", stderr);
++    exit(1);
++#else
+     FF_LIST_FOR_EACH (FFstrbuf, folder, instance.state.platform.dataDirs) {
+         ffStrbufAppendS(folder, "fastfetch/");
+         puts(folder->chars);
+     }
++#endif
+ }
+ 
+ [[gnu::cold]]
+@@ -441,6 +462,7 @@ static bool parseJsoncFile(FFdata* data, const char* path, yyjson_read_flag flg)
+     return true;
+ }
+ 
++#if !defined(__pyxis__)
+ [[gnu::cold]]
+ static void setupGenConfigPath(FFdata* data, const char* filePath) {
+     if (!filePath) {
+@@ -457,7 +479,9 @@ static void setupGenConfigPath(FFdata* data, const char* filePath) {
+         ffStrbufSetS(&data->genConfigPath, filePath);
+     }
+ }
++#endif
+ 
++#if !defined(__pyxis__)
+ [[gnu::cold]]
+ static void generateConfigFile(FFdata* data, const char* filePath) {
+     if (data->resultDoc) {
+@@ -475,8 +499,32 @@ static void generateConfigFile(FFdata* data, const char* filePath) {
+     data->docType = FF_RESULT_DOC_TYPE_CONFIG;
+     data->resultDoc = yyjson_mut_doc_new(nullptr);
+ }
++#endif
+ 
+ static void optionParseConfigFile(FFdata* data, const char* key, const char* value) {
++#if defined(__pyxis__)
++    if (data->configLoaded || !value) {
++        fprintf(stderr, "Error: supply one %s <native URI>\n", key);
++        exit(413);
++    }
++    data->configLoaded = true;
++    if (ffStrEqualsIgnCase(value, "none")) return;
++    if (!strstr(value, "://")) {
++        fputs("Error: config requires an explicit native URI\n", stderr);
++        exit(413);
++    }
++    yyjson_read_flag flags;
++    if (ffStrEndsWithIgnCase(value, ".json")) flags = 0;
++    else if (ffStrEndsWithIgnCase(value, ".jsonc")) flags = YYJSON_READ_ALLOW_COMMENTS | YYJSON_READ_ALLOW_TRAILING_COMMAS;
++    else {
++        fputs("Error: config requires .json or .jsonc\n", stderr);
++        exit(413);
++    }
++    if (!parseJsoncFile(data, value, flags)) {
++        fprintf(stderr, "Error: could not open config %s\n", value);
++        exit(414);
++    }
++#else
+     if (data->configLoaded) {
+         fprintf(stderr, "Error: only one config file can be loaded\n");
+         exit(413);
+@@ -582,6 +630,7 @@ static void optionParseConfigFile(FFdata* data, const char* key, const char* val
+ 
+     fprintf(stderr, "Error: couldn't find config: %s\n", value);
+     exit(414);
++#endif
+ }
+ 
+ [[gnu::cold]]
+@@ -602,6 +651,12 @@ static void enableJsonOutput(FFdata* data) {
+ }
+ 
+ static void genConfigCommon(FFdata* data, const char* value) {
++#if defined(__pyxis__)
++    (void) data;
++    (void) value;
++    fputs("Config generation is unsupported on Pyxis\n", stderr);
++    exit(1);
++#else
+     if (!getenv("NO_COLOR") && ffIsTerminal(STDOUT_FILENO) && ffIsTerminal(STDIN_FILENO)
+         #ifdef _WIN32
+             && ffIsWindows10OrGreater()
+@@ -612,6 +667,7 @@ static void genConfigCommon(FFdata* data, const char* value) {
+     } else {
+         generateConfigFile(data, value);
+     }
++#endif
+ }
+ 
+ static void parseCommand(FFdata* data, char* key, char* value) {
+@@ -732,6 +788,7 @@ static void parseOption(FFdata* data, const char* key, const char* value) {
+     }
+ }
+ 
++#if !defined(__pyxis__)
+ static void parseConfigFiles(FFdata* data) {
+     if (__builtin_expect(data->genConfigPath.length == 0, true)) {
+         FF_LIST_FOR_EACH (FFstrbuf, dir, instance.state.platform.configDirs) {
+@@ -754,6 +811,8 @@ static void parseConfigFiles(FFdata* data) {
+     }
+ }
+ 
++#endif
++
+ static void parseArguments(FFdata* data, int argc, char** argv, void (*parser)(FFdata* data, char* key, char* value)) {
+     for (int i = 1; i < argc; i++) {
+         const char* key = argv[i];
+@@ -790,7 +849,11 @@ static void run(FFdata* data) {
+         ffPrepareCommandOption(data);
+     }
+ 
++#if defined(__pyxis__)
++    if (!data->resultDoc) ffStart();
++#else
+     ffStart();
++#endif
+ 
+     if (!data->resultDoc) {
+         ffLogoPrint();
+@@ -809,6 +872,9 @@ static void run(FFdata* data) {
+             ffPrintCommandOption(data);
+         }
+ 
++#if defined(__pyxis__)
++        break;
++#else
+         if (instance.state.dynamicInterval > 0) {
+             ffLogoPrintRemaining(); // `logoLineCacheClear` inside so that ffLogoPrintLine will use `\e[nC` to move the cursor to the right position instead of reprinting the logo
+             fputs("\e[J", stdout); // Clear from cursor to the end of the screen to prevent artifacts when the new output is shorter than the previous one
+@@ -826,6 +892,7 @@ static void run(FFdata* data) {
+         } else {
+             ffPrepareCommandOption(data);
+         }
++#endif
+     }
+ 
+     if (data->resultDoc) {
+@@ -838,6 +905,7 @@ static void run(FFdata* data) {
+     }
+ }
+ 
++#if !defined(__pyxis__)
+ [[gnu::cold]]
+ static void writeConfigFile(FFdata* data) {
+     const FFstrbuf* filename = &data->genConfigPath;
+@@ -889,10 +957,13 @@ static void writeConfigFile(FFdata* data) {
+         }
+     }
+ }
++#endif
+ 
+ int main(int argc, char** argv) {
+     ffInitInstance();
++#if !defined(__pyxis__)
+     atexit(ffDestroyInstance);
++#endif
+ 
+     // Data stores things only needed for the configuration of fastfetch
+     FFdata data = {
+@@ -907,11 +978,20 @@ int main(int argc, char** argv) {
+         exit(400);
+     }
+ 
++#if !defined(__pyxis__)
+     if (!data.configLoaded && !getenv("NO_CONFIG")) {
+         parseConfigFiles(&data);
+     }
++#endif
+     parseArguments(&data, argc, argv, (void*) parseOption);
+ 
++#if defined(__pyxis__)
++    if (instance.state.dynamicInterval > 0) {
++        fputs("Dynamic refresh is unsupported on Pyxis\n", stderr);
++        return 1;
++    }
++    run(&data);
++#else
+     if (__builtin_expect(data.genConfigPath.length == 0, true)) {
+         run(&data);
+     } else {
+@@ -929,10 +1009,14 @@ int main(int argc, char** argv) {
+         }
+         writeConfigFile(&data);
+     }
++#endif
+ 
+     ffStrbufDestroy(&data.structure);
+     ffStrbufDestroy(&data.structureDisabled);
+     yyjson_doc_free(data.configDoc);
+     yyjson_mut_doc_free(data.resultDoc);
+     ffStrbufDestroy(&data.genConfigPath);
++#if defined(__pyxis__)
++    ffDestroyInstance();
++#endif
+ }
+diff --git a/src/logo/logo.c b/src/logo/logo.c
+index 9a580e4..a5fa4e9 100644
+--- a/src/logo/logo.c
++++ b/src/logo/logo.c
+@@ -1,7 +1,9 @@
+ #include "logo/logo.h"
+ #include "common/io.h"
+ #include "common/printing.h"
++#if !defined(__pyxis__)
+ #include "common/processing.h"
++#endif
+ #include "common/textModifier.h"
+ #include "common/strutil.h"
+ #include "detection/media/media.h"
+@@ -226,6 +228,12 @@ static void logoLineCacheBuild(FFLogoLineCacheState* cache, const char* data, bo
+ }
+ 
+ static bool ffLogoPrintCharsRaw(const char* data, size_t length, bool printError) {
++#if defined(__pyxis__)
++    (void) data;
++    (void) length;
++    if (printError) fputs("Raw image logos are unsupported on Pyxis\n", stderr);
++    return false;
++#else
+     FFOptionsLogo* options = &instance.config.logo;
+     FF_STRBUF_AUTO_DESTROY buf = ffStrbufCreate();
+ 
+@@ -298,6 +306,7 @@ static bool ffLogoPrintCharsRaw(const char* data, size_t length, bool printError
+     }
+ 
+     return true;
++#endif
+ }
+ 
+ void ffLogoPrintChars(const char* data, bool doColorReplacement) {
+@@ -508,6 +517,7 @@ static bool updateLogoPath(void) {
+     }
+ #endif
+ 
++#if !defined(__pyxis__)
+     FF_STRBUF_AUTO_DESTROY fullPath = ffStrbufCreateA(128);
+     if (ffPathExpandEnv(options->source.chars, &fullPath) && ffPathExists(fullPath.chars, FF_PATHTYPE_FILE)) {
+         ffStrbufDestroy(&options->source);
+@@ -528,6 +538,8 @@ static bool updateLogoPath(void) {
+         }
+     }
+ 
++#endif
++
+     return false;
+ }
+ 
+@@ -590,6 +602,10 @@ static bool logoTryKnownType(void) {
+     }
+ 
+     if (options->type == FF_LOGO_TYPE_COMMAND_RAW) {
++#if defined(__pyxis__)
++        fputs("Command logos are unsupported on Pyxis\n", stderr);
++        return false;
++#else
+         FF_STRBUF_AUTO_DESTROY source = ffStrbufCreate();
+ 
+         const char* error = ffProcessAppendStdOut(&source, (char* const[]){
+@@ -609,6 +625,7 @@ static bool logoTryKnownType(void) {
+         }
+ 
+         return logoPrintData(false, &source);
++#endif
+     }
+ 
+     // We sure have a file, resolve relative paths
+diff --git a/src/modules/cpu/cpu.c b/src/modules/cpu/cpu.c
+index 9d52576..03c1be4 100644
+--- a/src/modules/cpu/cpu.c
++++ b/src/modules/cpu/cpu.c
+@@ -24,7 +24,13 @@ bool ffPrintCPU(FFCPUOptions* options) {
+ 
+     if (error) {
+         ffPrintError(FF_MODULE_GET_DISPLAY_NAME(CPU), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, "%s", error);
+-    } else if (cpu.vendor.length == 0 && cpu.name.length == 0 && cpu.coresOnline <= 1) {
++    } else if (cpu.vendor.length == 0 && cpu.name.length == 0 &&
++#ifdef __pyxis__
++               cpu.coresOnline == 0
++#else
++               cpu.coresOnline <= 1
++#endif
++    ) {
+         ffPrintError(FF_MODULE_GET_DISPLAY_NAME(CPU), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, "No CPU detected");
+     } else {
+         FF_STRBUF_AUTO_DESTROY coreTypes = ffStrbufCreate();
+@@ -88,16 +94,29 @@ bool ffPrintCPU(FFCPUOptions* options) {
+             FF_PRINT_FORMAT_CHECKED(FF_MODULE_GET_DISPLAY_NAME(CPU), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, ((FFformatarg[]) {
+                                                                                                             FF_ARG(cpu.name, "name"),
+                                                                                                             FF_ARG(cpu.vendor, "vendor"),
++                                                                                                            #ifdef __pyxis__
++                                                                                                            { FF_ARG_TYPE_NULL, nullptr, "cores-physical" },
++                                                                                                            { FF_ARG_TYPE_NULL, nullptr, "cores-logical" },
++                                                                                                            #else
+                                                                                                             FF_ARG(cpu.coresPhysical, "cores-physical"),
+                                                                                                             FF_ARG(cpu.coresLogical, "cores-logical"),
++                                                                                                            #endif
+                                                                                                             FF_ARG(cpu.coresOnline, "cores-online"),
+                                                                                                             FF_ARG(freqBase, "freq-base"),
+                                                                                                             FF_ARG(freqMax, "freq-max"),
+                                                                                                             FF_ARG(tempStr, "temperature"),
+                                                                                                             FF_ARG(coreTypes, "core-types"),
++                                                                                                            #ifdef __pyxis__
++                                                                                                            { FF_ARG_TYPE_NULL, nullptr, "packages" },
++                                                                                                            #else
+                                                                                                             FF_ARG(cpu.packages, "packages"),
++                                                                                                            #endif
+                                                                                                             FF_ARG(cpu.march, "march"),
++                                                                                                            #ifdef __pyxis__
++                                                                                                            { FF_ARG_TYPE_NULL, nullptr, "numa-nodes" },
++                                                                                                            #else
+                                                                                                             FF_ARG(cpu.numaNodes, "numa-nodes"),
++                                                                                                            #endif
+                                                                                                             #if __i386__ || __x86_64__
+                                                                                                             FF_ARG(cpu.codeName, "code-name"),
+                                                                                                             FF_ARG(cpu.technology, "technology"),
+@@ -168,12 +187,27 @@ bool ffGenerateCPUJsonResult(FFCPUOptions* options, yyjson_mut_doc* doc, yyjson_
+ 
+     if (error) {
+         yyjson_mut_obj_add_str(doc, module, "error", error);
+-    } else if (cpu.vendor.length == 0 && cpu.name.length == 0 && cpu.coresOnline <= 1) {
++    } else if (cpu.vendor.length == 0 && cpu.name.length == 0 &&
++#ifdef __pyxis__
++               cpu.coresOnline == 0
++#else
++               cpu.coresOnline <= 1
++#endif
++    ) {
+         yyjson_mut_obj_add_str(doc, module, "error", "No CPU detected");
+     } else {
+         yyjson_mut_val* obj = yyjson_mut_obj_add_obj(doc, module, "result");
++#ifdef __pyxis__
++        if (cpu.name.length > 0) {
++            yyjson_mut_obj_add_strbuf(doc, obj, "cpu", &cpu.name);
++        } else {
++            yyjson_mut_obj_add_null(doc, obj, "cpu");
++        }
++        yyjson_mut_obj_add_null(doc, obj, "vendor");
++#else
+         yyjson_mut_obj_add_strbuf(doc, obj, "cpu", &cpu.name);
+         yyjson_mut_obj_add_strbuf(doc, obj, "vendor", &cpu.vendor);
++#endif
+         if (cpu.packages == 0) {
+             yyjson_mut_obj_add_null(doc, obj, "packages");
+         } else {
+@@ -181,20 +215,34 @@ bool ffGenerateCPUJsonResult(FFCPUOptions* options, yyjson_mut_doc* doc, yyjson_
+         }
+ 
+         yyjson_mut_val* cores = yyjson_mut_obj_add_obj(doc, obj, "cores");
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, cores, "physical");
++        yyjson_mut_obj_add_null(doc, cores, "logical");
++#else
+         yyjson_mut_obj_add_uint(doc, cores, "physical", cpu.coresPhysical);
+         yyjson_mut_obj_add_uint(doc, cores, "logical", cpu.coresLogical);
++#endif
+         yyjson_mut_obj_add_uint(doc, cores, "online", cpu.coresOnline);
+ 
+         yyjson_mut_val* frequency = yyjson_mut_obj_add_obj(doc, obj, "frequency");
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, frequency, "base");
++        yyjson_mut_obj_add_null(doc, frequency, "max");
++#else
+         yyjson_mut_obj_add_uint(doc, frequency, "base", cpu.frequencyBase);
+         yyjson_mut_obj_add_uint(doc, frequency, "max", cpu.frequencyMax);
++#endif
+ 
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, obj, "coreTypes");
++#else
+         yyjson_mut_val* coreTypes = yyjson_mut_obj_add_arr(doc, obj, "coreTypes");
+         for (uint32_t i = 0; i < ARRAY_SIZE(cpu.coreTypes) && cpu.coreTypes[i].count > 0; i++) {
+             yyjson_mut_val* core = yyjson_mut_arr_add_obj(doc, coreTypes);
+             yyjson_mut_obj_add_uint(doc, core, "count", cpu.coreTypes[i].count);
+             yyjson_mut_obj_add_uint(doc, core, "freq", cpu.coreTypes[i].freq);
+         }
++#endif
+ 
+         if (cpu.temperature != FF_CPU_TEMP_UNSET) {
+             yyjson_mut_obj_add_real(doc, obj, "temperature", cpu.temperature);
+diff --git a/src/modules/kernel/kernel.c b/src/modules/kernel/kernel.c
+index 322b2b4..c15e4a8 100644
+--- a/src/modules/kernel/kernel.c
++++ b/src/modules/kernel/kernel.c
+@@ -1,4 +1,7 @@
+ #include "common/printing.h"
++#ifdef __pyxis__
++    #include "common/pyxis.h"
++#endif
+ #include "common/jsonconfig.h"
+ #include "common/size.h"
+ #include "common/strutil.h"
+@@ -6,6 +9,13 @@
+ 
+ bool ffPrintKernel(FFKernelOptions* options) {
+     const FFPlatformSysinfo* info = &instance.state.platform.sysinfo;
++#ifdef __pyxis__
++    const char* error = ffPyxisIdentityError();
++    if (error) {
++        ffPrintError(FF_MODULE_GET_DISPLAY_NAME(Kernel), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, "%s", error);
++        return false;
++    }
++#endif
+     if (options->moduleArgs.outputFormat.length == 0) {
+         ffPrintLogoAndKey(FF_MODULE_GET_DISPLAY_NAME(Kernel), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT);
+         printf("%s %s\n", info->name.chars, info->release.chars);
+@@ -42,12 +52,28 @@ void ffGenerateKernelJsonConfig(FFKernelOptions* options, yyjson_mut_doc* doc, y
+ 
+ bool ffGenerateKernelJsonResult([[maybe_unused]] FFKernelOptions* options, yyjson_mut_doc* doc, yyjson_mut_val* module) {
+     const FFPlatformSysinfo* info = &instance.state.platform.sysinfo;
++#ifdef __pyxis__
++    const char* error = ffPyxisIdentityError();
++    if (error) {
++        yyjson_mut_obj_add_str(doc, module, "error", error);
++        return false;
++    }
++#endif
+ 
+     yyjson_mut_val* obj = yyjson_mut_obj_add_obj(doc, module, "result");
+     yyjson_mut_obj_add_strbuf(doc, obj, "architecture", &info->architecture);
+     yyjson_mut_obj_add_strbuf(doc, obj, "name", &info->name);
++#ifdef __pyxis__
++    if (info->release.length > 0) {
++        yyjson_mut_obj_add_strbuf(doc, obj, "release", &info->release);
++    } else {
++        yyjson_mut_obj_add_null(doc, obj, "release");
++    }
++    yyjson_mut_obj_add_null(doc, obj, "version");
++#else
+     yyjson_mut_obj_add_strbuf(doc, obj, "release", &info->release);
+     yyjson_mut_obj_add_strbuf(doc, obj, "version", &info->version);
++#endif
+     yyjson_mut_obj_add_uint(doc, obj, "pageSize", (uint64_t) 1 << info->pageSizeShift);
+ 
+     return true;
+diff --git a/src/modules/memory/memory.c b/src/modules/memory/memory.c
+index 9b4ac23..dea47ee 100644
+--- a/src/modules/memory/memory.c
++++ b/src/modules/memory/memory.c
+@@ -121,7 +121,11 @@ FFModuleBaseInfo ffMemoryModuleInfo = {
+     .name = "Memory",
+     .description = "Print system memory usage information",
+     .displayName = {
++#ifdef __pyxis__
++        .en = "Memory (allocator)",
++#else
+         .en = "Memory",
++#endif
+         .ar = "الذاكرة",
+         .cs = "Paměť",
+         .de = "Speicher",
+diff --git a/src/modules/os/os.c b/src/modules/os/os.c
+index 085a205..7dad7f6 100644
+--- a/src/modules/os/os.c
++++ b/src/modules/os/os.c
+@@ -1,4 +1,7 @@
+ #include "common/printing.h"
++#ifdef __pyxis__
++    #include "common/pyxis.h"
++#endif
+ #include "common/jsonconfig.h"
+ #include "common/option.h"
+ #include "common/strutil.h"
+@@ -48,6 +51,13 @@ static void buildOutputDefault(const FFOSResult* os, FFstrbuf* result) {
+ 
+ bool ffPrintOS(FFOSOptions* options) {
+     const FFOSResult* os = ffDetectOS();
++#ifdef __pyxis__
++    const char* error = ffPyxisIdentityError();
++    if (error) {
++        ffPrintError(FF_MODULE_GET_DISPLAY_NAME(OS), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, "%s", error);
++        return false;
++    }
++#endif
+ 
+     if (os->name.length == 0 && os->prettyName.length == 0 && os->id.length == 0) {
+         ffPrintError(FF_MODULE_GET_DISPLAY_NAME(OS), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, "Could not detect OS");
+@@ -123,6 +133,13 @@ void ffGenerateOSJsonConfig(FFOSOptions* options, yyjson_mut_doc* doc, yyjson_mu
+ 
+ bool ffGenerateOSJsonResult([[maybe_unused]] FFOSOptions* options, yyjson_mut_doc* doc, yyjson_mut_val* module) {
+     const FFOSResult* os = ffDetectOS();
++#ifdef __pyxis__
++    const char* error = ffPyxisIdentityError();
++    if (error) {
++        yyjson_mut_obj_add_str(doc, module, "error", error);
++        return false;
++    }
++#endif
+ 
+     if (os->name.length == 0 && os->prettyName.length == 0 && os->id.length == 0) {
+         yyjson_mut_obj_add_str(doc, module, "error", "Could not detect OS");
+@@ -130,6 +147,18 @@ bool ffGenerateOSJsonResult([[maybe_unused]] FFOSOptions* options, yyjson_mut_do
+     }
+ 
+     yyjson_mut_val* obj = yyjson_mut_obj_add_obj(doc, module, "result");
++#ifdef __pyxis__
++    yyjson_mut_obj_add_null(doc, obj, "buildID");
++    yyjson_mut_obj_add_null(doc, obj, "codename");
++    yyjson_mut_obj_add_null(doc, obj, "id");
++    yyjson_mut_obj_add_null(doc, obj, "idLike");
++    yyjson_mut_obj_add_strbuf(doc, obj, "name", &os->name);
++    yyjson_mut_obj_add_null(doc, obj, "prettyName");
++    yyjson_mut_obj_add_null(doc, obj, "variant");
++    yyjson_mut_obj_add_null(doc, obj, "variantID");
++    yyjson_mut_obj_add_null(doc, obj, "version");
++    yyjson_mut_obj_add_null(doc, obj, "versionID");
++#else
+     yyjson_mut_obj_add_strbuf(doc, obj, "buildID", &os->buildID);
+     yyjson_mut_obj_add_strbuf(doc, obj, "codename", &os->codename);
+     yyjson_mut_obj_add_strbuf(doc, obj, "id", &os->id);
+@@ -140,6 +169,7 @@ bool ffGenerateOSJsonResult([[maybe_unused]] FFOSOptions* options, yyjson_mut_do
+     yyjson_mut_obj_add_strbuf(doc, obj, "variantID", &os->variantID);
+     yyjson_mut_obj_add_strbuf(doc, obj, "version", &os->version);
+     yyjson_mut_obj_add_strbuf(doc, obj, "versionID", &os->versionID);
++#endif
+ 
+     return true;
+ }
+diff --git a/src/modules/terminalsize/terminalsize.c b/src/modules/terminalsize/terminalsize.c
+index 23f2099..13f1229 100644
+--- a/src/modules/terminalsize/terminalsize.c
++++ b/src/modules/terminalsize/terminalsize.c
+@@ -25,8 +25,13 @@ bool ffPrintTerminalSize(FFTerminalSizeOptions* options) {
+         FF_PRINT_FORMAT_CHECKED(FF_MODULE_GET_DISPLAY_NAME(TerminalSize), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, ((FFformatarg[]) {
+                                                                                                                   FF_ARG(result.rows, "rows"),
+                                                                                                                   FF_ARG(result.columns, "columns"),
++                                                                                                                  #ifdef __pyxis__
++                                                                                                                  { FF_ARG_TYPE_NULL, nullptr, "width" },
++                                                                                                                  { FF_ARG_TYPE_NULL, nullptr, "height" },
++                                                                                                                  #else
+                                                                                                                   FF_ARG(result.width, "width"),
+                                                                                                                   FF_ARG(result.height, "height"),
++                                                                                                                  #endif
+                                                                                                               }));
+     }
+     return true;
+@@ -59,8 +64,13 @@ bool ffGenerateTerminalSizeJsonResult([[maybe_unused]] FFTerminalSizeOptions* op
+     yyjson_mut_val* obj = yyjson_mut_obj_add_obj(doc, module, "result");
+     yyjson_mut_obj_add_uint(doc, obj, "columns", result.columns);
+     yyjson_mut_obj_add_uint(doc, obj, "rows", result.rows);
++#ifdef __pyxis__
++    yyjson_mut_obj_add_null(doc, obj, "width");
++    yyjson_mut_obj_add_null(doc, obj, "height");
++#else
+     yyjson_mut_obj_add_uint(doc, obj, "width", result.width);
+     yyjson_mut_obj_add_uint(doc, obj, "height", result.height);
++#endif
+ 
+     return true;
+ }
+diff --git a/src/modules/uptime/uptime.c b/src/modules/uptime/uptime.c
+index 25b8d1f..2d54c34 100644
+--- a/src/modules/uptime/uptime.c
++++ b/src/modules/uptime/uptime.c
+@@ -1,7 +1,9 @@
+ #include "common/duration.h"
+ #include "common/printing.h"
+ #include "common/jsonconfig.h"
+-#include "common/time.h"
++#ifndef __pyxis__
++    #include "common/time.h"
++#endif
+ #include "common/strutil.h"
+ #include "detection/uptime/uptime.h"
+ #include "modules/uptime/uptime.h"
+@@ -34,9 +36,13 @@ bool ffPrintUptime(FFUptimeOptions* options) {
+         uptime /= 24;
+         uint32_t days = (uint32_t) uptime;
+ 
++#ifdef __pyxis__
++        FF_PRINT_FORMAT_CHECKED(FF_MODULE_GET_DISPLAY_NAME(Uptime), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, ((FFformatarg[]) { FF_ARG(days, "days"), FF_ARG(hours, "hours"), FF_ARG(minutes, "minutes"), FF_ARG(seconds, "seconds"), FF_ARG(milliseconds, "milliseconds"), { FF_ARG_TYPE_NULL, nullptr, "boot-time" }, { FF_ARG_TYPE_NULL, nullptr, "years" }, { FF_ARG_TYPE_NULL, nullptr, "days-of-year" }, { FF_ARG_TYPE_NULL, nullptr, "years-fraction" }, FF_ARG(buffer, "formatted") }));
++#else
+         FFTimeGetAgeResult age = ffTimeGetAge(result.bootTime, ffTimeGetNow());
+ 
+         FF_PRINT_FORMAT_CHECKED(FF_MODULE_GET_DISPLAY_NAME(Uptime), 0, &options->moduleArgs, FF_PRINT_TYPE_DEFAULT, ((FFformatarg[]) { FF_ARG(days, "days"), FF_ARG(hours, "hours"), FF_ARG(minutes, "minutes"), FF_ARG(seconds, "seconds"), FF_ARG(milliseconds, "milliseconds"), { FF_ARG_TYPE_STRING, ffTimeToShortStr(result.bootTime), "boot-time" }, FF_ARG(age.years, "years"), FF_ARG(age.daysOfYear, "days-of-year"), FF_ARG(age.yearsFraction, "years-fraction"), FF_ARG(buffer, "formatted") }));
++#endif
+     }
+ 
+     return true;
+@@ -69,7 +75,11 @@ bool ffGenerateUptimeJsonResult([[maybe_unused]] FFUptimeOptions* options, yyjso
+ 
+     yyjson_mut_val* obj = yyjson_mut_obj_add_obj(doc, module, "result");
+     yyjson_mut_obj_add_uint(doc, obj, "uptime", result.uptime);
++#ifdef __pyxis__
++    yyjson_mut_obj_add_null(doc, obj, "bootTime");
++#else
+     yyjson_mut_obj_add_strcpy(doc, obj, "bootTime", ffTimeToFullStr(result.bootTime));
++#endif
+ 
+     return true;
+ }
+diff --git a/src/options/general.c b/src/options/general.c
+index 890f38e..d39784b 100644
+--- a/src/options/general.c
++++ b/src/options/general.c
+@@ -1,6 +1,5 @@
+ #include "fastfetch.h"
+ #include "common/jsonconfig.h"
+-#include "common/processing.h"
+ #include "common/strutil.h"
+ #include "common/lua.h"
+ #include "options/general.h"
+@@ -22,12 +21,18 @@ const char* ffOptionsParseGeneralJsonConfig(FFOptionsGeneral* options, yyjson_va
+         *pkey = key;
+         if (unsafe_yyjson_equals_str(key, "thread")) {
+             options->multithreading = yyjson_get_bool(val);
++#if defined(__pyxis__)
++            if (options->multithreading) return "Threading is unsupported on Pyxis";
++#endif
+         } else if (unsafe_yyjson_equals_str(key, "processingTimeout")) {
+             options->processingTimeout = (int32_t) yyjson_get_int(val);
+         } else if (unsafe_yyjson_equals_str(key, "preRun")) {
+             return "general.preRun is removed due to security concerns.";
+         } else if (unsafe_yyjson_equals_str(key, "detectVersion")) {
+             options->detectVersion = yyjson_get_bool(val);
++#if defined(__pyxis__)
++            if (options->detectVersion) return "Executable version detection is unsupported on Pyxis";
++#endif
+         } else if (unsafe_yyjson_equals_str(key, "playerName")) {
+             ffStrbufSetJsonVal(&options->playerName, val);
+         } else if (unsafe_yyjson_equals_str(key, "preload")) {
+@@ -116,13 +121,24 @@ bool ffOptionsParseGeneralCommandLine(FFOptionsGeneral* options, const char* key
+         return false;
+     }
+ 
++#if defined(__pyxis__)
++    if (options->multithreading || options->detectVersion) {
++        fputs("Threading and executable version detection are unsupported on Pyxis\n", stderr);
++        exit(1);
++    }
++#endif
+     return true;
+ }
+ 
+ void ffOptionsInitGeneral(FFOptionsGeneral* options) {
+     options->processingTimeout = 5000;
++#if defined(__pyxis__)
++    options->multithreading = false;
++    options->detectVersion = false;
++#else
+     options->multithreading = true;
+     options->detectVersion = true;
++#endif
+     ffStrbufInit(&options->playerName);
+ 
+ #if defined(__linux__) || defined(__FreeBSD__) || defined(__sun) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__HAIKU__) || defined(__GNU__)

@@ -1,90 +1,82 @@
 # Fastfetch for Pyxis
 
-Build the standalone recipe against an exported SDK containing the Fastfetch
-libc prerequisites:
+Build against an exported SDK with the Fastfetch libc prerequisites:
 
 ```sh
 lua build.lua fastfetch --sdk /absolute/path/to/build/sdk --work /tmp/fastfetch-build
 ```
 
-The work directory must not already exist. The recipe uses the prebuilt Pyxis
-compiler, CMake 3.21 or newer and GNU Make; it does not rebuild the compiler or
-modify the SDK. It stages `bin/fastfetch.pxe` and notices under
-`share/licenses/fastfetch`. Default image installation is a separate integration
-task; `install.lua` does not include this recipe yet. For development, expose
-its staged executable through the existing `host://` mount and run:
+The work directory must not exist. The recipe uses the prebuilt Pyxis compiler,
+CMake 3.21 or newer and GNU Make. It stages `bin/fastfetch.pxe` and licenses;
+default-image installation remains the next integration task. Expose the staged
+executable through `host://` for development:
 
 ```text
 host://fastfetch.pxe
 host://fastfetch.pxe --json
 host://fastfetch.pxe --config home://fastfetch.jsonc
-host://fastfetch.pxe --structure OS:Kernel:CPU:Memory:Uptime:TerminalSize
+host://fastfetch.pxe --structure OS:Kernel:CPU:Memory:Uptime:TerminalSize:Colors
 ```
 
-## Sources and adaptation
+## Adaptation
 
-Fastfetch 2.69.0 is pinned to
-`0c3b852bf7bad2837a814c7a31bf332092048a2b`. The ordered patch
-`patches/0001-pyxis-native-port.patch` contains the bounded CMake branch, native
-runtime and detectors, module/error adaptations, allocation wrappers and ASCII
-logo. Existing Fastfetch files retain upstream formatting and MIT terms.
-New Pyxis native adapters/build support and the project logo use MPL-2.0; see
-`PORT-NOTICE`. Bundled yyjson is unchanged and retains its MIT notice. The recipe
-stages both licenses and the full yyjson header containing its notice.
+Fastfetch 2.69.0 is pinned to `0c3b852bf7bad2837a814c7a31bf332092048a2b`.
+Three ordered patches separate the SDK build, native integration and owner-supplied
+ASCII logo. The build selects the portable core and nine modules, links SDK startup
+and static libraries with libgcc, then converts ELF to P1F. No compiler rebuild,
+host-libc link, fake Unix services or optional graphics/thread/interpreter libraries
+are involved.
 
-CMake compiles 43 translation units, uses only SDK and compiler headers, links
-the SDK startup and static libraries with libgcc, then runs the SDK elf2pxe for
-P1F output. There are no host-libc links, fake Unix services, platform feature
-probes or optional graphics/thread/interpreter dependencies. The common core
-retains upstream text/JSON formatting, builtin ASCII logos and the bundled
-`memrchr` fallback. The Pyxis compass rose is built in under `Pyxis`/`Pyxis OS`
-and selected by default; its source bytes match the owner's ASCII file.
-
-## Information and authority
-
-Only these nine modules are registered:
-
-| Module | Native meaning |
+| Changed area | Required adaptation |
 | --- | --- |
-| OS | OS name and architecture from delegated `system_info` READ |
-| Kernel | Kernel name, architecture and running source commit; page size is the native ABI constant |
-| CPU | Cached guest-visible BSP brand and online logical CPU count |
-| Memory | **Memory (allocator)**: allocator total and allocated bytes, excluding permanent reservations |
-| Uptime | Monotonic duration since HPET initialization, through clock READ |
-| TerminalSize | Columns/rows from the named `output` console grant, without reading input |
-| Colors, Break, Separator | Text presentation helpers |
+| CMake | Pyxis platform/source selection, SDK link and P1F conversion |
+| Platform/detection backends | Native identity, CPU, allocator, clock and console observations |
+| I/O/time declarations and backends | Native file/path access and monotonic timing without Unix-only headers |
+| Initialization and main | Omit unavailable locale, signals, buffering controls and atexit; retain normal lifecycle; explicit URI config loading and one-shot execution |
+| Selected module frontends | Native query errors, unavailable fields, allocator label and Pyxis version name |
+| General/logo options | Disable unavailable thread/process defaults, omit Unix path expansion and command/image helpers |
+| String headers | Direct Pyxis-only includes of existing libc declarations |
+| Logo registry | Owner's compass rose, unchanged bytes |
 
-These are separate native observations, not an atomic snapshot. CPU count is
-not physical cores or process CPU allowance; allocator memory is not installed
-RAM or Linux-style available memory. Extra upstream fields have JSON null values
-when unavailable. Uptime's `bootTime` is null. Evaluated named, positional and
-automatic format placeholders that request unavailable values report an error;
-conditions treat unavailable fields as unset and skipped branches are not evaluated.
-For example, `{name}{?freq-max} @ {freq-max}{?}` omits the unavailable frequency.
-Duration fields and the upstream `formatted` uptime field remain usable.
+The formatter, string/list containers, module dispatcher, common diagnostic code
+and bundled yyjson are unchanged from upstream. Upstream assertions and allocation
+behavior are retained; there are no allocation wrappers, strict format validator
+or aggregate module-failure policy. Upstream-derived changes remain MIT; original
+native/build/logo material is MPL-2.0. See `PORT-NOTICE` and the staged licenses.
 
-Default terminal text prints six data modules, a break, color swatches and the
-logo. Default JSON and pipe-mode text select the six data modules. Explicit
-requests for presentation-only modules in JSON return module errors. Colors
-requires terminal output; Break and Separator can still produce plain text.
+## Native observations
 
-Stdout's actual startup binding controls terminal rendering independently of
-the named `output` grant. File/pipe output forces plain mode, omits logo/swatches,
-suppresses cursor-only key alignment and prints requested timing as plain lines.
-`--pipe` can also select this mode on a console. JSON never emits the logo or
-terminal setup sequences. TerminalSize can still query its explicitly delegated
-console when stdout is redirected. No terminal escape-response queries consume
-keyboard input.
+| Module | Meaning |
+| --- | --- |
+| OS | OS name and architecture from `system_info` READ |
+| Kernel | Kernel name, running source commit and architecture; native ABI page size |
+| CPU | Guest-visible BSP brand and online logical CPU count |
+| Memory | **Memory (allocator)**: allocator total and allocated bytes |
+| Uptime | Monotonic duration since HPET initialization, using clock READ |
+| TerminalSize | Columns/rows from the named `output` console grant |
+| Colors, Break, Separator | Upstream presentation helpers |
 
-## Configuration and failure behavior
+The six data modules run by default; presentation helpers remain selectable.
+The built-in `Pyxis`/`Pyxis OS` logo is selected from native OS identity. These
+queries are separate observations, not one atomic snapshot. CPU count is not
+physical cores or process allowance, and allocator total is not installed RAM.
 
-No config is loaded automatically. `--config` accepts one explicit native URI
-ending in `.json` or `.jsonc`; JSONC enables comments and trailing commas.
-`--config none` keeps built-in defaults. Reads use ordinary libc/yyjson file APIs
-and the caller's existing authority. A config may select module order, keys,
-formats, colors, spacing and ASCII logo data or explicit native-URI logo files.
-CLI presentation overrides are applied after the config. As in pinned upstream,
-per-module customization belongs in JSON rather than removed module CLI options.
+Missing optional fields render empty/unset through upstream formatting; JSON
+uses null where appropriate. Uptime has no inferred boot epoch: `bootTime` is
+null, and calendar format slots are unset. For example,
+`{name}{?freq-max} @ {freq-max}{?}` omits unknown CPU frequency.
+
+Actual stdout's startup binding controls automatic plain-output mode, separately
+from named console authority. Redirected defaults use plain text; upstream ASCII logo layout may remain
+(`--logo none` suppresses it). TerminalSize can still query its named console. JSON skips terminal setup and
+logo output. No keyboard input or terminal escape-response query is used.
+
+## Configuration and limits
+
+No config is discovered automatically. `--config` accepts one explicit native
+URI ending in `.json` or `.jsonc`, or `none`. JSONC permits comments and trailing
+commas. Reads use ordinary libc/yyjson file APIs with existing caller authority.
+Upstream module order, keys, formats, colors, spacing and CLI overrides remain.
 For example:
 
 ```json
@@ -93,67 +85,38 @@ For example:
   "modules": [
     "os", "kernel",
     { "type": "cpu", "format": "{name} ({cores-online} online)" },
-    { "type": "memory", "key": "Memory (allocator)" },
-    { "type": "uptime", "format": "{days}d {hours}h {minutes}m {seconds}s" },
-    "terminalsize"
+    "memory", "uptime", "terminalsize", "colors"
   ]
 }
 ```
 
-Automatic discovery, generated config/cache writes, dynamic refresh, image
-logos and their cache/aspect/animation options, Lua/JS formats, threading,
-executable/network helpers and other modules are unsupported. Requests produce
-errors instead of successful no-ops. Explicit config/logo file reads retain the
-normal namespace/provider behavior; this port adds no networking authority.
-The compiled upstream help includes options outside this bounded port; its
-opening notice and this reference identify the supported boundary.
+Automatic discovery, config/cache generation, dynamic refresh, image logos,
+Lua/JS formats, threads, executable helpers and other modules are outside this
+port. Upstream help still lists broader options. Unsupported module/format/logo
+requests follow upstream diagnostics or fallback behavior; the port does not
+prevalidate every option or redefine the process exit status for module errors.
+In particular, a module error does not guarantee a nonzero exit status. Explicit
+native clock failure during requested timing reports an error and exits.
 
-Allocation failure produces a stderr diagnostic and terminates nonzero.
-Process-local malloc/calloc/realloc link wrappers cover bundled JSON and other
-allocator calls; upstream container allocation and growth code is retained.
-The existing negative vasprintf/vsnprintf result checks handle formatting errors
-independently of allocation failure. Fatal exit may leave partial stdout; it
-restores any cursor/line-wrap modes the program enabled.
-Normal teardown releases owned Fastfetch state, and native process teardown
-reclaims remaining resources. There are no atexit/signal facilities or global
-changes to libc allocation semantics.
-
-Failed selected module queries and unsupported fields report errors and permit
-other modules to run, with a nonzero aggregate exit status. Text diagnostics go
-to stderr when `showErrors` is enabled; disabling it through CLI or JSON suppresses
-module and format diagnostics without clearing failure status. JSON represents
-failed module queries as error objects regardless of `showErrors`. Malformed
-config and unsupported global options terminate nonzero. Output errors also
-fail; partially written output is possible. Optional fields represented by null
-do not themselves fail a query. Requested `--stat` requires clock READ and fails
-if it cannot obtain timing.
+Normal teardown releases Fastfetch state; process exit reclaims remaining
+resources. Allocation failure handling and diagnostic visibility retain upstream
+semantics, including release-build assertions disabled by `NDEBUG`. This port
+makes no guarantee of graceful OOM recovery or terminal restoration after a fault.
 
 ## Validation
 
-The standalone fetch/patch/configure/build/stage workflow passed with GCC 16.2.0,
-CMake 3.31.8 and the SDK from Pyxis `cfb7f0d` / userland `c9ed311`. Native static
-link and P1F conversion passed, and the packaged ASCII file matched its source
-SHA-256 `657381d8eda6cba5aa5e872a24e283d8dae144e406f160d32363cb0b8d885e1d`.
+The reconstructed standalone fetch/apply/configure/build/stage recipe passed
+with GCC 16.2.0, CMake 3.31.8 and SDK userland `c9ed311`. An ordinary Pyxis image
+build passed. Four-CPU nested KVM with the documented QEMU AHCI fix, 256 MiB,
+Fedora OVMF, virtio-net and private virtio-fs ran the staged executable through
+the remote terminal. Native text/logo, JSON, explicit JSONC, optional-field
+conditions and empty calendar fields were exercised. Redirected JSON was parsed
+on the host and contained no escape bytes; it reported four online CPUs and the
+remote console's 100x30 dimensions.
 
-Interactive validation used four-CPU nested KVM, QEMU 10.2.2 with the documented
-AHCI fix, CPU max, 256 MiB, Fedora OVMF, entropy, virtio-net and a private HOST
-export. Local text showed the complete logo and 160x48 dimensions; remote text
-reported 100x30. JSON reported online count 4 and null unavailable values.
-Explicit JSONC module formats worked. Unsupported named/positional/calendar
-fields failed while a later module still printed. A command-logo request failed
-even with JSON output. Redirected JSON and text with timing/key-width/right-logo options
-contained no escape bytes. GDB observed the native CPU adapter return its BSP
-brand and online count 4 in userspace.
-
-A disposable local launcher passed only memory and stdout/stderr authority:
-the six data modules returned explicit JSON errors for omitted system_info,
-clock and named output grants, and the child exited with status 1. Allocation exhaustion was
-reviewed, not fault-injected. No tests, self-tests, CI changes or boot automation
-were added. Default image installation, narrow-console/pipeline coverage and
-broader repeated-run acceptance remain the following integration task.
-
-The four-point review follow-up restores upstream conditional evaluation,
-honors diagnostic visibility, removes redundant allocation helpers/container
-rewrites and preserves upstream I/O/time declarations behind Pyxis branches.
-The existing standalone recipe was rebuilt; guest checks above describe the
-initial port and were not rerun for this reduction.
+The logo SHA-256 matches the owner's source:
+`657381d8eda6cba5aa5e872a24e283d8dae144e406f160d32363cb0b8d885e1d`.
+Missing-grant paths were reviewed in code; no allocation fault injection or new
+tests were added. Default installation and broader local/narrow-console acceptance
+remain the next task. Earlier validation of the superseded patch does not establish
+behavior of this reconstruction.

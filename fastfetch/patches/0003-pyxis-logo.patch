@@ -1,0 +1,37 @@
+diff --git a/src/logo/ascii/p.inc b/src/logo/ascii/p.inc
+index 2cdbff8..479ef9c 100644
+--- a/src/logo/ascii/p.inc
++++ b/src/logo/ascii/p.inc
+@@ -3,6 +3,15 @@
+ #include "common/color.h"
+ 
+ static const FFlogo P[] = {
++    #ifdef FASTFETCH_DATATEXT_LOGO_PYXIS
++    {
++        .names = { "Pyxis", "Pyxis OS" },
++        .lines = FASTFETCH_DATATEXT_LOGO_PYXIS,
++        .colors = { FF_COLOR_FG_CYAN },
++        .colorKeys = FF_COLOR_FG_CYAN,
++        .colorTitle = FF_COLOR_FG_CYAN,
++    },
++    #endif
+     #ifdef FASTFETCH_DATATEXT_LOGO_PACBSD
+     // PacBSD
+     {
+diff --git a/src/logo/ascii/p/pyxis.txt b/src/logo/ascii/p/pyxis.txt
+new file mode 100644
+index 0000000..9d511e9
+--- /dev/null
++++ b/src/logo/ascii/p/pyxis.txt
+@@ -0,0 +1,11 @@
++         /\
++        /##\
++       /####\
++      /######\
++ ____/###/\###\____
++<#######<  >#######>
++ '---\###\/###/---'
++      \######/
++       \####/
++        \##/
++         \/

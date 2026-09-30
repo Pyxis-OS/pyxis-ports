@@ -9,7 +9,9 @@ return {
     pyxis = { "libc", "libterm", "libpyxis" },
   },
   patches = {
-    "patches/0001-pyxis-native-port.patch",
+    "patches/0001-pyxis-build.patch",
+    "patches/0002-pyxis-native-adapters.patch",
+    "patches/0003-pyxis-logo.patch",
   },
   outputs = {
     executable = "bin/fastfetch.pxe",
