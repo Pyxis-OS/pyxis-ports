@@ -36,6 +36,10 @@ It exits cleanly when there are no unsaved edits; otherwise it reports their los
 and exits unsuccessfully. It never treats EOF as a key or retries it indefinitely.
 Ctrl-D remains an ordinary input byte, not terminal closure.
 
+`0005` bounds Page Up/Down navigation at the EOF row, including when a file is
+shorter than the screen. Left-arrow row lookup also checks this bound before
+reading the previous row.
+
 This is an ASCII text editor. It reads LF and CRLF, rejects NUL bytes, and
 saves LF with a final newline for each row. Saves use create/truncate/write;
 an error can leave a partial file. Read-only files can be viewed but not saved.
@@ -43,5 +47,5 @@ Allocation failure exits with a diagnostic and loses unsaved edits. There is
 no autosave, resize handling or atomic replacement. The initial `home://`
 filesystem remains volatile across boots.
 
-This port requires Pyxis's 64 KiB initial userspace stack; the earlier 4 KiB
+Pyxis supplies a guarded 1 MiB initial userspace stack. The earlier 4 KiB
 stack cannot accommodate file loading and its nested library calls.

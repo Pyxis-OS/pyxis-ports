@@ -13,6 +13,7 @@ return {
     "patches/0002-editor-allocation-and-bounds.patch",
     "patches/0003-monotonic-status-expiry.patch",
     "patches/0004-terminal-eof.patch",
+    "patches/0005-page-navigation-bounds.patch",
   },
   outputs = {
     executable = "bin/kilo.pxe",
