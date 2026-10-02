@@ -5,6 +5,7 @@ return {
   kilo = "kilo",
   lua = "lua",
   mbedtls = "mbedtls",
+  pciids = "pciids",
   picohttpparser = "picohttpparser",
   sbase = "sbase",
   tcc = "tcc",
