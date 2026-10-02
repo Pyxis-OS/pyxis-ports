@@ -40,6 +40,14 @@ Ctrl-D remains an ordinary input byte, not terminal closure.
 shorter than the screen. Left-arrow row lookup also checks this bound before
 reading the previous row.
 
+`0006` requests Ctrl+C passthrough on the editor's input for the whole session.
+An armed Pyxis shell would otherwise terminate a foreground Kilo on Ctrl+C and
+discard unsaved edits. Kilo's own Ctrl+C handling is unchanged: it ignores the
+key. The request is made before any file is loaded. If it fails, Kilo exits
+with a diagnostic rather than edit unprotected, and process exit withdraws it.
+While Kilo runs, Ctrl+C cannot end it; use Ctrl-Q. `term_passthrough` comes
+from libterm, so the editor needs the matching SDK.
+
 This is an ASCII text editor. It reads LF and CRLF, rejects NUL bytes, and
 saves LF with a final newline for each row. Saves use create/truncate/write;
 an error can leave a partial file. Read-only files can be viewed but not saved.

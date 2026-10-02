@@ -14,6 +14,7 @@ return {
     "patches/0003-monotonic-status-expiry.patch",
     "patches/0004-terminal-eof.patch",
     "patches/0005-page-navigation-bounds.patch",
+    "patches/0006-ctrl-c-passthrough.patch",
   },
   outputs = {
     executable = "bin/kilo.pxe",

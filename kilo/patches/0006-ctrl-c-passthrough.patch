@@ -1,0 +1,16 @@
+diff --git a/kilo.c b/kilo.c
+--- a/kilo.c
++++ b/kilo.c
+@@ -1284,6 +1284,12 @@ int main(int argc, char **argv) {
+     clock_handle = startup_resource("clock");
+     if (clock_handle == HANDLE_INVALID) fail("a clock capability with READ is required");
+     (void)monotonic_ns();
++    /* Keep Ctrl+C as editor input for the whole session, so an armed shell
++     * cannot terminate the editor and discard unsaved edits. Kilo's own
++     * Ctrl+C handling is unchanged. Process exit withdraws the request. */
++    handle_t passthrough;
++    if (term_passthrough(&terminal,&passthrough) != CALL_OK)
++        fail("cannot keep Ctrl+C as editor input");
+     terminal_ready = 1;
+     if (term_reset_style(&terminal) != CALL_OK || term_clear(&terminal) != CALL_OK)
+         fail("cannot initialize terminal");
