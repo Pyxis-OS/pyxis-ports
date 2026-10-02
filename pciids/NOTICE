@@ -1,0 +1,19 @@
+PCI ID database
+
+This package distributes pci.ids from the PCI ID Project without changes.
+The file's own header names its maintainers and states that it can be
+distributed under either the GNU General Public License (version 2 or higher)
+or the 3-clause BSD License. Pyxis distributes it under the 3-clause BSD
+License. The header also states that the database is a compilation of factual
+data whose copyright covers the aggregation and formatting, held by Martin Mares
+and Albert Pool.
+
+The upstream repository does not include a separate license file. LICENSE in
+this directory is the standard 3-clause BSD text with the copyright holders
+named in that header. The complete upstream header remains in pci.ids.
+
+Upstream data and project:
+https://github.com/pciutils/pciids
+https://pci-ids.ucw.cz/
+
+share/pciids/source.txt records the pinned commit and database version.

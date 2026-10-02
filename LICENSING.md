@@ -31,6 +31,9 @@ those recipes fetch, adapt or package.
   in [ca-certificates/NOTICE](ca-certificates/NOTICE) and
   [LICENSE](ca-certificates/LICENSE). This project-wide choice does not replace
   that upstream attribution.
+- The PCI ID database is distributed under the 3-clause BSD option of its
+  dual license, as recorded in [pciids/NOTICE](pciids/NOTICE) and
+  [LICENSE](pciids/LICENSE). The staged `pci.ids` keeps its upstream header.
 - Fastfetch's new native adapter/build files and project ASCII logo are original
   Pyxis material under MPL-2.0, as marked in the patch and `fastfetch/PORT-NOTICE`.
   Bundled yyjson remains MIT; its staged header preserves its notice.

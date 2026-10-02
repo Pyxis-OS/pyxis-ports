@@ -20,5 +20,6 @@ return function(inputs)
     { tree = root .. "/tcc/stage/lib/tcc", at = "sdk/lib/tcc" },
     { tree = root .. "/tcc/stage/share", at = "sdk/share" },
     { tree = root .. "/tzdata/stage/share", at = "share" },
+    { tree = root .. "/pciids/stage/share", at = "share" },
   }
 end
