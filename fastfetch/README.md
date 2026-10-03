@@ -74,7 +74,7 @@ null, and calendar format slots are unset. For example,
 `{name}{?freq-max} @ {freq-max}{?}` omits unknown CPU frequency.
 
 Disk enumerates only the caller's selected startup roots. Each native directory
-with `FILESYSTEM_INFO` authority supplies its retained Pyxis volume observation;
+with `FILESYSTEM_INFO` authority supplies its retained npfs volume observation;
 roots without that authority and exported/provider roots are skipped. Archive,
 RAM and HOST roots do not acquire an invented disk result. An attempted grant or
 filesystem query failure reports a module error and releases partial rows.
@@ -84,7 +84,7 @@ text uses the upstream `No disks found` diagnostic when errors are enabled.
 Default Disk text explicitly labels shared pool capacity, for example:
 
 ```text
-Disk (data://): Pyxis [Read-only] - shared pool capacity: 64 MiB
+Disk (data://): npfs [Read-only] - shared pool capacity: 64 MiB
 ```
 
 The binding is the caller's root name plus `://`; `name` is the core volume name.
@@ -135,7 +135,7 @@ For example:
 
 Disk folder and hide-folder filters are unsupported and produce a module error
 when requested; the Pyxis hide-folder default is empty. `hideFS` accepts the
-filesystem label `Pyxis`. Normal text type visibility options and module/key/size
+filesystem label `npfs`. Normal text type visibility options and module/key/size
 formatting remain upstream; JSON retains upstream type-filter behavior. No Unix
 folder glob runtime is added.
 

@@ -157,10 +157,10 @@ index 0000000..8c58e6a
 +    if (directory_filesystem_info(roots[i].handle, &info) != CALL_OK) {
 +      return clear_disks(disks, "Native filesystem information query failed");
 +    }
-+    if (info.type != FILESYSTEM_TYPE_PYXIS) {
++    if (info.type != FILESYSTEM_TYPE_NPFS) {
 +      return clear_disks(disks, "Unsupported native filesystem type");
 +    }
-+    if (ffStrbufSeparatedContainS(&options->hideFS, "Pyxis", ':')) {
++    if (ffStrbufSeparatedContainS(&options->hideFS, "npfs", ':')) {
 +      continue;
 +    }
 +
@@ -169,7 +169,7 @@ index 0000000..8c58e6a
 +    *disk = (FFDisk) {};
 +    ffStrbufInit(&disk->mountFrom);
 +    ffStrbufInitF(&disk->mountpoint, "%s://", (const char *) roots[i].name);
-+    ffStrbufInitS(&disk->filesystem, "Pyxis");
++    ffStrbufInitS(&disk->filesystem, "npfs");
 +    ffStrbufInitS(&disk->name, info.volume_name);
 +    disk->type = FF_DISK_VOLUME_TYPE_REGULAR_BIT;
 +    if (info.flags & FILESYSTEM_FLAG_READ_ONLY) {
