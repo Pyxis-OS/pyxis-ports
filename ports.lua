@@ -10,4 +10,5 @@ return {
   sbase = "sbase",
   tcc = "tcc",
   tzdata = "tzdata",
+  usbids = "usbids",
 }

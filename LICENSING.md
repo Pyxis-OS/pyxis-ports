@@ -34,6 +34,10 @@ those recipes fetch, adapt or package.
 - The PCI ID database is distributed under the 3-clause BSD option of its
   dual license, as recorded in [pciids/NOTICE](pciids/NOTICE) and
   [LICENSE](pciids/LICENSE). The staged `pci.ids` keeps its upstream header.
+- The USB ID database is distributed under the project site's 3-clause BSD
+  option, as recorded in [usbids/NOTICE](usbids/NOTICE) and
+  [LICENSE](usbids/LICENSE). The staged `usb.ids` keeps its upstream header;
+  the Git mirror's GPLv3 LICENSE is distinct from the site's database grant.
 - Fastfetch's new native adapter/build files and project ASCII logo are original
   Pyxis material under MPL-2.0, as marked in the patch and `fastfetch/PORT-NOTICE`.
   Bundled yyjson remains MIT; its staged header preserves its notice.
