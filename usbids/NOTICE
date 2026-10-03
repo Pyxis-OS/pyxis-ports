@@ -1,0 +1,27 @@
+USB ID database
+
+This package distributes usb.ids from the USB ID Repository without changes.
+Its header names Stephen J. Gowdy <linux.usb.ids@gmail.com> as maintainer.
+The complete upstream header remains in the staged database.
+
+The project site at https://usb-ids.gowdy.us/ explicitly permits distribution
+of the database contents and generated files under either GPL version 2 or later
+or the 3-clause BSD License. Pyxis elects the 3-clause BSD option for this data.
+The grant was verified on 2026-10-03.
+
+The Git mirror at https://github.com/usbids/usbids contains a LICENSE with the
+GNU GPL version 3 text. That is not a BSD license: this package's BSD election
+relies on the project site's separate grant for the database, not on the mirror
+LICENSE. No other files from the mirror are distributed by this recipe.
+
+LICENSE in this directory reproduces the standard 3-clause BSD conditions and
+disclaimer. Neither the pinned database header nor the site's grant identifies
+a copyright holder; this package does not invent a copyright attribution.
+
+Upstream database and license grant:
+https://usb-ids.gowdy.us/
+
+Pinned source:
+https://github.com/usbids/usbids/tree/5eb613762db1e34b9218da63a88f22dd26f743c5
+
+share/usbids/source.txt records the source commit, version and license election.
