@@ -19,7 +19,7 @@ new file mode 100644
 index 0000000..875e0da
 --- /dev/null
 +++ b/cmake/pyxis.cmake
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,165 @@
 +# SPDX-License-Identifier: MPL-2.0
 +# The recipe supplies compile and link flags from the consumed SDK's pyxis.mk.
 +if(NOT PYXIS_SDK OR NOT CMAKE_SYSROOT)
@@ -136,7 +136,6 @@ index 0000000..875e0da
 +    src/modules/break/break.c
 +    src/modules/separator/separator.c
 +    src/3rdparty/yyjson/yyjson.c
-+    src/common/impl/memrchr.c
 +    src/common/impl/init.c
 +    src/common/impl/io_pyxis.c
 +    src/common/impl/time_pyxis.c

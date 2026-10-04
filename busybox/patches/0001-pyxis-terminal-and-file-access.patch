@@ -1,0 +1,205 @@
+diff --git a/editors/vi.c b/editors/vi.c
+index c1fd914..eaf202f 100644
+--- a/editors/vi.c
++++ b/editors/vi.c
+@@ -224,7 +224,8 @@
+ 
+ #endif
+ 
+-#define isbackspace(c) ((c) == term_orig.c_cc[VERASE] || (c) == 8 || (c) == 127)
++// Pyxis has no termios erase character: accept both BS and DEL.
++#define isbackspace(c) ((c) == 8 || (c) == 127)
+ 
+ enum {
+ 	MAX_TABSTOP = 32, // sanity limit
+@@ -404,7 +405,6 @@ struct globals {
+ #if ENABLE_FEATURE_VI_USE_SIGNALS
+ 	sigjmp_buf restart;     // int_handler() jumps to location remembered here
+ #endif
+-	struct termios term_orig; // remember what the cooked mode was
+ 	int cindex;               // saved character index for up/down motion
+ 	smallint keep_index;      // retain saved character index
+ #if ENABLE_FEATURE_VI_COLON
+@@ -522,7 +522,6 @@ struct globals {
+ #define regtype        (G.regtype       )
+ #define mark           (G.mark          )
+ #define restart        (G.restart       )
+-#define term_orig      (G.term_orig     )
+ #define cindex         (G.cindex        )
+ #define keep_index     (G.keep_index    )
+ #define initial_cmds   (G.initial_cmds  )
+@@ -614,27 +613,24 @@ static ALWAYS_INLINE int query_screen_dimensions(void)
+ // sleep for 'h' 1/100 seconds, return 1/0 if stdin is (ready for read)/(not ready)
+ static int mysleep(int hund)
+ {
+-	struct pollfd pfd[1];
+-
+ 	if (hund != 0)
+ 		fflush_all();
+ 
+-	pfd[0].fd = STDIN_FILENO;
+-	pfd[0].events = POLLIN;
+-	return safe_poll(pfd, 1, hund*10) > 0;
++	return pyxis_vi_input_pending(hund*10);
+ }
+ 
+ //----- Set terminal attributes --------------------------------
++// Pyxis console input is already raw and unechoed. Raw mode holds Ctrl+C
++// passthrough so the key reaches vi instead of discarding unsaved edits.
+ static void rawmode(void)
+ {
+-	// no TERMIOS_CLEAR_ISIG: leave ISIG on - allow signals
+-	set_termios_to_raw(STDIN_FILENO, &term_orig, TERMIOS_RAW_CRNL);
++	pyxis_vi_terminal_raw();
+ }
+ 
+ static void cookmode(void)
+ {
+ 	fflush_all();
+-	tcsetattr_stdin_TCSANOW(&term_orig);
++	pyxis_vi_terminal_cooked();
+ }
+ 
+ //----- Terminal Drawing ---------------------------------------
+@@ -1069,7 +1065,7 @@ static void refresh(int full_screen)
+ 			memcpy(sp+cs, out_buf+cs, ce-cs+1);
+ 			place_cursor(li, cs);
+ 			// write line out to terminal
+-			fwrite(&sp[cs], ce - cs + 1, 1, stdout);
++			pyxis_vi_write(&sp[cs], ce - cs + 1);
+ 		}
+ 	}
+ 
+@@ -1985,7 +1981,8 @@ static int file_insert(const char *fn, char *p, int initial)
+ {
+ 	int cnt = -1;
+ 	int fd, size;
+-	struct stat statbuf;
++	size_t data_size;
++	char *data;
+ 
+ 	if (p < text)
+ 		p = text;
+@@ -1999,42 +1996,28 @@ static int file_insert(const char *fn, char *p, int initial)
+ 		return cnt;
+ 	}
+ 
+-	// Validate file
+-	if (fstat(fd, &statbuf) < 0) {
++	// Pyxis has no fstat: read to EOF instead of trusting a size first.
++	// Only files open here; a directory fails in open() above.
++	data_size = INT_MAX;
++	data = xmalloc_read(fd, &data_size);
++	if (!data) {
+ 		status_line_bold_errno(fn);
+ 		goto fi;
+ 	}
+-	if (!S_ISREG(statbuf.st_mode)) {
+-		status_line_bold("'%s' is not a regular file", fn);
+-		goto fi;
+-	}
+-	size = (statbuf.st_size < INT_MAX ? (int)statbuf.st_size : INT_MAX);
++	size = (int)data_size;
+ 	p += text_hole_make(p, size);
+-	cnt = full_read(fd, p, size);
+-	if (cnt < 0) {
+-		status_line_bold_errno(fn);
+-		p = text_hole_delete(p, p + size - 1, NO_UNDO);	// un-do buffer insert
+-	} else if (cnt < size) {
+-		// There was a partial read, shrink unused space
+-		p = text_hole_delete(p + cnt, p + size - 1, NO_UNDO);
+-		status_line_bold("can't read '%s'", fn);
+-	}
++	memcpy(p, data, size);
++	free(data);
++	cnt = size;
+ # if ENABLE_FEATURE_VI_UNDO
+-	else {
+-		undo_push_insert(p, size, ALLOW_UNDO);
+-	}
++	undo_push_insert(p, size, ALLOW_UNDO);
+ # endif
+  fi:
+ 	close(fd);
+ 
+ #if ENABLE_FEATURE_VI_READONLY
+-	if (initial
+-	 && ((access(fn, W_OK) < 0) ||
+-		// root will always have access()
+-		// so we check fileperms too
+-		!(statbuf.st_mode & (S_IWUSR | S_IWGRP | S_IWOTH))
+-	    )
+-	) {
++	// Pyxis has no access() or mode bits: ask for WRITE authority directly.
++	if (initial && !pyxis_vi_writable(fn)) {
+ 		SET_READONLY_FILE(readonly_mode);
+ 	}
+ #endif
+@@ -3355,14 +3338,13 @@ static void colon(char *buf)
+ 
+ 		// is there a file name to write to?
+ 		if (args[0]) {
+-			struct stat statbuf;
+-
+ 			exp = expand_args(args);
+ 			if (exp == NULL)
+ 				goto ret;
++			// Pyxis has no stat: refuse unless the name is known to be absent.
+ 			if (!useforce
+ 			 && (fn == NULL || strcmp(fn, exp) != 0)
+-			 && stat(exp, &statbuf) == 0
++			 && !pyxis_vi_absent(exp)
+ 			) {
+ 				status_line_bold("File exists (:w! overrides)");
+ 				goto ret;
+@@ -5007,27 +4989,9 @@ int vi_main(int argc, char **argv)
+ 		const char *exinit = getenv("EXINIT");
+ 		char *cmds = NULL;
+ 
++		// Pyxis: no ~/.exrc. Its safety check needs Unix owners and modes.
+ 		if (exinit) {
+ 			cmds = xstrdup(exinit);
+-		} else {
+-			const char *home = getenv("HOME");
+-
+-			if (home && *home) {
+-				char *exrc = concat_path_file(home, ".exrc");
+-				struct stat st;
+-
+-				// .exrc must belong to and only be writable by user
+-				if (stat(exrc, &st) == 0) {
+-					if ((st.st_mode & (S_IWGRP|S_IWOTH)) == 0
+-					 && st.st_uid == getuid()
+-					) {
+-						cmds = xmalloc_open_read_close(exrc, NULL);
+-					} else {
+-						status_line_bold(".exrc: permission denied");
+-					}
+-				}
+-				free(exrc);
+-			}
+ 		}
+ 
+ 		if (cmds) {
+@@ -5037,8 +5001,8 @@ int vi_main(int argc, char **argv)
+ 		}
+ 	}
+ #endif
+-	// "Save cursor, use alternate screen buffer, clear screen"
+-	write1(ESC"[?1049h");
++	// Pyxis has no alternate screen buffer: clear the screen instead
++	write1(ESC_SET_CURSOR_TOPLEFT ESC_CLEAR2EOS);
+ 	// This is the main file handling loop
+ 	optind = 0;
+ 	while (1) {
+@@ -5048,8 +5012,8 @@ int vi_main(int argc, char **argv)
+ 		if (optind >= cmdline_filecnt)
+ 			break;
+ 	}
+-	// "Use normal screen buffer, restore cursor"
+-	write1(ESC"[?1049l");
++	// No alternate screen to leave: clear the editor from the screen
++	write1(ESC_SET_CURSOR_TOPLEFT ESC_CLEAR2EOS);
+ 
+ 	return 0;
+ }
