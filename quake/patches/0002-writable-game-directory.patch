@@ -1,0 +1,28 @@
+diff --git a/source/common.c b/source/common.c
+index ad69937..c4df319 100644
+--- a/source/common.c
++++ b/source/common.c
+@@ -1790,6 +1790,23 @@ void COM_InitFilesystem (void)
+ 		COM_AddGameDirectory (va("%s/%s", basedir, com_argv[i+1]));
+ 	}
+ 
++//
++// -writedir <path>
++// Generated files (savegames, screenshots, demos, config files) go to
++// <path>/<game directory name> instead, which is searched before the game data.
++//
++	i = COM_CheckParm ("-writedir");
++	if (i && i < com_argc-1)
++	{
++		Sys_mkdir (com_argv[i+1]);
++		strcpy (com_gamedir, va("%s/%s", com_argv[i+1], COM_SkipPath(com_gamedir)));
++		Sys_mkdir (com_gamedir);
++		search = Hunk_Alloc (sizeof(searchpath_t));
++		strcpy (search->filename, com_gamedir);
++		search->next = com_searchpaths;
++		com_searchpaths = search;
++	}
++
+ //
+ // -path <dir or packfile> [<dir or packfile>] ...
+ // Fully specifies the exact serach path, overriding the generated one

@@ -16,6 +16,8 @@ return function(inputs)
     { tree = root .. "/mbedtls/stage/share", at = "share" },
     { tree = root .. "/doom/stage/bin", at = "" },
     { tree = root .. "/doom/stage/share", at = "share" },
+    { tree = root .. "/quake/stage/bin", at = "" },
+    { tree = root .. "/quake/stage/share", at = "share" },
     { tree = root .. "/tcc/stage/bin", at = "" },
     { tree = root .. "/tcc/stage/lib/tcc", at = "sdk/lib/tcc" },
     { tree = root .. "/tcc/stage/share", at = "sdk/share" },
