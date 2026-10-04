@@ -8,6 +8,8 @@ return function(inputs)
     { tree = root .. "/sbase/stage/share", at = "share" },
     { tree = root .. "/fastfetch/stage/bin", at = "" },
     { tree = root .. "/fastfetch/stage/share", at = "share" },
+    { tree = root .. "/busybox/stage/bin", at = "" },
+    { tree = root .. "/busybox/stage/share", at = "share" },
     { tree = root .. "/kilo/stage/bin", at = "" },
     { tree = root .. "/kilo/stage/share", at = "share" },
     { tree = root .. "/lua/stage/bin", at = "" },

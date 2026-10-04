@@ -1,0 +1,14 @@
+diff --git a/editors/vi.c b/editors/vi.c
+index eaf202f..a5c5f7d 100644
+--- a/editors/vi.c
++++ b/editors/vi.c
+@@ -2299,6 +2299,9 @@ static int init_text_buffer(char *fn)
+ 	screenbegin = dot = end = text = xzalloc(text_size);
+ 
+ 	update_filename(fn);
++	// The read-only file bit belongs to the previous buffer. Clear it so
++	// file_insert decides for this file; -R keeps its separate mode bit.
++	UNSET_READONLY_FILE(readonly_mode);
+ 	rc = file_insert(fn, text, 1);
+ 	if (rc <= 0 || *(end - 1) != '\n') {
+ 		// file doesn't exist or doesn't end in a newline.
