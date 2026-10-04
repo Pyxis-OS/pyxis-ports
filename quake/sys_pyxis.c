@@ -115,8 +115,9 @@ int Sys_FileTime(char *path)
 
 void Sys_mkdir(char *path)
 {
-  /* COM_CreatePath offers every prefix ending before a '/', including the bare
-   * "home:" and "home:/" of a URI. Those name no directory to create. */
+  /* COM_CreatePath offers every prefix ending before a '/', including "home:"
+   * and "home:/" of a URI. Only a full scheme:// prefix selects a root, so libc
+   * would create those as relative names in the working directory. */
   size_t length = strlen(path);
   if (!length || path[length - 1] == ':' ||
       (length >= 2 && path[length - 2] == ':' && path[length - 1] == '/')) {
