@@ -1,0 +1,105 @@
+diff --git a/file.c b/file.c
+index a5492a1..7eec7aa 100644
+--- a/file.c
++++ b/file.c
+@@ -222,13 +222,19 @@ ATTR_NOINLINE static unsigned char *get_filename(unsigned char *url)
+ {
+ 	unsigned char *p, *m;
+ 	int ml;
++	int skip = 7;
+ #ifdef DOS_FS
+ 	if (url[7] == '/' && strchr(cast_const_char(url + 8), ':')) url++;
+ #endif
+-	for (p = url + 7; *p && *p != POST_CHAR; p++)
++#ifdef PYXIS
++	/* file:// holds a path relative to the working directory. A scheme root
++	   URL such as host://dir/page.html is already a libc path. */
++	if (casecmp(url, cast_uchar "file://", 7)) skip = 0;
++#endif
++	for (p = url + skip; *p && *p != POST_CHAR; p++)
+ 		;
+ 	m = init_str(), ml = 0;
+-	add_conv_str(&m, &ml, url + 7, (int)(p - url - 7), -2);
++	add_conv_str(&m, &ml, url + skip, (int)(p - url - skip), -2);
+ 	return m;
+ }
+ 
+diff --git a/links.h b/links.h
+index 3a29a08..9f0736d 100644
+--- a/links.h
++++ b/links.h
+@@ -1701,6 +1701,12 @@ void data_func(struct connection *);
+ 
+ void file_func(struct connection *);
+ 
++#ifdef PYXIS
++/* pyxis.c */
++
++void pyxis_func(struct connection *);
++#endif
++
+ /* finger.c */
+ 
+ void finger_func(struct connection *);
+diff --git a/url.c b/url.c
+index e2b77c6..f4acea2 100644
+--- a/url.c
++++ b/url.c
+@@ -18,8 +18,13 @@ static_const struct {
+ } protocols[]= {
+ 		{"data", 0, data_func, NULL,		1, 0, 0, 0, 0},
+ 		{"file", 0, file_func, NULL,		1, 1, 0, 0, 1},
++#ifdef PYXIS
++		{"https", 443, pyxis_func, NULL,	0, 1, 1, 0, 1},
++		{"http", 80, pyxis_func, NULL,		0, 1, 1, 0, 1},
++#else
+ 		{"https", 443, https_func, NULL,	0, 1, 1, 1, 0},
+ 		{"http", 80, http_func, NULL,		0, 1, 1, 1, 0},
++#endif
+ 		{"proxy", 3128, proxy_func, NULL,	0, 1, 1, 1, 0},
+ 		{"ftp", 21, ftp_func, NULL,		0, 1, 1, 0, 0},
+ 		{"finger", 79, finger_func, NULL,	0, 1, 1, 0, 0},
+@@ -34,10 +39,20 @@ static_const struct {
+ 		{"gopher", 0, NULL, gopher_func,	1, 0, 0, 0, 1},
+ #ifdef JS
+ 		{"javascript", 0, NULL, javascript_func,1, 0, 0, 0, 0},
++#endif
++#ifdef PYXIS
++		/* Any other scheme:// is opened through libc like a path: a
++		 * scheme root such as host:// or a namespace provider. It has no
++		 * host part, so relative links resolve against the path. */
++		{"", 0, pyxis_func, NULL,		1, 1, 0, 0, 1},
+ #endif
+ 		{NULL, 0, NULL, NULL,			0, 0, 0, 0, 0}
+ };
+ 
++#ifdef PYXIS
++#define PYXIS_PROTOCOL	((int)(sizeof protocols / sizeof *protocols) - 2)
++#endif
++
+ 
+ 
+ static int check_protocol(unsigned char *p, int l)
+@@ -47,6 +62,9 @@ static int check_protocol(unsigned char *p, int l)
+ 		if (!casecmp(cast_uchar protocols[i].prot, p, l) && strlen(cast_const_char protocols[i].prot) == (size_t)l) {
+ 			return i;
+ 		}
++#ifdef PYXIS
++	if (l && p[l] == ':' && p[l + 1] == '/' && p[l + 2] == '/') return PYXIS_PROTOCOL;
++#endif
+ 	return -1;
+ }
+ 
+@@ -54,7 +72,11 @@ static int get_prot_info(unsigned char *prot, int *port, void (**func)(struct co
+ {
+ 	int i;
+ 	for (i = 0; protocols[i].prot; i++)
+-		if (!casestrcmp(cast_uchar protocols[i].prot, prot)) {
++		if (!casestrcmp(cast_uchar protocols[i].prot, prot)
++#ifdef PYXIS
++		    || (i == PYXIS_PROTOCOL && *prot)
++#endif
++		    ) {
+ 			if (port) *port = protocols[i].port;
+ 			if (func) *func = protocols[i].func;
+ 			if (nc_func) *nc_func = protocols[i].nc_func;

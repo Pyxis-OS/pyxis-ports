@@ -1,0 +1,47 @@
+diff --git a/bookmark.c b/bookmark.c
+index 17c0252..7682d17 100644
+--- a/bookmark.c
++++ b/bookmark.c
+@@ -798,8 +798,11 @@ void menu_bookmark_manager(struct terminal *term, void *fcp, void *ses_)
+ 	int rs;
+ 	EINTRLOOP(rs, stat(cast_const_char bookmarks_file, &st));
+ 	if (!rs &&
+-	    (st.st_ctime != bookmarks_st.st_ctime ||
++	    (
++#ifndef PYXIS
++	     st.st_ctime != bookmarks_st.st_ctime ||
+ 	     st.st_mtime != bookmarks_st.st_mtime ||
++#endif
+ 	     st.st_size != bookmarks_st.st_size)) {
+ 		if (!test_list_window_in_use(&bookmark_ld, NULL)) {
+ 			free_bookmarks();
+diff --git a/file.c b/file.c
+index e6e6363..a5492a1 100644
+--- a/file.c
++++ b/file.c
+@@ -168,6 +168,16 @@ static void stat_size(unsigned char **p, int *l, struct stat *stp)
+ 	add_chr_to_str(p, l, ' ');
+ }
+ 
++#ifdef PYXIS
++
++/* Native files have no timestamps; keep the date column blank. */
++static void stat_date(unsigned char **p, int *l, struct stat *stp)
++{
++	add_to_str(p, l, cast_uchar "             ");
++}
++
++#else
++
+ static void stat_date(unsigned char **p, int *l, struct stat *stp)
+ {
+ 	time_t current_time;
+@@ -205,6 +215,8 @@ again:
+ 	add_chr_to_str(p, l, ' ');
+ }
+ 
++#endif
++
+ /* ATTR_NOINLINE is a workaround for a bogus warning on gcc 12 */
+ ATTR_NOINLINE static unsigned char *get_filename(unsigned char *url)
+ {

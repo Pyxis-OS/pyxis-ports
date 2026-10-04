@@ -12,6 +12,8 @@ return function(inputs)
     { tree = root .. "/busybox/stage/share", at = "share" },
     { tree = root .. "/kilo/stage/bin", at = "" },
     { tree = root .. "/kilo/stage/share", at = "share" },
+    { tree = root .. "/links/stage/bin", at = "" },
+    { tree = root .. "/links/stage/share", at = "share" },
     { tree = root .. "/lua/stage/bin", at = "" },
     { tree = root .. "/lua/stage/share", at = "share" },
     { tree = root .. "/picohttpparser/stage/share", at = "share" },
