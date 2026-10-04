@@ -22,8 +22,11 @@ those recipes fetch, adapt or package.
 - Each port's `metadata.lua`, README and source notices identify its upstream
   license, pinned revision and local changes.
 - Upstream-derived files and patches, including `doom/patches/`, `kilo/patches/`,
-  `lua/patches/`, `sbase/patches/`, `fastfetch/patches/` and `tcc/patches/`, retain the licenses of the
-  upstream files they modify. This includes applicable runtime exceptions.
+  `lua/patches/`, `sbase/patches/`, `fastfetch/patches/`, `tcc/patches/` and
+  `quake/patches/`, retain the licenses of the upstream files they modify. This
+  includes applicable runtime exceptions.
+- `quake/sys_pyxis.c` derives from quakegeneric's `sys_null.c` and keeps its
+  GPL-2.0-or-later notice.
 - `lua/main.c` retains Lua's MIT terms for its upstream-derived CLI flow and
   local adaptation, as documented in [lua/README.md](lua/README.md). The staged
   upstream `lua.h` contains the complete license notice.

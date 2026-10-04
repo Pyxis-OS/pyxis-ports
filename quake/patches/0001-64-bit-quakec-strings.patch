@@ -1,0 +1,446 @@
+diff --git a/source/host_cmd.c b/source/host_cmd.c
+index 7ccf300..53f3f11 100644
+--- a/source/host_cmd.c
++++ b/source/host_cmd.c
+@@ -692,7 +692,7 @@ void Host_Name_f (void)
+ 		if (Q_strcmp(host_client->name, newName) != 0)
+ 			Con_Printf ("%s renamed to %s\n", host_client->name, newName);
+ 	Q_strcpy (host_client->name, newName);
+-	host_client->edict->v.netname = host_client->name - pr_strings;
++	host_client->edict->v.netname = PR_SetEngineString(host_client->name);
+ 	
+ // send notification to all clients
+ 	
+@@ -986,11 +986,11 @@ void Host_Pause_f (void)
+ 
+ 		if (sv.paused)
+ 		{
+-			SV_BroadcastPrintf ("%s paused the game\n", pr_strings + sv_player->v.netname);
++			SV_BroadcastPrintf ("%s paused the game\n", PR_GetString(sv_player->v.netname));
+ 		}
+ 		else
+ 		{
+-			SV_BroadcastPrintf ("%s unpaused the game\n",pr_strings + sv_player->v.netname);
++			SV_BroadcastPrintf ("%s unpaused the game\n",PR_GetString(sv_player->v.netname));
+ 		}
+ 
+ 	// send notification to all clients
+@@ -1064,7 +1064,7 @@ void Host_Spawn_f (void)
+ 		memset (&ent->v, 0, progs->entityfields * 4);
+ 		ent->v.colormap = NUM_FOR_EDICT(ent);
+ 		ent->v.team = (host_client->colors & 15) + 1;
+-		ent->v.netname = host_client->name - pr_strings;
++		ent->v.netname = PR_SetEngineString(host_client->name);
+ 
+ 		// copy spawn parms out of the client_t
+ 
+@@ -1431,7 +1431,7 @@ edict_t	*FindViewthing (void)
+ 	for (i=0 ; i<sv.num_edicts ; i++)
+ 	{
+ 		e = EDICT_NUM(i);
+-		if ( !strcmp (pr_strings + e->v.classname, "viewthing") )
++		if ( !strcmp (PR_GetString(e->v.classname), "viewthing") )
+ 			return e;
+ 	}
+ 	Con_Printf ("No viewthing on map\n");
+diff --git a/source/pr_cmds.c b/source/pr_cmds.c
+index e3925ce..95ac76c 100644
+--- a/source/pr_cmds.c
++++ b/source/pr_cmds.c
+@@ -61,7 +61,7 @@ void PF_error (void)
+ 	
+ 	s = PF_VarString(0);
+ 	Con_Printf ("======SERVER ERROR in %s:\n%s\n"
+-	,pr_strings + pr_xfunction->s_name,s);
++	,PR_GetString(pr_xfunction->s_name),s);
+ 	ed = PROG_TO_EDICT(pr_global_struct->self);
+ 	ED_Print (ed);
+ 
+@@ -85,7 +85,7 @@ void PF_objerror (void)
+ 	
+ 	s = PF_VarString(0);
+ 	Con_Printf ("======OBJECT ERROR in %s:\n%s\n"
+-	,pr_strings + pr_xfunction->s_name,s);
++	,PR_GetString(pr_xfunction->s_name),s);
+ 	ed = PROG_TO_EDICT(pr_global_struct->self);
+ 	ED_Print (ed);
+ 	ED_Free (ed);
+@@ -250,7 +250,7 @@ void PF_setmodel (void)
+ 		PR_RunError ("no precache: %s\n", m);
+ 		
+ 
+-	e->v.model = m - pr_strings;
++	e->v.model = PR_SetEngineString(m);
+ 	e->v.modelindex = i; //SV_ModelIndex (m);
+ 
+ 	mod = sv.models[ (int)e->v.modelindex];  // Mod_ForName (m, true);
+@@ -900,7 +900,7 @@ void PF_ftos (void)
+ 		sprintf (pr_string_temp, "%d",(int)v);
+ 	else
+ 		sprintf (pr_string_temp, "%5.1f",v);
+-	G_INT(OFS_RETURN) = pr_string_temp - pr_strings;
++	G_INT(OFS_RETURN) = PR_SetEngineString(pr_string_temp);
+ }
+ 
+ void PF_fabs (void)
+@@ -913,7 +913,7 @@ void PF_fabs (void)
+ void PF_vtos (void)
+ {
+ 	sprintf (pr_string_temp, "'%5.1f %5.1f %5.1f'", G_VECTOR(OFS_PARM0)[0], G_VECTOR(OFS_PARM0)[1], G_VECTOR(OFS_PARM0)[2]);
+-	G_INT(OFS_RETURN) = pr_string_temp - pr_strings;
++	G_INT(OFS_RETURN) = PR_SetEngineString(pr_string_temp);
+ }
+ 
+ void PF_Spawn (void)
+@@ -1457,7 +1457,7 @@ void PF_makestatic (void)
+ 
+ 	MSG_WriteByte (&sv.signon,svc_spawnstatic);
+ 
+-	MSG_WriteByte (&sv.signon, SV_ModelIndex(pr_strings + ent->v.model));
++	MSG_WriteByte (&sv.signon, SV_ModelIndex(PR_GetString(ent->v.model)));
+ 
+ 	MSG_WriteByte (&sv.signon, ent->v.frame);
+ 	MSG_WriteByte (&sv.signon, ent->v.colormap);
+diff --git a/source/pr_edict.c b/source/pr_edict.c
+index 250e426..50edb6c 100644
+--- a/source/pr_edict.c
++++ b/source/pr_edict.c
+@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ // sv_edict.c -- entity dictionary
+ 
+ #include "quakedef.h"
++#include <limits.h>
+ 
+ dprograms_t		*progs;
+ dfunction_t		*pr_functions;
+@@ -33,6 +34,37 @@ int				pr_edict_size;	// in bytes
+ 
+ unsigned short		pr_crc;
+ 
++#define	MAX_ENGINE_STRINGS	512
++static char	*pr_engine_strings[MAX_ENGINE_STRINGS];
++static int	pr_num_engine_strings;
++
++char *PR_GetString (string_t num)
++{
++	if (num >= 0)
++		return pr_strings + num;
++	if (-num > pr_num_engine_strings)
++		Sys_Error ("PR_GetString: invalid string %i", num);
++	return pr_engine_strings[-num - 1];
++}
++
++// Table entries are engine-owned storage that outlives every edict referring
++// to it, such as static buffers and model names. The same pointer reuses its index.
++string_t PR_SetEngineString (char *s)
++{
++	uintptr_t	offset = (uintptr_t)s - (uintptr_t)pr_strings;
++	int		i;
++
++	if ((uintptr_t)s >= (uintptr_t)pr_strings && offset <= INT_MAX)
++		return (string_t)offset;
++	for (i = 0 ; i < pr_num_engine_strings ; i++)
++		if (pr_engine_strings[i] == s)
++			return -i - 1;
++	if (pr_num_engine_strings == MAX_ENGINE_STRINGS)
++		Sys_Error ("PR_SetEngineString: too many engine strings");
++	pr_engine_strings[pr_num_engine_strings++] = s;
++	return -pr_num_engine_strings;
++}
++
+ int		type_size[8] = {1,sizeof(string_t)/4,1,3,1,1,sizeof(func_t)/4,sizeof(void *)/4};
+ 
+ ddef_t *ED_FieldAtOfs (int ofs);
+@@ -191,7 +223,7 @@ ddef_t *ED_FindField (char *name)
+ 	for (i=0 ; i<progs->numfielddefs ; i++)
+ 	{
+ 		def = &pr_fielddefs[i];
+-		if (!strcmp(pr_strings + def->s_name,name) )
++		if (!strcmp(PR_GetString(def->s_name),name) )
+ 			return def;
+ 	}
+ 	return NULL;
+@@ -211,7 +243,7 @@ ddef_t *ED_FindGlobal (char *name)
+ 	for (i=0 ; i<progs->numglobaldefs ; i++)
+ 	{
+ 		def = &pr_globaldefs[i];
+-		if (!strcmp(pr_strings + def->s_name,name) )
++		if (!strcmp(PR_GetString(def->s_name),name) )
+ 			return def;
+ 	}
+ 	return NULL;
+@@ -231,7 +263,7 @@ dfunction_t *ED_FindFunction (char *name)
+ 	for (i=0 ; i<progs->numfunctions ; i++)
+ 	{
+ 		func = &pr_functions[i];
+-		if (!strcmp(pr_strings + func->s_name,name) )
++		if (!strcmp(PR_GetString(func->s_name),name) )
+ 			return func;
+ 	}
+ 	return NULL;
+@@ -288,18 +320,18 @@ char *PR_ValueString (etype_t type, eval_t *val)
+ 	switch (type)
+ 	{
+ 	case ev_string:
+-		sprintf (line, "%s", pr_strings + val->string);
++		sprintf (line, "%s", PR_GetString(val->string));
+ 		break;
+ 	case ev_entity:	
+ 		sprintf (line, "entity %i", NUM_FOR_EDICT(PROG_TO_EDICT(val->edict)) );
+ 		break;
+ 	case ev_function:
+ 		f = pr_functions + val->function;
+-		sprintf (line, "%s()", pr_strings + f->s_name);
++		sprintf (line, "%s()", PR_GetString(f->s_name));
+ 		break;
+ 	case ev_field:
+ 		def = ED_FieldAtOfs ( val->_int );
+-		sprintf (line, ".%s", pr_strings + def->s_name);
++		sprintf (line, ".%s", PR_GetString(def->s_name));
+ 		break;
+ 	case ev_void:
+ 		sprintf (line, "void");
+@@ -340,18 +372,18 @@ char *PR_UglyValueString (etype_t type, eval_t *val)
+ 	switch (type)
+ 	{
+ 	case ev_string:
+-		sprintf (line, "%s", pr_strings + val->string);
++		sprintf (line, "%s", PR_GetString(val->string));
+ 		break;
+ 	case ev_entity:	
+ 		sprintf (line, "%i", NUM_FOR_EDICT(PROG_TO_EDICT(val->edict)));
+ 		break;
+ 	case ev_function:
+ 		f = pr_functions + val->function;
+-		sprintf (line, "%s", pr_strings + f->s_name);
++		sprintf (line, "%s", PR_GetString(f->s_name));
+ 		break;
+ 	case ev_field:
+ 		def = ED_FieldAtOfs ( val->_int );
+-		sprintf (line, "%s", pr_strings + def->s_name);
++		sprintf (line, "%s", PR_GetString(def->s_name));
+ 		break;
+ 	case ev_void:
+ 		sprintf (line, "void");
+@@ -393,7 +425,7 @@ char *PR_GlobalString (int ofs)
+ 	else
+ 	{
+ 		s = PR_ValueString (def->type, val);
+-		sprintf (line,"%i(%s)%s", ofs, pr_strings + def->s_name, s);
++		sprintf (line,"%i(%s)%s", ofs, PR_GetString(def->s_name), s);
+ 	}
+ 	
+ 	i = strlen(line);
+@@ -414,7 +446,7 @@ char *PR_GlobalStringNoContents (int ofs)
+ 	if (!def)
+ 		sprintf (line,"%i(\?\?\?)", ofs);
+ 	else
+-		sprintf (line,"%i(%s)", ofs, pr_strings + def->s_name);
++		sprintf (line,"%i(%s)", ofs, PR_GetString(def->s_name));
+ 	
+ 	i = strlen(line);
+ 	for ( ; i<20 ; i++)
+@@ -451,7 +483,7 @@ void ED_Print (edict_t *ed)
+ 	for (i=1 ; i<progs->numfielddefs ; i++)
+ 	{
+ 		d = &pr_fielddefs[i];
+-		name = pr_strings + d->s_name;
++		name = PR_GetString(d->s_name);
+ 		if (name[strlen(name)-2] == '_')
+ 			continue;	// skip _x, _y, _z vars
+ 			
+@@ -501,7 +533,7 @@ void ED_Write (FILE *f, edict_t *ed)
+ 	for (i=1 ; i<progs->numfielddefs ; i++)
+ 	{
+ 		d = &pr_fielddefs[i];
+-		name = pr_strings + d->s_name;
++		name = PR_GetString(d->s_name);
+ 		if (name[strlen(name)-2] == '_')
+ 			continue;	// skip _x, _y, _z vars
+ 			
+@@ -634,7 +666,7 @@ void ED_WriteGlobals (FILE *f)
+ 		&& type != ev_entity)
+ 			continue;
+ 
+-		name = pr_strings + def->s_name;		
++		name = PR_GetString(def->s_name);
+ 		fprintf (f,"\"%s\" ", name);
+ 		fprintf (f,"\"%s\"\n", PR_UglyValueString(type, (eval_t *)&pr_globals[def->ofs]));		
+ 	}
+@@ -739,7 +771,7 @@ qboolean	ED_ParseEpair (void *base, ddef_t *key, char *s)
+ 	switch (key->type & ~DEF_SAVEGLOBAL)
+ 	{
+ 	case ev_string:
+-		*(string_t *)d = ED_NewString (s) - pr_strings;
++		*(string_t *)d = PR_SetEngineString (ED_NewString (s));
+ 		break;
+ 		
+ 	case ev_float:
+@@ -959,7 +991,7 @@ void ED_LoadFromFile (char *data)
+ 		}
+ 
+ 	// look for the spawn function
+-		func = ED_FindFunction ( pr_strings + ent->v.classname );
++		func = ED_FindFunction ( PR_GetString(ent->v.classname) );
+ 
+ 		if (!func)
+ 		{
+diff --git a/source/pr_exec.c b/source/pr_exec.c
+index a4f63ca..f3c530f 100644
+--- a/source/pr_exec.c
++++ b/source/pr_exec.c
+@@ -208,7 +208,7 @@ void PR_StackTrace (void)
+ 			Con_Printf ("<NO FUNCTION>\n");
+ 		}
+ 		else
+-			Con_Printf ("%12s : %s\n", pr_strings + f->s_file, pr_strings + f->s_name);		
++			Con_Printf ("%12s : %s\n", PR_GetString(f->s_file), PR_GetString(f->s_name));
+ 	}
+ }
+ 
+@@ -243,7 +243,7 @@ void PR_Profile_f (void)
+ 		if (best)
+ 		{
+ 			if (num < 10)
+-				Con_Printf ("%7i %s\n", best->profile, pr_strings+best->s_name);
++				Con_Printf ("%7i %s\n", best->profile, PR_GetString(best->s_name));
+ 			num++;
+ 			best->profile = 0;
+ 		}
+@@ -483,7 +483,7 @@ while (1)
+ 		c->_float = !a->vector[0] && !a->vector[1] && !a->vector[2];
+ 		break;
+ 	case OP_NOT_S:
+-		c->_float = !a->string || !pr_strings[a->string];
++		c->_float = !a->string || !*PR_GetString(a->string);
+ 		break;
+ 	case OP_NOT_FNC:
+ 		c->_float = !a->function;
+@@ -501,7 +501,7 @@ while (1)
+ 					(a->vector[2] == b->vector[2]);
+ 		break;
+ 	case OP_EQ_S:
+-		c->_float = !strcmp(pr_strings+a->string,pr_strings+b->string);
++		c->_float = !strcmp(PR_GetString(a->string),PR_GetString(b->string));
+ 		break;
+ 	case OP_EQ_E:
+ 		c->_float = a->_int == b->_int;
+@@ -520,7 +520,7 @@ while (1)
+ 					(a->vector[2] != b->vector[2]);
+ 		break;
+ 	case OP_NE_S:
+-		c->_float = strcmp(pr_strings+a->string,pr_strings+b->string);
++		c->_float = strcmp(PR_GetString(a->string),PR_GetString(b->string));
+ 		break;
+ 	case OP_NE_E:
+ 		c->_float = a->_int != b->_int;
+diff --git a/source/progs.h b/source/progs.h
+index 6d3aa8a..5fbcb5b 100644
+--- a/source/progs.h
++++ b/source/progs.h
+@@ -53,6 +53,12 @@ typedef struct edict_s
+ extern	dprograms_t		*progs;
+ extern	dfunction_t		*pr_functions;
+ extern	char			*pr_strings;
++
++// Non-negative string_t values are offsets from pr_strings. A string whose
++// offset does not fit, possible with 64-bit pointers, gets a negative index
++// into a table of engine strings instead.
++char *PR_GetString (string_t num);
++string_t PR_SetEngineString (char *s);
+ extern	ddef_t			*pr_globaldefs;
+ extern	ddef_t			*pr_fielddefs;
+ extern	dstatement_t	*pr_statements;
+@@ -103,13 +109,13 @@ int NUM_FOR_EDICT(edict_t *e);
+ #define	G_EDICT(o) ((edict_t *)((byte *)sv.edicts+ *(int *)&pr_globals[o]))
+ #define G_EDICTNUM(o) NUM_FOR_EDICT(G_EDICT(o))
+ #define	G_VECTOR(o) (&pr_globals[o])
+-#define	G_STRING(o) (pr_strings + *(string_t *)&pr_globals[o])
++#define	G_STRING(o) (PR_GetString(*(string_t *)&pr_globals[o]))
+ #define	G_FUNCTION(o) (*(func_t *)&pr_globals[o])
+ 
+ #define	E_FLOAT(e,o) (((float*)&e->v)[o])
+ #define	E_INT(e,o) (*(int *)&((float*)&e->v)[o])
+ #define	E_VECTOR(e,o) (&((float*)&e->v)[o])
+-#define	E_STRING(e,o) (pr_strings + *(string_t *)&((float*)&e->v)[o])
++#define	E_STRING(e,o) (PR_GetString(*(string_t *)&((float*)&e->v)[o]))
+ 
+ extern	int		type_size[8];
+ 
+diff --git a/source/sv_main.c b/source/sv_main.c
+index 525d1cb..fa5d14a 100644
+--- a/source/sv_main.c
++++ b/source/sv_main.c
+@@ -204,7 +204,7 @@ void SV_SendServerinfo (client_t *client)
+ 	else
+ 		MSG_WriteByte (&client->message, GAME_COOP);
+ 
+-	sprintf (message, pr_strings+sv.edicts->v.message);
++	sprintf (message, PR_GetString(sv.edicts->v.message));
+ 
+ 	MSG_WriteString (&client->message,message);
+ 
+@@ -446,7 +446,7 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
+ 		if (ent != clent)	// clent is ALLWAYS sent
+ 		{
+ // ignore ents without visible models
+-			if (!ent->v.modelindex || !pr_strings[ent->v.model])
++			if (!ent->v.modelindex || !*PR_GetString(ent->v.model))
+ 				continue;
+ 
+ 			for (i=0 ; i < ent->num_leafs ; i++)
+@@ -675,7 +675,7 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
+ 	if (bits & SU_ARMOR)
+ 		MSG_WriteByte (msg, ent->v.armorvalue);
+ 	if (bits & SU_WEAPON)
+-		MSG_WriteByte (msg, SV_ModelIndex(pr_strings+ent->v.weaponmodel));
++		MSG_WriteByte (msg, SV_ModelIndex(PR_GetString(ent->v.weaponmodel)));
+ 	
+ 	MSG_WriteShort (msg, ent->v.health);
+ 	MSG_WriteByte (msg, ent->v.currentammo);
+@@ -942,7 +942,7 @@ void SV_CreateBaseline (void)
+ 		{
+ 			svent->baseline.colormap = 0;
+ 			svent->baseline.modelindex =
+-				SV_ModelIndex(pr_strings + svent->v.model);
++				SV_ModelIndex(PR_GetString(svent->v.model));
+ 		}
+ 		
+ 	//
+@@ -1134,7 +1134,7 @@ void SV_SpawnServer (char *server)
+ 	ent = EDICT_NUM(0);
+ 	memset (&ent->v, 0, progs->entityfields * 4);
+ 	ent->free = false;
+-	ent->v.model = sv.worldmodel->name - pr_strings;
++	ent->v.model = PR_SetEngineString(sv.worldmodel->name);
+ 	ent->v.modelindex = 1;		// world model
+ 	ent->v.solid = SOLID_BSP;
+ 	ent->v.movetype = MOVETYPE_PUSH;
+@@ -1144,7 +1144,7 @@ void SV_SpawnServer (char *server)
+ 	else
+ 		pr_global_struct->deathmatch = deathmatch.value;
+ 
+-	pr_global_struct->mapname = sv.name - pr_strings;
++	pr_global_struct->mapname = PR_SetEngineString(sv.name);
+ 
+ // serverflags are for cross level information (sigils)
+ 	pr_global_struct->serverflags = svs.serverflags;
+diff --git a/source/sv_phys.c b/source/sv_phys.c
+index 4b53ff4..9915110 100644
+--- a/source/sv_phys.c
++++ b/source/sv_phys.c
+@@ -91,12 +91,12 @@ void SV_CheckVelocity (edict_t *ent)
+ 	{
+ 		if (IS_NAN(ent->v.velocity[i]))
+ 		{
+-			Con_Printf ("Got a NaN velocity on %s\n", pr_strings + ent->v.classname);
++			Con_Printf ("Got a NaN velocity on %s\n", PR_GetString(ent->v.classname));
+ 			ent->v.velocity[i] = 0;
+ 		}
+ 		if (IS_NAN(ent->v.origin[i]))
+ 		{
+-			Con_Printf ("Got a NaN origin on %s\n", pr_strings + ent->v.classname);
++			Con_Printf ("Got a NaN origin on %s\n", PR_GetString(ent->v.classname));
+ 			ent->v.origin[i] = 0;
+ 		}
+ 		if (ent->v.velocity[i] > sv_maxvelocity.value)

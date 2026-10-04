@@ -7,6 +7,7 @@ return {
   mbedtls = "mbedtls",
   pciids = "pciids",
   picohttpparser = "picohttpparser",
+  quake = "quake",
   sbase = "sbase",
   tcc = "tcc",
   tzdata = "tzdata",
