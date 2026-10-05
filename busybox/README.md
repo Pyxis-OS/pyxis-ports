@@ -2,6 +2,9 @@
 
 [Upstream BusyBox](https://git.busybox.net/busybox) is pinned to
 `f96d33d28a1f70fda5f27d221d5012b1ac0b7dad` (1.39.0.git) under GPL-2.0-only.
+The recipe fetches that commit from the
+[GitHub mirror](https://github.com/mirror/busybox), because upstream's server
+refuses commits that no branch points at.
 The recipe builds only `editors/vi.c` and stages `bin/vi.pxe` with
 `share/licenses/busybox/LICENSE`. Retain the license when distributing the
 executable. This recipe, its patch and the adapter are its corresponding source.
