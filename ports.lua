@@ -4,6 +4,7 @@ return {
   doom = "doom",
   fastfetch = "fastfetch",
   kilo = "kilo",
+  links = "links",
   lua = "lua",
   mbedtls = "mbedtls",
   pciids = "pciids",

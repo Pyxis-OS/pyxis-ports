@@ -1,0 +1,433 @@
+diff --git a/error.c b/error.c
+index 0d15ba3..4ef803b 100644
+--- a/error.c
++++ b/error.c
+@@ -296,7 +296,7 @@ unsigned alloc_overhead = L_D_S + RED_ZONE_INC;
+ 
+ static inline void force_dump(void)
+ {
+-#if defined(DOS)
++#if defined(DOS) || defined(PYXIS)
+ 	fprintf(stderr, "\n"ANSI_SET_BOLD"Exiting"ANSI_CLEAR_BOLD"\n");
+ 	fflush(stdout);
+ 	fflush(stderr);
+diff --git a/fn_impl.c b/fn_impl.c
+index 4f58f9f..df0d4a5 100644
+--- a/fn_impl.c
++++ b/fn_impl.c
+@@ -66,7 +66,7 @@ int gettimeofday(struct timeval *tv, struct timezone *tz)
+ 	return 0;
+ }
+ #endif
+-#ifndef HAVE_GETCWD
++#if !defined(HAVE_GETCWD) && !defined(PYXIS)
+ char *getcwd(char *buf, size_t size)
+ {
+ #ifndef MAXPATHLEN
+diff --git a/kbd.c b/kbd.c
+index c7c1ee3..bb1c348 100644
+--- a/kbd.c
++++ b/kbd.c
+@@ -130,7 +130,13 @@ unsigned char init_seq[] = "\033)0\0337";
+ unsigned char init_seq_x_mouse[] = "\033[?1000h\033[?1002h\033[?1005l\033[?1015l\033[?1006h\033[?2004h";
+ unsigned char init_seq_tw_mouse[] = "\033[?9h";
+ unsigned char init_seq_xterm[] = "\033[?1049h";
++#ifdef PYXIS
++/* Pyxis terminals have no saved cursor, so leave the cleared screen with the
++   cursor at the top for the shell. */
++unsigned char term_seq[] = "\033[2J\033[H";
++#else
+ unsigned char term_seq[] = "\033[2J\0338\r \b";
++#endif
+ unsigned char term_seq_x_mouse[] = "\033[?1000l\r       \r\033[?1002l\r       \r\033[?1006l\r       \r\033[?2004l\r       \r";
+ unsigned char term_seq_tw_mouse[] = "\033[?9l";
+ unsigned char term_seq_xterm[] = "\033[?1049l";
+@@ -148,7 +154,7 @@ static void send_init_sequence(int h, int flags)
+ 	if (use_xterm_save_restore())
+ 		hard_write(h, init_seq_xterm, (int)strlen(cast_const_char init_seq_xterm));
+ 	hard_write(h, init_seq, (int)strlen(cast_const_char init_seq));
+-#if !defined(DOS) && !defined(HAIKU)
++#if !defined(DOS) && !defined(HAIKU) && !defined(PYXIS)
+ 	if (flags & USE_TWIN_MOUSE) {
+ 		hard_write(h, init_seq_tw_mouse, (int)strlen(cast_const_char init_seq_tw_mouse));
+ 	} else {
+@@ -161,7 +167,7 @@ static void send_init_sequence(int h, int flags)
+ static void send_term_sequence(int h, int flags)
+ {
+ 	want_draw();
+-#if !defined(DOS) && !defined(HAIKU)
++#if !defined(DOS) && !defined(HAIKU) && !defined(PYXIS)
+ 	if (flags & USE_TWIN_MOUSE) {
+ 		hard_write(h, term_seq_tw_mouse, (int)strlen(cast_const_char term_seq_tw_mouse));
+ 	} else {
+diff --git a/os_dep.c b/os_dep.c
+index e89944c..5e2295d 100644
+--- a/os_dep.c
++++ b/os_dep.c
+@@ -299,7 +299,7 @@ void init_page_size(void)
+ 	if (getpg > 0 && !(getpg & (getpg - 1))) page_size = (int)getpg;
+ }
+ 
+-#if !defined(OPENVMS) && !defined(DOS)
++#if !defined(OPENVMS) && !defined(DOS) && !defined(PYXIS)
+ void init_os(void)
+ {
+ 	/* Disable per-thread heap */
+@@ -450,6 +450,19 @@ static inline int get_e(unsigned char *env)
+ 	return 0;
+ }
+ 
++#ifdef PYXIS
++
++/* Pyxis has no signals to install or ignore. */
++void do_signal(int sig, void (*handler)(int))
++{
++}
++
++void ignore_signals(void)
++{
++}
++
++#else
++
+ void do_signal(int sig, void (*handler)(int))
+ {
+ 	errno = 0;
+@@ -472,6 +485,8 @@ void ignore_signals(void)
+ #endif
+ }
+ 
++#endif
++
+ time_t get_absolute_seconds(void)
+ {
+ 	time_t t;
+@@ -489,6 +504,7 @@ uttime get_absolute_time(void)
+ 	return (uttime)tv.tv_sec * 1000 + (unsigned)tv.tv_usec / 1000;
+ }
+ 
++#ifndef PYXIS
+ uttime get_time(void)
+ {
+ #if defined(OS2) || defined(WIN)
+@@ -523,6 +539,7 @@ uttime get_time(void)
+ 	return get_absolute_time();
+ #endif
+ }
++#endif
+ 
+ 
+ static unsigned char *clipboard = NULL;
+@@ -655,7 +672,7 @@ void get_terminal_size(int *x, int *y)
+ 	}
+ }
+ 
+-#elif !defined(OPENVMS)
++#elif !defined(OPENVMS) && !defined(PYXIS)
+ 
+ void get_terminal_size(int *x, int *y)
+ {
+@@ -728,8 +745,11 @@ static void fd_unlock(void)
+ 
+ static void new_fd_cloexec(int fd)
+ {
++#ifndef PYXIS
++	/* Pyxis runs no other programs, so there is nothing to close on exec. */
+ 	int rs;
+ 	EINTRLOOP(rs, fcntl(fd, F_SETFD, FD_CLOEXEC));
++#endif
+ }
+ 
+ static void new_fd_bin(int fd)
+@@ -794,6 +814,7 @@ int c_pipe(int fd[2])
+ 	return r;
+ }
+ 
++#ifndef PYXIS
+ int c_dup(int oh)
+ {
+ 	int h;
+@@ -815,6 +836,7 @@ int c_dup(int oh)
+ 	} while (h == -1 && cleanup_fds());
+ 	return h;
+ }
++#endif
+ 
+ int c_socket(int d, int t, int p)
+ {
+@@ -1017,7 +1039,7 @@ int is_xterm(void)
+ 	return xt;
+ }
+ 
+-#elif defined(BEOS) || defined(ATHEOS) || defined(DOS) || defined(HAIKU)
++#elif defined(BEOS) || defined(ATHEOS) || defined(DOS) || defined(HAIKU) || defined(PYXIS)
+ 
+ int is_xterm(void)
+ {
+@@ -1418,9 +1440,17 @@ unsigned char *os_fixup_external_program(unsigned char *prog)
+ #endif
+ 
+ 
+-#if defined(UNIX) || defined(INTERIX) || defined(BEOS) || defined(RISCOS) || defined(ATHEOS) || defined(SPAD) || defined(OPENVMS) || defined(DOS) || defined(HAIKU)
++#if defined(UNIX) || defined(INTERIX) || defined(BEOS) || defined(RISCOS) || defined(ATHEOS) || defined(SPAD) || defined(OPENVMS) || defined(DOS) || defined(HAIKU) || defined(PYXIS)
++
++#if defined(PYXIS)
+ 
+-#if defined(BEOS) && defined(HAVE_SETPGID)
++/* Links starts no other programs on Pyxis. */
++int exe(unsigned char *path, int fg)
++{
++	return -1;
++}
++
++#elif defined(BEOS) && defined(HAVE_SETPGID)
+ 
+ int exe(unsigned char *path, int fg)
+ {
+@@ -2738,7 +2768,7 @@ int start_thread(void (*fn)(void *, int), void *ptr, int l, int counted)
+ 	return -1;
+ }
+ 
+-#elif defined(DOS)
++#elif defined(DOS) || defined(PYXIS)
+ 
+ int start_thread(void (*fn)(void *, int), void *ptr, int l, int counted)
+ {
+diff --git a/os_dep.h b/os_dep.h
+index c528853..74de1a9 100644
+--- a/os_dep.h
++++ b/os_dep.h
+@@ -17,6 +17,7 @@
+ #define SYS_OPENVMS	9
+ #define SYS_DOS		10
+ #define SYS_HAIKU	11
++#define SYS_PYXIS	12
+ 
+ /* hardcoded limit of 10 OSes in default.c */
+ 
+@@ -44,6 +45,8 @@
+ #define DOS
+ #elif defined(__HAIKU__)
+ #define HAIKU
++#elif defined(__pyxis__)
++#define PYXIS
+ #else
+ #define UNIX
+ #endif
+@@ -273,6 +276,26 @@ static inline int dir_sep(unsigned char x) { return x == '/'; }
+ #define USE_AF_UNIX
+ #define ASSOC_BLOCK
+ 
++#elif defined(PYXIS)
++
++/* One process with no fork, signals or sockets, like DOS. Every page is read
++ * through libc fopen (pyxis.c); local paths are relative to the working
++ * directory or name a scheme root such as host://. */
++static inline int dir_sep(unsigned char x) { return x == '/'; }
++#define NEWLINE "\n"
++#define NO_ASYNC_LOOKUP
++#define SYSTEM_ID SYS_PYXIS
++#define SYSTEM_NAME "Pyxis"
++#define DEFAULT_SHELL ""
++#define GETSHELL NULL
++#define NO_FG_EXEC
++#define NO_CTRL_Z
++#define NO_FILE_SECURITY
++#define NO_FORK_ON_EXIT
++#define DISABLE_SMB
++#define OS_NO_SYSTEM_CHARSET
++#define OS_NO_SYSTEM_LANGUAGE
++
+ #endif
+ 
+ #ifdef FS_UNIX_USERS
+diff --git a/os_depx.h b/os_depx.h
+index c8f9db2..6a71bf1 100644
+--- a/os_depx.h
++++ b/os_depx.h
+@@ -106,7 +106,7 @@ extern int errno;
+ #define SIG_ERR		((int (*)())-1)
+ #endif
+ 
+-#if defined(OPENVMS) || defined(DOS)
++#if defined(OPENVMS) || defined(DOS) || defined(PYXIS)
+ #define NO_SIGNAL_HANDLERS
+ #endif
+ 
+@@ -193,6 +193,32 @@ int dos_select(int n, fd_set *rs, fd_set *ws, fd_set *es, struct timeval *t, int
+ #define select(a, b, c, d, e) dos_select(a, b, c, d, e, 0)
+ #endif
+ 
++#ifdef PYXIS
++/* Pyxis libc never reports these: calls are not interrupted and the socket
++ * code that would see the others is unreachable (network.c). */
++#define EINTR (-1)
++#define EINPROGRESS (-2)
++#define EALREADY (-3)
++#define ECONNRESET (-4)
++#define EWOULDBLOCK EAGAIN
++/* Pyxis open has no exclusive creation. Libc rejects this unknown flag with
++ * EINVAL, so configuration temporaries and downloads fail instead of
++ * replacing an existing file. */
++#define O_EXCL 0x10000
++#define OS_SETRAW
++struct timeval;
++int pyxis_read(int fd, void *buf, size_t size);
++int pyxis_write(int fd, const void *buf, size_t size);
++int pyxis_pipe(int fd[2]);
++int pyxis_close(int fd);
++int pyxis_select(int n, fd_set *rs, fd_set *ws, fd_set *es, struct timeval *t);
++#define read pyxis_read
++#define write pyxis_write
++#define pipe pyxis_pipe
++#define close pyxis_close
++#define select pyxis_select
++#endif
++
+ #if defined(O_SIZE) && defined(__EMX__)
+ #define HAVE_OPEN_PREALLOC
+ #elif (defined(HAVE_FALLOCATE) || defined(HAVE_POSIX_FALLOCATE)) && !defined(OPENVMS)
+diff --git a/sched.c b/sched.c
+index ed4ba33..b958afa 100644
+--- a/sched.c
++++ b/sched.c
+@@ -212,15 +212,17 @@ static int abort_all_keepalive_connections(void)
+ static void free_connection_data(struct connection *c)
+ {
+ 	struct h_conn *h;
+-	int rs;
+ 	if (c->sock1 != -1) set_handlers(c->sock1, NULL, NULL, NULL);
+ 	close_socket(&c->sock2);
++#ifndef PYXIS
+ 	if (c->pid) {
++		int rs;
+ 		EINTRLOOP(rs, kill(c->pid, SIGINT));
+ 		EINTRLOOP(rs, kill(c->pid, SIGTERM));
+ 		EINTRLOOP(rs, kill(c->pid, SIGKILL));
+ 		c->pid = 0;
+ 	}
++#endif
+ 	if (!c->running) {
+ 		internal_error("connection already suspended");
+ 	}
+diff --git a/select.c b/select.c
+index dfa1422..3041077 100644
+--- a/select.c
++++ b/select.c
+@@ -127,7 +127,7 @@ int can_read(int fd)
+ 
+ int close_std_handle(int std)
+ {
+-#ifndef DOS
++#if !defined(DOS) && !defined(PYXIS)
+ 	int n, h, rs;
+ 	if (std == 1)
+ 		fflush(stdout);
+@@ -156,7 +156,7 @@ fail1:
+ 
+ void restore_std_handle(int std, int h)
+ {
+-#ifndef DOS
++#if !defined(DOS) && !defined(PYXIS)
+ 	int rs;
+ 	if (std == 1)
+ 		fflush(stdout);
+diff --git a/terminal.c b/terminal.c
+index 6e58484..9086b2e 100644
+--- a/terminal.c
++++ b/terminal.c
+@@ -42,6 +42,22 @@ int hard_read(int fd, unsigned char *p, int l)
+ 	return t;
+ }
+ 
++#ifdef PYXIS
++
++/* The working directory is a chain of directory capabilities with no textual
++ * path. Without one, relative file:// URLs stay relative and libc resolves
++ * them against that chain. */
++unsigned char *get_cwd(void)
++{
++	return NULL;
++}
++
++void set_cwd(unsigned char *path)
++{
++}
++
++#else
++
+ unsigned char *get_cwd(void)
+ {
+ 	int bufsize = 128;
+@@ -66,6 +82,8 @@ void set_cwd(unsigned char *path)
+ 		EINTRLOOP(rs, chdir(cast_const_char path));
+ }
+ 
++#endif
++
+ unsigned char get_attribute(int fg, int bg)
+ {
+ 	return ((bg & 7) << 3) | (fg & 7) | ((fg & 8) << 3);
+diff --git a/vpipe.inc b/vpipe.inc
+index 9a16728..8a4d191 100644
+--- a/vpipe.inc
++++ b/vpipe.inc
+@@ -130,19 +130,33 @@ static int vpipe_close(int fd)
+ 	pipe_unlock();
+ 	if (!desc->n_rd && !desc->n_wr)
+ 		free(desc);
++#ifdef PYXIS
++	pyxis_pipe_release(fd);
++	return 0;
++#else
+ 	return close(fd);
++#endif
+ }
+ 
+ static int vpipe_create(int fd[2])
+ {
+-	int rs;
+ 	struct virtual_pipe *desc;
++#ifdef PYXIS
++	fd[0] = pyxis_pipe_number();
++	if (fd[0] == -1)
++		goto err0;
++	fd[1] = pyxis_pipe_number();
++	if (fd[1] == -1)
++		goto err1;
++#else
++	int rs;
+ 	EINTRLOOP(fd[0], open("/dev/null", O_RDONLY));
+ 	if (fd[0] == -1)
+ 		goto err0;
+ 	EINTRLOOP(fd[1], open("/dev/null", O_WRONLY));
+ 	if (fd[1] == -1)
+ 		goto err1;
++#endif
+ 	if (fd[0] >= FD_SETSIZE || fd[1] >= FD_SETSIZE) {
+ 		errno = EMFILE;
+ 		goto err2;
+@@ -159,16 +173,22 @@ static int vpipe_create(int fd[2])
+ 	pipe_flags[fd[0]] = 0;
+ 	pipe_desc[fd[1]] = desc;
+ 	pipe_flags[fd[1]] = VIRTUAL_PIPE_FLAG_WRITE;
+-#ifdef DOS
++#if defined(DOS) || defined(PYXIS)
+ 	pipe_flags[fd[0]] |= VIRTUAL_PIPE_FLAG_NONBLOCK;
+ 	pipe_flags[fd[1]] |= VIRTUAL_PIPE_FLAG_NONBLOCK;
+ #endif
+ 	pipe_unlock();
+ 	return 0;
+ err2:
++#ifdef PYXIS
++	pyxis_pipe_release(fd[1]);
++err1:
++	pyxis_pipe_release(fd[0]);
++#else
+ 	EINTRLOOP(rs, close(fd[1]));
+ err1:
+ 	EINTRLOOP(rs, close(fd[0]));
++#endif
+ err0:
+ 	return -1;
+ }

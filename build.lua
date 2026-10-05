@@ -82,8 +82,10 @@ local function main()
   assert(not (archive and source_file), "select an archive or standalone file")
   local revision = metadata.source.commit
   if not source_file then
-    assert(type(revision) == "string" and #revision == 40 and
-      revision:match("^[0-9a-f]+$"), "source needs an exact Git commit")
+    -- A release archive is pinned by its checksum; a Git commit is optional
+    -- for projects that publish no Git history.
+    assert((archive and revision == nil) or (type(revision) == "string" and
+      #revision == 40 and revision:match("^[0-9a-f]+$")), "source needs an exact Git commit")
   else
     assert(not revision, "standalone files use a checksum instead of a Git commit")
     assert(type(source_file.name) == "string" and
@@ -131,6 +133,9 @@ local function main()
     if archive then
       run({ "tar", "--extract", "--file", downloaded, "--directory", source,
         "--strip-components=1", "--no-same-owner" })
+      -- git apply resolves paths from the enclosing repository, which may be
+      -- the checkout holding the work directory; give the source its own.
+      run({ "git", "init", "--quiet", source })
     end
   else
     run({ "git", "init", "--quiet", source })

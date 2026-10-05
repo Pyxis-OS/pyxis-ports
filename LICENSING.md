@@ -22,7 +22,7 @@ those recipes fetch, adapt or package.
 - Each port's `metadata.lua`, README and source notices identify its upstream
   license, pinned revision and local changes.
 - Upstream-derived files and patches, including `busybox/patches/`, `doom/patches/`, `kilo/patches/`,
-  `lua/patches/`, `sbase/patches/`, `fastfetch/patches/`, `tcc/patches/` and
+  `links/patches/`, `lua/patches/`, `sbase/patches/`, `fastfetch/patches/`, `tcc/patches/` and
   `quake/patches/`, retain the licenses of the upstream files they modify. This
   includes applicable runtime exceptions.
 - `quake/sys_pyxis.c` derives from quakegeneric's `sys_null.c` and keeps its
@@ -30,6 +30,11 @@ those recipes fetch, adapt or package.
 - `busybox/libbb.h`, `busybox/vi_config.h` and `busybox/busybox_pyxis.c` replace
   BusyBox's libbb and Kconfig output for vi. They are GPL-2.0-only, matching
   the BusyBox program they are linked into.
+- `links/pyxis.c`, `links/pyxis_console.c`, `links/pyxis_console.h`,
+  `links/network.c`, `links/config.h` and the headers under `links/include/`
+  are the platform layer and configuration linked into Links. Like Links,
+  whose sources say "released under GPL" and whose `COPYING` is GPL version 2,
+  they are distributed under the GPL.
 - `lua/main.c` retains Lua's MIT terms for its upstream-derived CLI flow and
   local adaptation, as documented in [lua/README.md](lua/README.md). The staged
   upstream `lua.h` contains the complete license notice.
