@@ -25,11 +25,11 @@ session, so the shell cannot terminate it and discard unsaved edits.
 
 BusyBox's Kconfig and libbb are not built. The recipe replaces them:
 
-- `vi_config.h` selects colon commands, yank/marks, literal search, dot repeat,
+- `vi_config.h` selects colon commands, yank/marks, BRE search, dot repeat,
   read-only mode, `:set` options, undo with its queue, verbose status and
-  screen-size queries. Regex search, signals, the cursor-position size probe,
-  `:!` and 8-bit display stay off: Pyxis has no `regex.h`, signals, shell
-  command execution or non-ASCII renderer for them.
+  screen-size queries. Signals, the cursor-position size probe, `:!` and 8-bit
+  display stay off: Pyxis has no signals, shell command execution or non-ASCII
+  renderer for them.
 - `libbb.h` declares the libbb helpers vi references.
 - `busybox_pyxis.c` supplies `main` and those helpers over libc and libterm.
 
@@ -55,6 +55,13 @@ The patch replaces termios, poll and stat:
   that it does not exist; `:w!` overrides.
 - **`~/.exrc`.** It is not read, because its safety check needs Unix owners
   and modes. `EXINIT` still supplies startup commands.
+- **Regex.** GNU `re_compile_pattern`/`re_search` and `REG_STARTEND` are replaced
+  with libc `regcomp`/`regexec` over bounded, NUL-terminated copies. Forward
+  search chooses the first match; backward search retains the last eligible
+  match, including overlaps. Substitution captures remain byte offsets into
+  the original line. Compile errors use `regerror`, preserve the cursor and
+  never free an unsuccessfully compiled pattern. Global substitutions preserve
+  line anchors and advance after empty matches, including one final empty match.
 
 ## Patch 0002
 
@@ -78,7 +85,9 @@ on installed systems and is RAM on live boots.
 - **Display:** ASCII only. Control characters display as `^X`, and bytes
   above 127 display as `.`.
 - **Screen size:** re-read at each redraw. There is no resize notification.
-- **Search:** `/`, `?` and `:s` are literal, not regex.
+- **Search:** BRE through libc, with ASCII-only classes/folding and the pinned
+  TRE back-reference limits. Owner decision, 2026-10-07: bounded copies stop
+  regex matching at an embedded NUL within the slice; no GNU libc API is added.
 - **Shell:** there are no shell filters and no `:!`.
 - **Input EOF:** ends vi with "can't read user input", as upstream does.
   Unsaved edits are lost.
@@ -87,13 +96,15 @@ on installed systems and is RAM on live boots.
 
 ## less
 
-`less_config.h` selects literal search, line/page movement, numbered positions,
-multiple files, `-N` line numbers and `-m`/`-M` status. Patch 0003 adapts upstream
+`less_config.h` selects BRE search/highlighting, line/page movement, numbered
+positions, multiple files, `-I` ASCII case folding, `-N` line numbers and
+`-m`/`-M` status. Patch `0003-less-native-console.patch` adapts upstream
 `miscutils/less.c`: keys and drawing use the same libterm console adapter as vi,
 while content uses a separate libc descriptor. It normalizes Enter as CR or LF,
-uses case-sensitive literal search in place of regex and clears matches when
-changing files. Output is buffered before each key read. Ctrl+C passthrough stays
-held until exit. Search highlights, marks, bracket matching, raw escapes,
+retains upstream regex matching and clears matches and compiled patterns when
+changing files. Its highlight loop checks match status before reading offsets.
+Output is buffered before each key read. Ctrl+C passthrough stays
+held until exit. Marks, bracket matching, raw escapes,
 shell commands, log saving, signals and automatic resizing are disabled.
 
 ```text
@@ -114,8 +125,8 @@ Cached navigation does not fetch further input. There is no live refresh or
 nonblocking pipe readiness; a stalled producer can delay key handling during a
 refill. Read lines stay in memory for backward paging, up to the selected
 9,999,999-line limit; exceeding it fails instead of silently truncating input.
-The screen size is measured at startup. The renderer is ASCII; search is literal
-and case-sensitive without highlighting. The added named-input grant does not apply to downstream intermediate stages or
+The screen size is measured at startup. The renderer is ASCII; regex uses libc's
+ASCII-only classes/folding and pinned back-reference limits. The added named-input grant does not apply to downstream intermediate stages or
 file/pipe stdin with non-console stdout; those pager forms fail explicitly. The
 first stage's original console-input rule remains intact, and drawing always uses
 the named output console, independently of stdout.

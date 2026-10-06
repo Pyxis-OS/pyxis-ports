@@ -70,7 +70,7 @@ void xfunc_die(void)
 void bb_show_usage(void)
 {
 #ifdef PYXIS_APPLET_LESS
-  fputs("Usage: less [-EMmN~F] [FILE]...\n", stderr);
+  fputs("Usage: less [-EMmN~IF] [FILE]...\n", stderr);
 #else
   fputs("Usage: vi [-c CMD] [-R] [-H] [FILE]...\n", stderr);
 #endif
@@ -144,6 +144,18 @@ char *xasprintf(const char *format, ...)
     bb_simple_error_msg_and_die(ALLOCATION_ERROR);
   }
   return text;
+}
+
+char *regcomp_or_errmsg(regex_t *pattern, const char *text, int flags)
+{
+  int error = regcomp(pattern, text, flags);
+  if (!error) {
+    return NULL;
+  }
+  size_t size = regerror(error, pattern, NULL, 0);
+  char *message = xmalloc(size);
+  regerror(error, pattern, message, size);
+  return message;
 }
 
 void *xmalloc_read(int descriptor, size_t *size)

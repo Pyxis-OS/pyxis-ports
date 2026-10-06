@@ -11,7 +11,7 @@ return {
   patches = {
     "patches/0001-pyxis-terminal-and-file-access.patch",
     "patches/0002-clear-read-only-file-between-buffers.patch",
-    "patches/0003-less-native-console-and-literal-search.patch",
+    "patches/0003-less-native-console.patch",
     "patches/0004-pyxis-tar-ustar-subset.patch",
   },
   outputs = {

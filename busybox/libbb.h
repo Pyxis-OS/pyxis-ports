@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <regex.h>
 #include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -77,6 +78,14 @@ void *xrealloc(void *pointer, size_t size);
 char *xstrdup(const char *text);
 char *xstrndup(const char *text, int limit);
 char *xasprintf(const char *format, ...) __attribute__((format(printf, 1, 2)));
+/* Keep the old text alive while formatting a replacement from it. */
+#define xasprintf_inplace(text, ...) do { \
+  char *bb_previous_text = (text); \
+  (text) = xasprintf(__VA_ARGS__); \
+  free(bb_previous_text); \
+} while (0)
+/* NULL on success; otherwise an allocated regerror message for the caller. */
+char *regcomp_or_errmsg(regex_t *pattern, const char *text, int flags);
 /* Read to EOF or *size bytes; *size returns the count. NULL with errno on a
  * read error. The buffer has one spare NUL byte after the data. */
 void *xmalloc_read(int descriptor, size_t *size);
