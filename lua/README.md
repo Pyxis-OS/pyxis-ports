@@ -19,7 +19,7 @@ included in the ports bundle but excluded from the boot archive. Link with the
 same SDK used to build the archive. This does not provide `luaL_openlibs`, io/os,
 package, debug or the full math library.
 
-The guest executable is `bin/lua.pxe`; Pyxis installs it at `app://lua.pxe`.
+The guest executable is `bin/lua.pxe`; Pyxis installs it at `boot://lua.pxe`.
 From the guest shell:
 
 ```text

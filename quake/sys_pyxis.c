@@ -27,7 +27,7 @@ See the GNU General Public License for more details.
 #include "quake_pyxis.h"
 
 #define QUAKE_MEMORY_BYTES (32 * 1024 * 1024)
-#define QUAKE_BASE_DIRECTORY "app://share/quake"
+#define QUAKE_BASE_DIRECTORY "boot://share/quake"
 #define QUAKE_WRITE_DIRECTORY "home://quake"
 /* Quake renders at most this often outside timedemo; sleeping until then
  * avoids spinning through frames Host_Frame would skip. */

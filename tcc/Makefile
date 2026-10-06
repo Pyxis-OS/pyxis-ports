@@ -5,7 +5,7 @@ BUILD := $(abspath $(BUILD))
 STAGE := $(abspath $(STAGE))
 HOST_CC ?= cc
 # Read-only SDK layout used by the Pyxis boot archive.
-GUEST_SYSROOT ?= app://sdk
+GUEST_SYSROOT ?= boot://sdk
 GUEST_TCCDIR ?= $(GUEST_SYSROOT)/lib/tcc
 .DEFAULT_GOAL := all
 RECIPE_MAKEFILE := $(lastword $(MAKEFILE_LIST))

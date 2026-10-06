@@ -318,7 +318,7 @@ int main(int argc, char **argv)
   memcpy(arguments, argv, (size_t)argc * sizeof(*arguments));
   if (!has_iwad) {
     arguments[argc++] = "-iwad";
-    arguments[argc++] = "app://share/doom/DOOM.WAD";
+    arguments[argc++] = "boot://share/doom/DOOM.WAD";
   }
   doomgeneric_Create(argc, arguments);
   for (;;) {

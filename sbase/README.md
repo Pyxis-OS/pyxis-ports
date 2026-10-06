@@ -19,7 +19,7 @@ Pyxis SDK. No compatibility headers are installed, and the SDK is never modified
 
 ## Cksum
 
-The shell resolves `cksum` to `app://cksum.pxe`:
+The shell resolves `cksum` to `boot://cksum.pxe`:
 
 ```text
 cksum host://hello.c
@@ -46,7 +46,7 @@ warning in the byte-processing loop is retained.
 
 ## Tee
 
-The shell resolves `tee` to `app://tee.pxe`:
+The shell resolves `tee` to `boot://tee.pxe`:
 
 ```text
 cat host://input | tee home://first home://second | cksum
@@ -81,7 +81,7 @@ finish through EOF; independent terminal sessions can, as for cksum.
 
 ## Uniq
 
-The shell resolves `uniq` to `app://uniq.pxe`:
+The shell resolves `uniq` to `boot://uniq.pxe`:
 
 ```text
 uniq host://input
@@ -115,7 +115,7 @@ retained.
 
 ## Sha256sum
 
-The shell resolves `sha256sum` to `app://sha256sum.pxe`:
+The shell resolves `sha256sum` to `boot://sha256sum.pxe`:
 
 ```text
 sha256sum host://image.raw
