@@ -16,7 +16,7 @@ Super+Left/Right switches spaces. An inactive session blocks on keyboard input
 and excludes the inactive interval from game time. Focus changes and input resets
 release all held Doom keys, including modifiers shared by left/right keys.
 
-The default IWAD path is `app://share/doom/DOOM.WAD`; `-iwad` overrides it.
+The default IWAD path is `boot://share/doom/DOOM.WAD`; `-iwad` overrides it.
 `-playdemo path` plays a demo and returns to the shell when it finishes.
 
 The ordered runtime patch removes unused Unix headers and desktop error-dialog

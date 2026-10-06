@@ -6,7 +6,7 @@ The recipe stages `bin/kilo.pxe` and `share/licenses/kilo/LICENSE` together;
 retain the license when distributing the executable.
 
 Run `kilo filename` from the Pyxis shell after packaging the executable in
-`app://`. Relative paths use the inherited working directory. The process
+`boot://`. Relative paths use the inherited working directory. The process
 needs the usual console input/output, memory and directory startup grants,
 plus a `clock` grant with READ authority.
 

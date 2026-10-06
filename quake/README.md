@@ -21,7 +21,7 @@ The loop measures focused time, so time in another space is excluded, and sleeps
 to Quake's 72 Hz cap except during `timedemo`. Focus changes and input resets
 release every key and mouse button Quake holds. `+mlook` is queued at every start,
 and a first run without `config.cfg` binds the middle button to `impulse 10`.
-Defaults are `-basedir app://share/quake` and `-writedir home://quake`, inserted
+Defaults are `-basedir boot://share/quake` and `-writedir home://quake`, inserted
 before the caller's arguments so trailing `+commands` stay intact.
 
 Ordered patches:
