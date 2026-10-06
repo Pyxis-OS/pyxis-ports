@@ -92,7 +92,7 @@ for this port.
 
 ## Guest SDK and use
 
-The normal Pyxis image installs `bin/tcc.pxe` at `boot://tcc.pxe`. The SDK lives
+The normal Pyxis image installs `bin/tcc.pxe` at `bin://tcc.pxe`. The SDK lives
 under read-only `boot://sdk`: shared headers in `usr/include`, `crt0.o` and the
 libc/libterm/libpyxis/libgcc archives in `usr/lib`, and this recipe's `lib/tcc`
 with libtcc1 and its four compiler-private headers. GCC builtin headers and host
