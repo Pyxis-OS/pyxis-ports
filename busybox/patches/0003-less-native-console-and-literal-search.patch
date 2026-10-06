@@ -1,0 +1,769 @@
+--- a/miscutils/less.c
++++ b/miscutils/less.c
+@@ -61,7 +61,7 @@
+ //config:	help
+ //config:	Marks enable positions in a file to be stored for easy reference.
+ //config:
+-//config:config FEATURE_LESS_REGEXP
++//config:config FEATURE_LESS_SEARCH
+ //config:	bool "Enable regular expressions"
+ //config:	default y
+ //config:	depends on LESS
+@@ -121,13 +121,13 @@
+ //kbuild:lib-$(CONFIG_LESS) += less.o
+ 
+ //usage:#define less_trivial_usage
+-//usage:       "[-EF" IF_FEATURE_LESS_REGEXP("I")IF_FEATURE_LESS_FLAGS("Mm")
++//usage:       "[-EF" IF_FEATURE_LESS_SEARCH("I")IF_FEATURE_LESS_FLAGS("Mm")
+ //usage:       "N" IF_FEATURE_LESS_TRUNCATE("S") IF_FEATURE_LESS_RAW("R") "h~] [FILE]..."
+ //usage:#define less_full_usage "\n\n"
+ //usage:       "View FILE (or stdin) one screenful at a time\n"
+ //usage:     "\n	-E	Quit once the end of a file is reached"
+ //usage:     "\n	-F	Quit if entire file fits on first screen"
+-//usage:	IF_FEATURE_LESS_REGEXP(
++//usage:	IF_FEATURE_LESS_SEARCH(
+ //usage:     "\n	-I	Ignore case in all searches"
+ //usage:	)
+ //usage:	IF_FEATURE_LESS_FLAGS(
+@@ -143,13 +143,7 @@
+ //usage:	)
+ //usage:     "\n	-~	Suppress ~s displayed past EOF"
+ 
+-#include <sched.h>  /* sched_yield() */
+-
+-#include "libbb.h"
+-#include "common_bufsiz.h"
+-#if ENABLE_FEATURE_LESS_REGEXP
+-#include "xregex.h"
+-#endif
++#include "less_support.h"
+ 
+ 
+ #define ESC "\033"
+@@ -175,22 +169,21 @@
+ 	FLAG_m = 1 << 2,
+ 	FLAG_N = 1 << 3,
+ 	FLAG_TILDE = 1 << 4,
+-	FLAG_I = 1 << 5,
+-	FLAG_F = 1 << 6,
+-	FLAG_S = (1 << 7) * ENABLE_FEATURE_LESS_TRUNCATE,
+-	FLAG_R = (1 << 8) * ENABLE_FEATURE_LESS_RAW,
++	FLAG_F = 1 << 5,
++	FLAG_S = (1 << 6) * ENABLE_FEATURE_LESS_TRUNCATE,
++	FLAG_R = (1 << 7) * ENABLE_FEATURE_LESS_RAW,
+ /* hijack command line options variable for internal state vars */
+ 	LESS_STATE_MATCH_BACKWARDS = 1 << 15,
+ };
+ 
+-#if !ENABLE_FEATURE_LESS_REGEXP
++#if !ENABLE_FEATURE_LESS_SEARCH
+ enum { pattern_valid = 0 };
+ #endif
+ 
+ struct globals {
+ 	int cur_fline; /* signed */
+ 	int kbd_fd;  /* fd to get input from */
+-	int kbd_fd_orig_flags;
++	int content_fd;
+ 	int less_gets_pos;
+ /* last position in last line, taking into account tabs */
+ 	size_t last_line_pos;
+@@ -222,12 +215,12 @@
+ 	unsigned num_marks;
+ 	unsigned mark_lines[15][2];
+ #endif
+-#if ENABLE_FEATURE_LESS_REGEXP
++#if ENABLE_FEATURE_LESS_SEARCH
+ 	unsigned *match_lines;
+ 	int match_pos; /* signed! */
+ 	int wanted_match; /* signed! */
+ 	int num_matches;
+-	regex_t pattern;
++	char *pattern;
+ 	smallint pattern_valid;
+ #endif
+ #if ENABLE_FEATURE_LESS_RAW
+@@ -237,7 +230,7 @@
+ 	smallint winsize_err;
+ #endif
+ 	smallint terminated;
+-	struct termios term_orig, term_less;
++
+ 	char kbd_input[KEYCODE_BUFFER_SIZE];
+ };
+ #define G (*ptr_to_globals)
+@@ -264,7 +257,7 @@
+ #define num_lines           (G.num_lines         )
+ #define num_marks           (G.num_marks         )
+ #define mark_lines          (G.mark_lines        )
+-#if ENABLE_FEATURE_LESS_REGEXP
++#if ENABLE_FEATURE_LESS_SEARCH
+ #define match_lines         (G.match_lines       )
+ #define match_pos           (G.match_pos         )
+ #define num_matches         (G.num_matches       )
+@@ -273,17 +266,16 @@
+ #define pattern_valid       (G.pattern_valid     )
+ #endif
+ #define terminated          (G.terminated        )
+-#define term_orig           (G.term_orig         )
+-#define term_less           (G.term_less         )
+ #define kbd_input           (G.kbd_input         )
+ #define INIT_G() do { \
+ 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
+ 	less_gets_pos = -1; \
+ 	empty_line_marker = "~"; \
+ 	current_file = 1; \
++	G.content_fd = -1; \
+ 	G.eof_error_ok = 1; \
+ 	terminated = 1; \
+-	IF_FEATURE_LESS_REGEXP(wanted_match = -1;) \
++	IF_FEATURE_LESS_SEARCH(wanted_match = -1;) \
+ } while (0)
+ 
+ /* flines[] are lines read from stdin, each in malloc'ed buffer.
+@@ -298,7 +290,7 @@
+ static void set_tty_cooked(void)
+ {
+ 	fflush_all();
+-	tcsetattr(kbd_fd, TCSANOW, &term_orig);
++
+ }
+ 
+ /* Move the cursor to a position (x,y), where (0,0) is the
+@@ -328,15 +320,15 @@
+ static void restore_tty(void)
+ {
+ 	set_tty_cooked();
+-	if (!(G.kbd_fd_orig_flags & O_NONBLOCK))
+-		ndelay_off(kbd_fd);
+-	clear_line();
++	pyxis_vi_write(CLEAR, sizeof(CLEAR) - 1);
++	fflush_all();
++	pyxis_vi_terminal_cooked();
+ }
+ 
+ static NOINLINE void less_exit(void)
+ {
+ 	restore_tty();
+-	exit_SUCCESS();
++	exit(G.eof_error_ok < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
+ }
+ 
+ #if (ENABLE_FEATURE_LESS_DASHCMD && ENABLE_FEATURE_LESS_LINENUMS) \
+@@ -421,13 +413,13 @@
+ 	last_line_pos = new_line_pos;
+ 	cur_fline = new_cur_fline;
+ 	/* max_lineno is screen-size independent */
+-#if ENABLE_FEATURE_LESS_REGEXP
++#if ENABLE_FEATURE_LESS_SEARCH
+ 	pattern_valid = 0;
+ #endif
+ }
+ #endif
+ 
+-#if ENABLE_FEATURE_LESS_REGEXP
++#if ENABLE_FEATURE_LESS_SEARCH
+ static void fill_match_lines(unsigned pos);
+ #else
+ #define fill_match_lines(pos) ((void)0)
+@@ -469,17 +461,17 @@
+  */
+ static void read_lines(void)
+ {
+-	int ndelay_set, eagain;
+-	int UNINITIALIZED_VAR(fdflags, fdflags);
+ 	char *current_line, *p;
+ 	int w = width;
+ 	char last_terminated = terminated;
+-#if ENABLE_FEATURE_LESS_REGEXP
++	if (max_fline != UINT_MAX && !at_end() && wanted_match < num_matches)
++		return;
++#if ENABLE_FEATURE_LESS_SEARCH
+ 	unsigned old_max_fline = max_fline;
+ #endif
+ 
+ #define readbuf bb_common_bufsiz1
+-	setup_common_bufsiz();
++
+ 
+ 	/* (careful: max_fline can be -1) */
+ 	if (max_fline + 1 > MAXLINES)
+@@ -499,13 +491,6 @@
+ 		last_line_pos = 0;
+ 	}
+ 
+-	// Consider these cases:
+-	// "less FILE": can set O_NONBLOCK on open.
+-	// "true | less": can't.
+-	// "{ less; cat; } <FILE": can't. And must not confuse cat.
+-	ndelay_set = -1; // "don't know whether stdin is nonblocking"
+-	eagain = 0;
+-
+ 	while (1) { // read lines until we reach cur_fline or wanted_match
+ 		*p = '\0';
+ 		terminated = 0;
+@@ -513,26 +498,14 @@
+ 			char c;
+ 			// if no unprocessed chars left, eat more
+ 			if (readpos >= read_size) {
+-				// Read stdin, temporarily make it nonblocking (if it's not already)
+-				if (ndelay_set < 0) {
+-					ndelay_set = G.ndelay_set; // can be only 0 or 1
+-					if (ndelay_set == 0) {
+-						fdflags = ndelay_on(STDIN_FILENO);
+-						if (fdflags & O_NONBLOCK)
+-							ndelay_set = 2; // it _was_ nonblocking, do NOT restore later
+-					} //else: G.ndelay_set=1: set nonblocking at open(FILE) time
+-				} //else: we were here already, stdin is already nonblocking
+-
+ 				// NB: we do NOT check last eof_error_ok before reading.
+ 				// This has the effect that e.g. PageDown on a regular file
+ 				// where we already reached EOF *will try reading anyway*,
+ 				// if the file is a growing log file, less *will* show the new data.
+ 				readpos = 0;
+-				G.eof_error_ok = safe_read(STDIN_FILENO, readbuf, COMMON_BUFSIZE);
++				G.eof_error_ok = read(G.content_fd, readbuf, COMMON_BUFSIZE);
+ 				read_size = G.eof_error_ok;
+ 				if (G.eof_error_ok <= 0) {
+-					if (G.eof_error_ok < 0 && errno == EAGAIN)
+-						eagain = 1;
+ 					read_size = 0; // -1 would be seen as UINT_MAX, prevent
+ 					goto reached_eof;
+ 				}
+@@ -613,11 +586,10 @@
+ 			max_lineno++;
+ 
+ 		if (max_fline >= MAXLINES) {
+-			G.eof_error_ok = 0; /* Pretend we saw EOF */
+-			break;
++			bb_simple_error_msg_and_die("input exceeds the pager line limit");
+ 		}
+ 		if (!at_end()) {
+-#if !ENABLE_FEATURE_LESS_REGEXP
++#if !ENABLE_FEATURE_LESS_SEARCH
+ 			break;
+ #else
+ 			if (wanted_match >= num_matches) { /* goto_match called us */
+@@ -629,10 +601,7 @@
+ #endif
+ 		}
+ 		if (G.eof_error_ok <= 0) { /* EOF or error? */
+-			if (eagain) {
+-				G.eof_error_ok = 1; // "neither EOF nor error: stdin not ready"
+-				//^^^ needed to make main loop's poll() check stdin
+-			}
++
+ 			break;
+ 		}
+ 		max_fline++;
+@@ -641,8 +610,6 @@
+ 		last_line_pos = 0;
+ 	} /* end of "read lines until we reach cur_fline" loop */
+ 
+-	if (ndelay_set == 0) // stdin was not nonblocking, restore that
+-		fcntl(STDIN_FILENO, F_SETFL, fdflags);
+ 
+ 	// Will not be seen (overwritten immediately)
+ 	//if (G.eof_error_ok < 0) { // error?
+@@ -655,7 +622,7 @@
+ #endif
+ 
+ 	fill_match_lines(old_max_fline);
+-#if ENABLE_FEATURE_LESS_REGEXP
++#if ENABLE_FEATURE_LESS_SEARCH
+ 	/* prevent us from being stuck in search for a match */
+ 	wanted_match = -1;
+ #endif
+@@ -686,11 +653,7 @@
+ 	/* only do this for regular files */
+ 	if (num_lines == REOPEN_AND_COUNT || num_lines == REOPEN_STDIN) {
+ 		count = 0;
+-		fd = open("/proc/self/fd/0", O_RDONLY);
+-		if (fd < 0 && num_lines == REOPEN_AND_COUNT) {
+-			/* "filename" is valid only if REOPEN_AND_COUNT */
+-			fd = open(filename, O_RDONLY);
+-		}
++		fd = num_lines == REOPEN_AND_COUNT ? open(filename, O_RDONLY) : -1;
+ 		if (fd < 0) {
+ 			/* somebody stole my file! */
+ 			num_lines = NOT_REGULAR_FILE;
+@@ -700,7 +663,7 @@
+ 			num_lines = NOT_REGULAR_FILE;
+ 			goto do_close;
+ 		}
+-		while ((len = safe_read(fd, buf, sizeof(buf))) > 0) {
++		while ((len = read(fd, buf, sizeof(buf))) > 0) {
+ 			for (i = 0; i < len; ++i) {
+ 				if (buf[i] == '\n' && ++count == MAXLINES)
+ 					goto done;
+@@ -817,71 +780,6 @@
+ }
+ 
+ 
+-#if ENABLE_FEATURE_LESS_REGEXP
+-static void print_found(const char *line)
+-{
+-	int match_status;
+-	int eflags;
+-	char *growline;
+-	regmatch_t match_structs;
+-
+-	char buf[width+1];
+-	const char *str = line;
+-	char *p = buf;
+-	size_t n;
+-
+-	while (*str) {
+-		n = strcspn(str, controls);
+-		if (n) {
+-			if (!str[n]) break;
+-			memcpy(p, str, n);
+-			p += n;
+-			str += n;
+-		}
+-		n = strspn(str, controls);
+-		memset(p, '.', n);
+-		p += n;
+-		str += n;
+-	}
+-	strcpy(p, str);
+-
+-	/* buf[] holds quarantined version of str */
+-
+-	/* Each part of the line that matches has the HIGHLIGHT
+-	 * and NORMAL escape sequences placed around it.
+-	 * NB: we regex against line, but insert text
+-	 * from quarantined copy (buf[]) */
+-	str = buf;
+-	growline = NULL;
+-	eflags = 0;
+-	goto start;
+-
+-	while (match_status == 0) {
+-		xasprintf_inplace(growline,
+-			"%s%.*s"HIGHLIGHT"%.*s"NORMAL,
+-			growline ? growline : "",
+-			(int)match_structs.rm_so,
+-				str,
+-			(int)(match_structs.rm_eo - match_structs.rm_so),
+-				str + match_structs.rm_so);
+-		str += match_structs.rm_eo;
+-		line += match_structs.rm_eo;
+-		eflags = REG_NOTBOL;
+- start:
+-		/* Most of the time doesn't find the regex, optimize for that */
+-		match_status = regexec(&pattern, line, 1, &match_structs, eflags);
+-		/* if even "" matches, treat it as "not a match" */
+-		if (match_structs.rm_so >= match_structs.rm_eo)
+-			match_status = 1;
+-	}
+-
+-	printf("%s%s\n", growline ? growline : "", str);
+-	free(growline);
+-}
+-#else
+-void print_found(const char *line);
+-#endif
+-
+ static void print_ascii(const char *str)
+ {
+ 	char buf[width+1];
+@@ -924,10 +822,7 @@
+ 		printf(CLEAR_2_EOL);
+ 		if (option_mask32 & FLAG_N)
+ 			print_lineno(buffer[i]);
+-		if (pattern_valid)
+-			print_found(buffer[i]);
+-		else
+-			print_ascii(buffer[i]);
++		print_ascii(buffer[i]);
+ 	}
+ 	if ((option_mask32 & (FLAG_E|FLAG_F))
+ 	 && G.eof_error_ok <= 0
+@@ -1068,15 +963,17 @@
+ 
+ static void open_file_and_read_lines(void)
+ {
+-	G.ndelay_set = 0;
++	if (G.content_fd >= 0 && G.content_fd != STDIN_FILENO)
++		close(G.content_fd);
+ 	if (filename) {
+-		xmove_fd(xopen(filename, O_RDONLY), STDIN_FILENO);
+-		ndelay_on(STDIN_FILENO);
+-		G.ndelay_set = 1;
++		G.content_fd = open(filename, O_RDONLY);
++		if (G.content_fd < 0)
++			bb_simple_error_msg_and_die(strerror(errno));
+ #if ENABLE_FEATURE_LESS_FLAGS
+ 		num_lines = REOPEN_AND_COUNT;
+ #endif
+ 	} else {
++		G.content_fd = STDIN_FILENO;
+ 		/* "less" with no arguments in argv[] */
+ 		/* For status line only */
+ 		filename = xstrdup(bb_msg_standard_input);
+@@ -1096,6 +993,14 @@
+ {
+ 	unsigned i;
+ 
++	free(match_lines);
++	match_lines = NULL;
++	num_matches = match_pos = 0;
++	wanted_match = -1;
++	free(pattern);
++	pattern = NULL;
++	pattern_valid = 0;
++
+ 	if (flines) {
+ 		for (i = 0; i <= max_fline; i++)
+ 			free(MEMPTR(flines[i]));
+@@ -1120,67 +1025,20 @@
+  */
+ static int64_t getch_nowait(void)
+ {
+-	int dont_poll_stdin;
+ 	int64_t key64;
+-	struct pollfd pfd[2];
+ 
+-	pfd[0].fd = STDIN_FILENO;
+-	pfd[0].events = POLLIN;
+-	pfd[1].fd = kbd_fd;
+-	pfd[1].events = POLLIN;
+- again:
+-	tcsetattr(kbd_fd, TCSANOW, &term_less);
+-	/* NB: select/poll returns whenever read will not block. Therefore:
+-	 * if eof is reached, select/poll will return immediately
+-	 * because read will immediately return 0 bytes.
+-	 * Even if select/poll says that input is available, read CAN block
+-	 * (switch fd into O_NONBLOCK'ed mode to avoid it)
+-	 */
+-	dont_poll_stdin = 1;
+-	/* Are we interested in stdin? */
+-	if (at_end()) {
+-		if (G.eof_error_ok > 0) /* did NOT reach EOF/error yet */
+-			dont_poll_stdin = 0; /* yes, we are interested in stdin */
+-	}
+-	/* Position cursor if line input is done */
+ 	if (less_gets_pos >= 0)
+ 		move_cursor(max_displayed_line + 2, less_gets_pos + 1);
+ 	fflush_all();
+-
+-	if (kbd_input[0] == 0) { /* if nothing is buffered */
+-#if ENABLE_FEATURE_LESS_WINCH
+-		while (1) {
+-			int r;
+-			/* NB: SIGWINCH interrupts poll() */
+-			r = poll(pfd + dont_poll_stdin, 2 - dont_poll_stdin, -1);
+-			if (/*r < 0 && errno == EINTR &&*/ winch_counter != 0)
+-				return '\\'; /* anything which has no defined function */
+-			if (r) break;
++	key64 = safe_read_key(kbd_fd, kbd_input, -1);
++	if (key64 == -1) {
++		if (errno) {
++			restore_tty();
++			bb_simple_error_msg_and_die("cannot read terminal input");
+ 		}
+-#else
+-		safe_poll(pfd + dont_poll_stdin, 2 - dont_poll_stdin, -1);
+-#endif
+-	}
+-
+-	if (pfd[1].revents == 0)
+-		goto no_kbd_input;
+-	/* We have kbd_fd in O_NONBLOCK mode, read inside safe_read_key()
+-	 * would not block even if there is no input available */
+-	key64 = safe_read_key(kbd_fd, kbd_input, /*do not poll:*/ -2);
+-	if ((int)key64 == -1) {
+-		if (errno == EAGAIN) {
+- no_kbd_input:
+-			/* No keyboard input available. Since poll() did return,
+-			 * we should have input on stdin */
+-			read_lines();
+-			buffer_fill_and_print();
+-			goto again;
+-		}
+-		/* EOF/error (ssh session got killed etc) */
+ 		less_exit();
+ 	}
+-	set_tty_cooked();
+-	return key64;
++	return key64 == '\n' ? '\r' : key64;
+ }
+ 
+ /* Grab a character from input without requiring the return key.
+@@ -1249,10 +1107,12 @@
+ 		free(new_fname);
+ 		return;
+ 	}
+-	if (access(new_fname, R_OK) != 0) {
++	int fd = open(new_fname, O_RDONLY);
++	if (fd < 0) {
+ 		print_statusline("Cannot read this file");
+ 		goto err;
+ 	}
++	close(fd);
+ 	free(filename);
+ 	filename = new_fname;
+ 	/* files start by = argv. why we assume that argv is infinitely long??
+@@ -1336,7 +1196,7 @@
+ 	}
+ }
+ 
+-#if ENABLE_FEATURE_LESS_REGEXP
++#if ENABLE_FEATURE_LESS_SEARCH
+ static void normalize_match_pos(int match)
+ {
+ 	if (match >= num_matches)
+@@ -1369,10 +1229,10 @@
+ {
+ 	if (!pattern_valid)
+ 		return;
+-	/* Run the regex on each line of the current file */
++	/* Find the literal pattern on each cached display line. */
+ 	while (pos <= max_fline) {
+ 		/* If this line matches */
+-		if (regexec(&pattern, flines[pos], 0, NULL, 0) == 0
++		if (strstr(flines[pos], pattern) != NULL
+ 		/* and we didn't match it last time */
+ 		 && !(num_matches && match_lines[num_matches-1] == pos)
+ 		) {
+@@ -1383,9 +1243,9 @@
+ 	}
+ }
+ 
+-static void regex_process(void)
++static void search_process(void)
+ {
+-	char *uncomp_regex, *err;
++	char *new_pattern;
+ 
+ 	/* Reset variables */
+ 	free(match_lines);
+@@ -1393,29 +1253,21 @@
+ 	match_pos = 0;
+ 	num_matches = 0;
+ 	if (pattern_valid) {
+-		regfree(&pattern);
++		free(pattern);
+ 		pattern_valid = 0;
+ 	}
+ 
+-	/* Get the uncompiled regular expression from the user */
++	/* Read the next literal pattern from the user. */
+ 	clear_line();
+ 	bb_putchar((option_mask32 & LESS_STATE_MATCH_BACKWARDS) ? '?' : '/');
+-	uncomp_regex = less_gets(1);
+-	if (!uncomp_regex[0]) {
+-		free(uncomp_regex);
++	new_pattern = less_gets(1);
++	if (!new_pattern[0]) {
++		free(new_pattern);
+ 		buffer_print();
+ 		return;
+ 	}
+ 
+-	/* Compile the regex and check for errors */
+-	err = regcomp_or_errmsg(&pattern, uncomp_regex,
+-				(option_mask32 & FLAG_I) ? REG_ICASE : 0);
+-	free(uncomp_regex);
+-	if (err) {
+-		print_statusline(err);
+-		free(err);
+-		return;
+-	}
++	pattern = new_pattern;
+ 
+ 	pattern_valid = 1;
+ 	match_pos = 0;
+@@ -1487,17 +1339,17 @@
+ #endif
+ 		buffer_lineno(num);
+ 		break;
+-#if ENABLE_FEATURE_LESS_REGEXP
++#if ENABLE_FEATURE_LESS_SEARCH
+ 	case 'n':
+ 		goto_match(match_pos + num);
+ 		break;
+ 	case '/':
+ 		option_mask32 &= ~LESS_STATE_MATCH_BACKWARDS;
+-		regex_process();
++		search_process();
+ 		break;
+ 	case '?':
+ 		option_mask32 |= LESS_STATE_MATCH_BACKWARDS;
+-		regex_process();
++		search_process();
+ 		break;
+ #endif
+ 	}
+@@ -1579,31 +1431,6 @@
+ 
+ #endif /* ENABLE_FEATURE_LESS_DASHCMD */
+ 
+-static void save_input_to_file(void)
+-{
+-	const char *msg = "";
+-	char *current_line;
+-	unsigned i;
+-	FILE *fp;
+-
+-	print_statusline("Log file: ");
+-	current_line = less_gets(sizeof("Log file: ")-1);
+-	if (current_line[0]) {
+-		fp = fopen_for_write(current_line);
+-		if (!fp) {
+-			msg = "Error opening log file";
+-			goto ret;
+-		}
+-		for (i = 0; i <= max_fline; i++)
+-			fprintf(fp, "%s\n", flines[i]);
+-		fclose(fp);
+-		msg = "Done";
+-	}
+- ret:
+-	print_statusline(msg);
+-	free(current_line);
+-}
+-
+ #if ENABLE_FEATURE_LESS_MARKS
+ static void add_mark(void)
+ {
+@@ -1767,9 +1594,6 @@
+ 	/*case 'R':
+ 		full_repaint();
+ 		break;*/
+-	case 's':
+-		save_input_to_file();
+-		break;
+ 	case 'E':
+ 		examine_file();
+ 		break;
+@@ -1778,10 +1602,10 @@
+ 		m_status_print();
+ 		break;
+ #endif
+-#if ENABLE_FEATURE_LESS_REGEXP
++#if ENABLE_FEATURE_LESS_SEARCH
+ 	case '/':
+ 		option_mask32 &= ~LESS_STATE_MATCH_BACKWARDS;
+-		regex_process();
++		search_process();
+ 		break;
+ 	case 'n':
+ 		goto_match(match_pos + 1);
+@@ -1791,7 +1615,7 @@
+ 		break;
+ 	case '?':
+ 		option_mask32 |= LESS_STATE_MATCH_BACKWARDS;
+-		regex_process();
++		search_process();
+ 		break;
+ #endif
+ #if ENABLE_FEATURE_LESS_DASHCMD
+@@ -1822,24 +1646,10 @@
+ 		number_process(keypress);
+ }
+ 
+-static void sig_catcher(int sig)
+-{
+-	restore_tty();
+-	kill_myself_with_sig(sig); /* does not return */
+-}
+-
+-#if ENABLE_FEATURE_LESS_WINCH
+-static void sigwinch_handler(int sig UNUSED_PARAM)
+-{
+-	winch_counter++;
+-}
+-#endif
+-
+ int less_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int less_main(int argc, char **argv)
+ {
+-	char *tty_name;
+-	int tty_fd;
++	struct stat input_stat;
+ 
+ 	INIT_G();
+ 
+@@ -1849,10 +1659,9 @@
+ 	 * -s: condense many empty lines to one
+ 	 *     (used by some setups for manpage display)
+ 	 */
+-	getopt32(argv, "EMmN~IF"
++	getopt32(argv, "EMmN~F"
+ 		IF_FEATURE_LESS_TRUNCATE("S")
+ 		IF_FEATURE_LESS_RAW("R")
+-		/*ignored:*/"sX"
+ 	);
+ 	argv += optind;
+ 	num_files = argc - optind;
+@@ -1880,13 +1689,10 @@
+ 		}
+ 	}
+ 
+-	/* Another popular pager, most, detects when stdout
+-	 * is not a tty and turns into cat. This makes sense. */
+-	if (!isatty(STDOUT_FILENO))
+-		return bb_cat(argv);
+-
+ 	if (!num_files) {
+-		if (isatty(STDIN_FILENO)) {
++		if (fstat(STDIN_FILENO, &input_stat) != 0)
++			bb_simple_error_msg_and_die(strerror(errno));
++		if (S_ISCHR(input_stat.st_mode)) {
+ 			/* Just "less"? No args and no redirection? */
+ 			bb_show_usage();
+ 		}
+@@ -1897,45 +1703,13 @@
+ 	if (option_mask32 & FLAG_TILDE)
+ 		empty_line_marker = "";
+ 
+-	/* Some versions of less can survive w/o controlling tty,
+-	 * try to do the same. This also allows to specify an alternative
+-	 * tty via "less 1<>TTY".
+-	 *
+-	 * We prefer not to use STDOUT_FILENO directly,
+-	 * since we want to set this fd to non-blocking mode,
+-	 * and not interfere with other processes which share stdout with us.
+-	 */
+-	tty_name = xmalloc_ttyname(STDOUT_FILENO);
+-	if (tty_name) {
+-		tty_fd = open(tty_name, O_RDONLY);
+-		free(tty_name);
+-		if (tty_fd < 0)
+-			goto try_ctty;
+-	} else {
+-		/* Try controlling tty */
+- try_ctty:
+-		tty_fd = open(CURRENT_TTY, O_RDONLY);
+-		if (tty_fd < 0) {
+-			/* If all else fails, less 481 uses stdout. Mimic that */
+-			tty_fd = STDOUT_FILENO;
+-		}
+-	}
+-	G.kbd_fd_orig_flags = ndelay_on(tty_fd);
+-	kbd_fd = tty_fd; /* save in a global */
+-
+-	get_termios_and_make_raw(tty_fd, &term_less, &term_orig, TERMIOS_RAW_CRNL_INPUT);
+-
+-	IF_FEATURE_LESS_ASK_TERMINAL(G.winsize_err =) get_terminal_width_height(tty_fd, &width, &max_displayed_line);
+-	/* 20: two tabstops + 4 */
+-	if (width < 20 || max_displayed_line < 3)
+-		return bb_cat(argv);
++	kbd_fd = STDIN_FILENO; /* safe_read_key uses the named input grant. */
++	pyxis_vi_terminal_raw();
++	if (get_terminal_width_height(kbd_fd, &width, &max_displayed_line) != 0
++	 || width < 20 || max_displayed_line < 3)
++		bb_simple_error_msg_and_die("terminal is too small for the pager");
+ 	max_displayed_line -= 2;
+-
+-	/* We want to restore term_orig on exit */
+-	bb_signals(BB_FATAL_SIGS, sig_catcher);
+-#if ENABLE_FEATURE_LESS_WINCH
+-	signal(SIGWINCH, sigwinch_handler);
+-#endif
++	pyxis_vi_write(CLEAR, sizeof(CLEAR) - 1);
+ 
+ 	buffer = xmalloc((max_displayed_line+1) * sizeof(char *));
+ 	reinitialize();
