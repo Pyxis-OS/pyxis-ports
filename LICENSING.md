@@ -27,9 +27,10 @@ those recipes fetch, adapt or package.
   includes applicable runtime exceptions.
 - `quake/sys_pyxis.c` derives from quakegeneric's `sys_null.c` and keeps its
   GPL-2.0-or-later notice.
-- `busybox/libbb.h`, `busybox/vi_config.h` and `busybox/busybox_pyxis.c` replace
-  BusyBox's libbb and Kconfig output for vi. They are GPL-2.0-only, matching
-  the BusyBox program they are linked into.
+- `busybox/libbb.h`, `busybox/*_config.h`, `busybox/*_support.h`,
+  `busybox/busybox_pyxis.c` and `busybox/tar_pyxis.c` replace the selected
+  BusyBox libbb and configuration interfaces for vi, less and tar. They are
+  GPL-2.0-only, matching the BusyBox programs they are linked into.
 - `links/pyxis.c`, `links/pyxis_console.c`, `links/pyxis_console.h`,
   `links/network.c`, `links/config.h` and the headers under `links/include/`
   are the platform layer and configuration linked into Links. Like Links,

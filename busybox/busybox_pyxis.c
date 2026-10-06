@@ -1,4 +1,4 @@
-/* Pyxis platform adapter for BusyBox vi: entry point and libbb helpers.
+/* Pyxis platform adapter for BusyBox vi/less: entry points and libbb helpers.
  * SPDX-License-Identifier: GPL-2.0-only
  *
  * vi draws on the named output console and reads the named input console
@@ -13,7 +13,20 @@
 int vi_main(int argc, char **argv);
 
 struct globals *ptr_to_globals;
+#ifdef PYXIS_APPLET_LESS
+int less_main(int argc, char **argv);
+const char *applet_name = "less";
+char bb_common_bufsiz1[4096];
+uint32_t option_mask32;
+#define ALLOCATION_ERROR "out of memory"
+#define TERMINAL_WRITE_ERROR "cannot write terminal output"
+#define PASSTHROUGH_ERROR "cannot keep Ctrl+C as pager input"
+#else
 const char *applet_name = "vi";
+#define ALLOCATION_ERROR "out of memory; unsaved edits are lost"
+#define TERMINAL_WRITE_ERROR "cannot write terminal output; unsaved edits are lost"
+#define PASSTHROUGH_ERROR "cannot keep Ctrl+C as editor input"
+#endif
 int optind = 1;
 
 static struct terminal terminal;
@@ -30,7 +43,7 @@ static int pending_errno;
 
 static NORETURN void fail(const char *message)
 {
-  fprintf(stderr, "vi: %s\n", message);
+  fprintf(stderr, "%s: %s\n", applet_name, message);
   exit(EXIT_FAILURE);
 }
 
@@ -56,7 +69,11 @@ void xfunc_die(void)
 
 void bb_show_usage(void)
 {
+#ifdef PYXIS_APPLET_LESS
+  fputs("Usage: less [-EMmN~F] [FILE]...\n", stderr);
+#else
   fputs("Usage: vi [-c CMD] [-R] [-H] [FILE]...\n", stderr);
+#endif
   exit(EXIT_FAILURE);
 }
 
@@ -68,7 +85,11 @@ int main(int argc, char **argv)
     fail("input and output console capabilities are required");
   }
 
+#ifdef PYXIS_APPLET_LESS
+  int status = less_main(argc, argv);
+#else
   int status = vi_main(argc, argv);
+#endif
   fflush_all();
   return status;
 }
@@ -77,7 +98,7 @@ void *xmalloc(size_t size)
 {
   void *pointer = malloc(size ? size : 1);
   if (!pointer) {
-    bb_simple_error_msg_and_die("out of memory; unsaved edits are lost");
+    bb_simple_error_msg_and_die(ALLOCATION_ERROR);
   }
   return pointer;
 }
@@ -93,7 +114,7 @@ void *xrealloc(void *pointer, size_t size)
 {
   pointer = realloc(pointer, size ? size : 1);
   if (!pointer) {
-    bb_simple_error_msg_and_die("out of memory; unsaved edits are lost");
+    bb_simple_error_msg_and_die(ALLOCATION_ERROR);
   }
   return pointer;
 }
@@ -120,7 +141,7 @@ char *xasprintf(const char *format, ...)
   int length = vasprintf(&text, format, args);
   va_end(args);
   if (length < 0) {
-    bb_simple_error_msg_and_die("out of memory; unsaved edits are lost");
+    bb_simple_error_msg_and_die(ALLOCATION_ERROR);
   }
   return text;
 }
@@ -275,6 +296,9 @@ uint32_t getopt32(char **argv, const char *options, ...)
       break;
     }
   }
+#ifdef PYXIS_APPLET_LESS
+  option_mask32 = found;
+#endif
   return found;
 }
 
@@ -385,7 +409,7 @@ void fputs_stdout(const char *text)
 int fflush_all(void)
 {
   if (!write_output()) {
-    fail("cannot write terminal output; unsaved edits are lost");
+    fail(TERMINAL_WRITE_ERROR);
   }
   return 0;
 }
@@ -410,7 +434,7 @@ void pyxis_vi_terminal_raw(void)
   }
   if (term_passthrough(&terminal, &passthrough) != CALL_OK) {
     passthrough = HANDLE_INVALID;
-    bb_simple_error_msg_and_die("cannot keep Ctrl+C as editor input");
+    bb_simple_error_msg_and_die(PASSTHROUGH_ERROR);
   }
 }
 
@@ -510,3 +534,39 @@ bool pyxis_vi_absent(const char *path)
   }
   return errno == ENOENT;
 }
+
+#ifdef PYXIS_APPLET_LESS
+void *bb_realloc_vector(void *pointer, size_t element, unsigned shift, unsigned index)
+{
+  size_t block = (size_t)1 << shift;
+  if (index % block == 0) {
+    if ((size_t)index > SIZE_MAX - block || element > SIZE_MAX / (index + block)) {
+      bb_simple_error_msg_and_die("pager line count is too large");
+    }
+    pointer = xrealloc(pointer, ((size_t)index + block) * element);
+  }
+  return pointer;
+}
+
+int bb_console_printf(const char *format, ...)
+{
+  char *text;
+  va_list args;
+  va_start(args, format);
+  int length = vasprintf(&text, format, args);
+  va_end(args);
+  if (length < 0) {
+    bb_simple_error_msg_and_die("cannot format terminal output");
+  }
+  pyxis_vi_write(text, (size_t)length);
+  free(text);
+  return length;
+}
+
+int bb_console_puts(const char *text)
+{
+  fputs_stdout(text);
+  bb_putchar('\n');
+  return 0;
+}
+#endif

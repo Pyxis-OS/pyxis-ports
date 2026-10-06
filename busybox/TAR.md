@@ -61,6 +61,4 @@ file. Output archive writes are also not atomic. Diagnostics and nonzero status
 report read, write, allocation, enumeration and close failures.
 
 Memory must hold the whole input archive, or all creation file contents, plus
-member/path bookkeeping. Directory traversal is recursive. These limits are
-accepted for the initial documentation-archive use; larger archive streaming or
-transactional extraction requires a separate design.
+member/path bookkeeping. Directory traversal is recursive. Larger archive streaming or transactional extraction requires a separate design.

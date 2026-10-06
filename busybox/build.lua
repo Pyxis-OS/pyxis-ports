@@ -4,6 +4,10 @@ return function(ctx)
     "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/vi.pxe",
     ctx.stage .. "/" .. ctx.metadata.outputs.executable })
+  ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/less.pxe",
+    ctx.stage .. "/" .. ctx.metadata.outputs.less })
+  ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/tar.pxe",
+    ctx.stage .. "/" .. ctx.metadata.outputs.tar })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
 end
