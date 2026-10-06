@@ -6,7 +6,22 @@
 #define lua_getlocaledecpoint() '.'
 #define l_strcoll strcmp
 
-/* Lua owns this read buffer; libc streams themselves remain unbuffered. */
+/* Lua's loader buffer is independent of libc input read-ahead. */
 #define LUA_FILE_BUFFER_SIZE 512
+
+#define l_gmtime(t, r) gmtime_r(t, r)
+#define l_localtime(t, r) localtime_r(t, r)
+#define LUA_LSUBSEP "/"
+#define LUA_PATH_DEFAULT "boot://share/lua/?.lua;boot://share/lua/?/init.lua"
+
+/* Like upstream's mkstemp adaptation, tmpname reserves a real empty file. */
+#include <unistd.h>
+#define LUA_TMPNAMBUFSIZE sizeof("tmp://lua-XXXXXX")
+#define lua_tmpnam(b, e) do { \
+  strcpy(b, "tmp://lua-XXXXXX"); \
+  int descriptor = mkstemp(b); \
+  e = descriptor < 0; \
+  if (!e) e = close(descriptor) != 0; \
+} while (0)
 
 #endif

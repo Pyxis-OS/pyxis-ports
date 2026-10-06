@@ -59,11 +59,13 @@ local function main()
   if arg[1] == "--help" or not arg[1] then
     print("Usage: lua build.lua PORT --sdk PATH [--work PATH] [--cross-prefix PREFIX]")
     print("The work directory must not exist; default: build/PORT.")
+    print("Lua also requires --mbedtls PATH to its configured development prefix.")
     return
   end
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
-  local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true }
+  local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
+    ["--mbedtls"] = name == "lua" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -108,6 +110,12 @@ local function main()
   require_file(sdk .. "/share/pyxis.mk")
   require_file(sdk .. "/sysroot/usr/lib/crt0.o")
   require_file(sdk .. "/bin/elf2pxe")
+  local mbedtls
+  if name == "lua" then
+    assert(options["--mbedtls"], "Lua needs --mbedtls PATH to the configured development prefix")
+    mbedtls = make_path(capture({ "realpath", "-e", "--", options["--mbedtls"] }))
+    require_file(mbedtls .. "/share/mbedtls.mk")
+  end
   for _, library in ipairs(metadata.dependencies.pyxis) do
     require_file(sdk .. "/sysroot/usr/lib/" .. library .. ".a")
   end
@@ -150,7 +158,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run })
+    metadata = metadata, run = run, mbedtls = mbedtls })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))
   end

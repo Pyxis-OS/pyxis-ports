@@ -7,6 +7,7 @@ return {
   dependencies = {
     host = { "make" },
     pyxis = { "libc", "libpyxis" },
+    ports = { "mbedtls" },
   },
   patches = {
     "patches/0001-upstream-gc-parameter-fix.patch",

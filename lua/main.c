@@ -7,6 +7,7 @@
 #include "lua.h"
 #include "lauxlib.h"
 #include "lualib.h"
+#include "pyxis.h"
 
 struct invocation {
   int argc;
@@ -36,7 +37,7 @@ static int traceback(lua_State *state)
   return 1;
 }
 
-static void open_libraries(lua_State *state)
+static void open_libraries(lua_State *state, const struct invocation *invocation)
 {
   luaL_requiref(state, LUA_GNAME, luaopen_base, 1);
   lua_pop(state, 1);
@@ -47,6 +48,32 @@ static void open_libraries(lua_State *state)
   luaL_requiref(state, LUA_STRLIBNAME, luaopen_string, 1);
   lua_pop(state, 1);
   luaL_requiref(state, LUA_UTF8LIBNAME, luaopen_utf8, 1);
+  lua_pop(state, 1);
+  luaL_requiref(state, LUA_IOLIBNAME, luaopen_io, 1);
+  lua_pop(state, 1);
+  luaL_requiref(state, LUA_OSLIBNAME, luaopen_os, 1);
+  lua_pop(state, 1);
+  luaL_requiref(state, LUA_LOADLIBNAME, luaopen_package, 1);
+  if (getenv("LUA_PATH") == NULL) {
+    const char *filename = invocation->script_index ?
+        invocation->argv[invocation->script_index] : "";
+    const char *separator = strrchr(filename, '/');
+    size_t length = separator ? (size_t)(separator - filename) + 1 : 0;
+    luaL_Buffer path;
+    luaL_buffinit(state, &path);
+    luaL_addlstring(&path, filename, length);
+    luaL_addstring(&path, "?.lua;");
+    luaL_addlstring(&path, filename, length);
+    luaL_addstring(&path, "?/init.lua;boot://share/lua/?.lua;boot://share/lua/?/init.lua");
+    luaL_pushresult(&path);
+    lua_setfield(state, -2, "path");
+  }
+  lua_pop(state, 1);
+  luaL_requiref(state, "pyxis", luaopen_pyxis, 1);
+  lua_pop(state, 1);
+  luaL_getsubtable(state, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE);
+  lua_pushcfunction(state, luaopen_pyxis);
+  lua_setfield(state, -2, "pyxis");
   lua_pop(state, 1);
 }
 
@@ -195,7 +222,7 @@ static int run_repl(lua_State *state)
 static int run_program(lua_State *state)
 {
   const struct invocation *invocation = lua_touserdata(state, 1);
-  open_libraries(state);
+  open_libraries(state, invocation);
   set_arguments(state, invocation);
   lua_settop(state, 0);
 
@@ -261,5 +288,6 @@ int main(int argc, char **argv)
     report_error(state);
   }
   lua_close(state);
+  pyxis_finish();
   return status == LUA_OK ? EXIT_SUCCESS : EXIT_FAILURE;
 }
