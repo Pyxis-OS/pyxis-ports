@@ -276,6 +276,9 @@ static const struct resource_policy ordinary_resources[] = {
   {"launcher", PROTOCOL_LAUNCHER, LAUNCHER_RIGHT_LAUNCH},
 };
 
+static_assert(sizeof(ordinary_resources) / sizeof(ordinary_resources[0]) + 3 <= RESOURCE_LIMIT,
+    "ordinary resources and input devices fit launch bindings");
+
 static enum call_status add_resource(struct launch_request *request,
     struct launch_grant *grants, struct launch_binding *bindings,
     const struct resource_policy *policy)
@@ -449,6 +452,14 @@ static int run_program(lua_State *state)
     bytes += length + 1;
     lua_pop(state, 1);
   }
+  lua_pushnil(state);
+  while (lua_next(state, 1)) {
+    lua_Integer index = lua_tointeger(state, -2);
+    if (!lua_isinteger(state, -2) || index < 1 || (lua_Unsigned)index > count) {
+      return luaL_error(state, "pyxis.run: expected only integer argument keys from 1 through the list length");
+    }
+    lua_pop(state, 1);
+  }
   owned->argv = malloc(count * sizeof(*owned->argv));
   owned->argument_bytes = malloc(bytes);
   if (!owned->argv || !owned->argument_bytes) {
@@ -484,7 +495,11 @@ static int run_program(lua_State *state)
     status = prepare_grants(owned, &request, bindings, roots);
   }
   if (status == CALL_OK) {
-    status = program_launch(launcher, &request, NULL, &owned->child);
+    struct path_context interpreters = {
+      .directories = (handle_t *)startup_working_directories(),
+      .count = startup_working_directory_count(),
+    };
+    status = program_launch(launcher, &request, &interpreters, &owned->child);
   }
   if (status != CALL_OK) {
     return native_error(state, owned, "run", status);
