@@ -17,7 +17,7 @@ char *DG_SaveGameDir(const char *iwad_name)
 {
   save_iwad = iwad_name;
   save_directory = M_StringJoin("home://doom/saves/", iwad_name, "/", NULL);
-  printf("Doom saves: %s (RAM only)\n", save_directory);
+  printf("Doom saves: %s\n", save_directory);
   return save_directory;
 }
 

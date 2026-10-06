@@ -52,8 +52,8 @@ This is an ASCII text editor. It reads LF and CRLF, rejects NUL bytes, and
 saves LF with a final newline for each row. Saves use create/truncate/write;
 an error can leave a partial file. Read-only files can be viewed but not saved.
 Allocation failure exits with a diagnostic and loses unsaved edits. There is
-no autosave, resize handling or atomic replacement. The initial `home://`
-filesystem remains volatile across boots.
+no autosave, resize handling or atomic replacement. `home://` persists on
+installed systems and is RAM on live boots.
 
 Pyxis supplies a guarded 1 MiB initial userspace stack. The earlier 4 KiB
 stack cannot accommodate file loading and its nested library calls.

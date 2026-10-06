@@ -70,8 +70,8 @@ A save opens the file without truncation, writes the buffer, then calls libc
 order and is unchanged. A short write reports an error, but the file has
 already been overwritten up to that point and truncated there. Upstream also
 ignores the `ftruncate` result. Saves are not atomic: a crash between the
-write and the resize can leave old bytes after the new text. The initial
-`home://` filesystem remains volatile across boots.
+write and the resize can leave old bytes after the new text. `home://` persists
+on installed systems and is RAM on live boots.
 
 ## Limits
 

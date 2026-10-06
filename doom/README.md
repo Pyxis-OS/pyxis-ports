@@ -40,7 +40,8 @@ F6 selects a quicksave slot on first use, then F6/F9 confirm quicksave/quickload
 registered/Ultimate Doom, and upstream's canonical mission name otherwise.
 This uses the detected game mode, not the input filename. Directories are
 created on the first save, independently of disabled configuration persistence.
-Saves survive process exit, not reboot.
+Installed systems keep saves across reboots; on live boots `home://` is RAM and
+they last until reboot.
 
 Each save exclusively reserves a temporary name, checks writes and close, then
 atomically replaces the slot. Failure reports an error and retains the previous

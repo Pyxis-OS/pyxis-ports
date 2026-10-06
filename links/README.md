@@ -70,10 +70,9 @@ to empty units.
     `<head`, `<body`, `<title` or `<!--`) is marked as HTML. Anything else is
     typed by its extension, as for local files.
 - **0004 Run without saved configuration.** There is no configuration
-  directory, so options, bookmarks and history are not saved. `home://` is
-  RAM-backed, and saving needs exclusive creation and private file modes that
-  Pyxis does not have. Saving options reports that the home directory is
-  inaccessible.
+  directory, so options, bookmarks and history are not saved. Saving needs
+  exclusive creation and private file modes that Pyxis does not have. Saving
+  options reports that the home directory is inaccessible.
 
 ## Event loop
 
