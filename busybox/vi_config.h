@@ -1,7 +1,7 @@
 /* BusyBox vi feature selection for Pyxis, replacing Kconfig's autoconf.h.
  * SPDX-License-Identifier: GPL-2.0-only
  *
- * Disabled features need facilities Pyxis does not provide: regex.h, signals,
+ * Disabled features need facilities Pyxis does not provide: signals,
  * a cursor-position reply, a shell for :! and an 8-bit-capable renderer. */
 #ifndef PYXIS_BUSYBOX_VI_CONFIG_H
 #define PYXIS_BUSYBOX_VI_CONFIG_H
@@ -18,7 +18,7 @@
 #define ENABLE_FEATURE_VI_COLON_EXPAND 0
 #define ENABLE_FEATURE_VI_DOT_CMD 1
 #define ENABLE_FEATURE_VI_READONLY 1
-#define ENABLE_FEATURE_VI_REGEX_SEARCH 0
+#define ENABLE_FEATURE_VI_REGEX_SEARCH 1
 #define ENABLE_FEATURE_VI_SEARCH 1
 #define ENABLE_FEATURE_VI_SET 1
 #define ENABLE_FEATURE_VI_SETOPTS 1

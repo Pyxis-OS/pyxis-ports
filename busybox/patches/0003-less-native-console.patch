@@ -1,3 +1,5 @@
+diff --git a/miscutils/less.c b/miscutils/less.c
+index 0771ff6..64130ad 100644
 --- a/miscutils/less.c
 +++ b/miscutils/less.c
 @@ -143,12 +143,9 @@
@@ -15,7 +17,7 @@
  #endif
  
  
-@@ -190,7 +187,7 @@
+@@ -190,7 +187,7 @@ enum { pattern_valid = 0 };
  struct globals {
  	int cur_fline; /* signed */
  	int kbd_fd;  /* fd to get input from */
@@ -24,7 +26,7 @@
  	int less_gets_pos;
  /* last position in last line, taking into account tabs */
  	size_t last_line_pos;
-@@ -237,7 +234,7 @@
+@@ -237,7 +234,7 @@ struct globals {
  	smallint winsize_err;
  #endif
  	smallint terminated;
@@ -33,7 +35,7 @@
  	char kbd_input[KEYCODE_BUFFER_SIZE];
  };
  #define G (*ptr_to_globals)
-@@ -273,14 +270,13 @@
+@@ -273,14 +270,13 @@ struct globals {
  #define pattern_valid       (G.pattern_valid     )
  #endif
  #define terminated          (G.terminated        )
@@ -49,7 +51,7 @@
  	G.eof_error_ok = 1; \
  	terminated = 1; \
  	IF_FEATURE_LESS_REGEXP(wanted_match = -1;) \
-@@ -298,7 +294,7 @@
+@@ -298,7 +294,7 @@ struct globals {
  static void set_tty_cooked(void)
  {
  	fflush_all();
@@ -58,7 +60,7 @@
  }
  
  /* Move the cursor to a position (x,y), where (0,0) is the
-@@ -328,15 +324,15 @@
+@@ -328,15 +324,15 @@ static void print_statusline(const char *str)
  static void restore_tty(void)
  {
  	set_tty_cooked();
@@ -78,7 +80,7 @@
  }
  
  #if (ENABLE_FEATURE_LESS_DASHCMD && ENABLE_FEATURE_LESS_LINENUMS) \
-@@ -469,17 +465,17 @@
+@@ -469,17 +465,17 @@ static int at_end(void)
   */
  static void read_lines(void)
  {
@@ -99,7 +101,7 @@
  
  	/* (careful: max_fline can be -1) */
  	if (max_fline + 1 > MAXLINES)
-@@ -499,13 +495,6 @@
+@@ -499,13 +495,6 @@ static void read_lines(void)
  		last_line_pos = 0;
  	}
  
@@ -113,7 +115,7 @@
  	while (1) { // read lines until we reach cur_fline or wanted_match
  		*p = '\0';
  		terminated = 0;
-@@ -513,26 +502,14 @@
+@@ -513,26 +502,14 @@ static void read_lines(void)
  			char c;
  			// if no unprocessed chars left, eat more
  			if (readpos >= read_size) {
@@ -141,7 +143,7 @@
  					read_size = 0; // -1 would be seen as UINT_MAX, prevent
  					goto reached_eof;
  				}
-@@ -613,8 +590,7 @@
+@@ -613,8 +590,7 @@ static void read_lines(void)
  			max_lineno++;
  
  		if (max_fline >= MAXLINES) {
@@ -151,7 +153,7 @@
  		}
  		if (!at_end()) {
  #if !ENABLE_FEATURE_LESS_REGEXP
-@@ -629,10 +605,7 @@
+@@ -629,10 +605,7 @@ static void read_lines(void)
  #endif
  		}
  		if (G.eof_error_ok <= 0) { /* EOF or error? */
@@ -163,7 +165,7 @@
  			break;
  		}
  		max_fline++;
-@@ -641,8 +614,6 @@
+@@ -641,8 +614,6 @@ static void read_lines(void)
  		last_line_pos = 0;
  	} /* end of "read lines until we reach cur_fline" loop */
  
@@ -172,7 +174,7 @@
  
  	// Will not be seen (overwritten immediately)
  	//if (G.eof_error_ok < 0) { // error?
-@@ -686,11 +657,7 @@
+@@ -686,11 +657,7 @@ static void update_num_lines(void)
  	/* only do this for regular files */
  	if (num_lines == REOPEN_AND_COUNT || num_lines == REOPEN_STDIN) {
  		count = 0;
@@ -185,7 +187,7 @@
  		if (fd < 0) {
  			/* somebody stole my file! */
  			num_lines = NOT_REGULAR_FILE;
-@@ -700,7 +667,7 @@
+@@ -700,7 +667,7 @@ static void update_num_lines(void)
  			num_lines = NOT_REGULAR_FILE;
  			goto do_close;
  		}
@@ -194,7 +196,16 @@
  			for (i = 0; i < len; ++i) {
  				if (buf[i] == '\n' && ++count == MAXLINES)
  					goto done;
-@@ -1068,15 +1035,17 @@
+@@ -871,7 +838,7 @@ static void print_found(const char *line)
+ 		/* Most of the time doesn't find the regex, optimize for that */
+ 		match_status = regexec(&pattern, line, 1, &match_structs, eflags);
+ 		/* if even "" matches, treat it as "not a match" */
+-		if (match_structs.rm_so >= match_structs.rm_eo)
++		if (match_status == 0 && match_structs.rm_so >= match_structs.rm_eo)
+ 			match_status = 1;
+ 	}
+ 
+@@ -1068,15 +1035,17 @@ static void buffer_lineno(int lineno)
  
  static void open_file_and_read_lines(void)
  {
@@ -216,11 +227,10 @@
  		/* "less" with no arguments in argv[] */
  		/* For status line only */
  		filename = xstrdup(bb_msg_standard_input);
-@@ -1095,6 +1064,16 @@
- static void reinitialize(void)
+@@ -1096,6 +1065,16 @@ static void reinitialize(void)
  {
  	unsigned i;
-+
+ 
 +#if ENABLE_FEATURE_LESS_REGEXP
 +	free(match_lines);
 +	match_lines = NULL;
@@ -230,17 +240,18 @@
 +		regfree(&pattern);
 +	pattern_valid = 0;
 +#endif
- 
++
  	if (flines) {
  		for (i = 0; i <= max_fline; i++)
-@@ -1120,67 +1099,20 @@
+ 			free(MEMPTR(flines[i]));
+@@ -1120,67 +1099,20 @@ static void reinitialize(void)
   */
  static int64_t getch_nowait(void)
  {
 -	int dont_poll_stdin;
  	int64_t key64;
 -	struct pollfd pfd[2];
--
+ 
 -	pfd[0].fd = STDIN_FILENO;
 -	pfd[0].events = POLLIN;
 -	pfd[1].fd = kbd_fd;
@@ -260,7 +271,6 @@
 -			dont_poll_stdin = 0; /* yes, we are interested in stdin */
 -	}
 -	/* Position cursor if line input is done */
-+
  	if (less_gets_pos >= 0)
  		move_cursor(max_displayed_line + 2, less_gets_pos + 1);
  	fflush_all();
@@ -274,7 +284,12 @@
 -			if (/*r < 0 && errno == EINTR &&*/ winch_counter != 0)
 -				return '\\'; /* anything which has no defined function */
 -			if (r) break;
--		}
++	key64 = safe_read_key(kbd_fd, kbd_input, -1);
++	if (key64 == -1) {
++		if (errno) {
++			restore_tty();
++			bb_simple_error_msg_and_die("cannot read terminal input");
+ 		}
 -#else
 -		safe_poll(pfd + dont_poll_stdin, 2 - dont_poll_stdin, -1);
 -#endif
@@ -295,12 +310,6 @@
 -			goto again;
 -		}
 -		/* EOF/error (ssh session got killed etc) */
-+	key64 = safe_read_key(kbd_fd, kbd_input, -1);
-+	if (key64 == -1) {
-+		if (errno) {
-+			restore_tty();
-+			bb_simple_error_msg_and_die("cannot read terminal input");
-+		}
  		less_exit();
  	}
 -	set_tty_cooked();
@@ -309,7 +318,7 @@
  }
  
  /* Grab a character from input without requiring the return key.
-@@ -1249,10 +1181,12 @@
+@@ -1249,10 +1181,12 @@ static void examine_file(void)
  		free(new_fname);
  		return;
  	}
@@ -323,11 +332,10 @@
  	free(filename);
  	filename = new_fname;
  	/* files start by = argv. why we assume that argv is infinitely long??
-@@ -1578,31 +1512,6 @@
- #endif
+@@ -1579,31 +1513,6 @@ static void show_flag_status(void)
  
  #endif /* ENABLE_FEATURE_LESS_DASHCMD */
--
+ 
 -static void save_input_to_file(void)
 -{
 -	const char *msg = "";
@@ -352,10 +360,11 @@
 -	print_statusline(msg);
 -	free(current_line);
 -}
- 
+-
  #if ENABLE_FEATURE_LESS_MARKS
  static void add_mark(void)
-@@ -1767,9 +1676,6 @@
+ {
+@@ -1767,9 +1676,6 @@ static void keypress_process(int keypress)
  	/*case 'R':
  		full_repaint();
  		break;*/
@@ -365,7 +374,7 @@
  	case 'E':
  		examine_file();
  		break;
-@@ -1822,24 +1728,10 @@
+@@ -1822,24 +1728,10 @@ static void keypress_process(int keypress)
  		number_process(keypress);
  }
  
@@ -391,7 +400,7 @@
  
  	INIT_G();
  
-@@ -1852,7 +1744,6 @@
+@@ -1852,7 +1744,6 @@ int less_main(int argc, char **argv)
  	getopt32(argv, "EMmN~IF"
  		IF_FEATURE_LESS_TRUNCATE("S")
  		IF_FEATURE_LESS_RAW("R")
@@ -399,7 +408,7 @@
  	);
  	argv += optind;
  	num_files = argc - optind;
-@@ -1880,13 +1771,10 @@
+@@ -1880,13 +1771,10 @@ int less_main(int argc, char **argv)
  		}
  	}
  
@@ -416,7 +425,7 @@
  			/* Just "less"? No args and no redirection? */
  			bb_show_usage();
  		}
-@@ -1897,45 +1785,13 @@
+@@ -1897,45 +1785,13 @@ int less_main(int argc, char **argv)
  	if (option_mask32 & FLAG_TILDE)
  		empty_line_marker = "";
  
