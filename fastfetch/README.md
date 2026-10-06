@@ -1,6 +1,6 @@
 # Fastfetch for Pyxis
 
-The Pyxis image installs `boot://fastfetch.pxe` and its notices under
+The Pyxis image installs `bin://fastfetch.pxe` and its notices under
 `boot://share/licenses/fastfetch`. The shell resolves the command `fastfetch`.
 
 For a standalone build, use an exported SDK with the Fastfetch libc prerequisites:
