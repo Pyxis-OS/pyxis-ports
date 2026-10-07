@@ -1,0 +1,134 @@
+diff --git a/cmake/pyxis.cmake b/cmake/pyxis.cmake
+index 683003a..e16a7d7 100644
+--- a/cmake/pyxis.cmake
++++ b/cmake/pyxis.cmake
+@@ -12,7 +12,7 @@ if(NOT CMAKE_BUILD_TYPE)
+     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+ endif()
+ 
+-set(PYXIS_MODULES os kernel cpu memory uptime terminalsize disk colors break separator)
++set(PYXIS_MODULES os kernel cpu memory uptime terminalsize disk battery colors break separator)
+ file(GLOB FF_MODULE_SRCS CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/src/modules"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/*/*.c")
+ set(PYXIS_MODULE_DEFINITIONS "")
+@@ -40,7 +40,7 @@ set(BUILD_FLASHFETCH OFF CACHE BOOL "Build flashfetch" FORCE)
+ set(BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
+ set(SET_TWEAK OFF CACHE BOOL "Add tweak to project version" FORCE)
+ set(BINARY_LINK_TYPE static CACHE STRING "How to link fastfetch" FORCE)
+-set(DEFAULT_STRUCTURE "OS:Kernel:CPU:Memory:Uptime:TerminalSize:Disk"
++set(DEFAULT_STRUCTURE "OS:Kernel:CPU:Memory:Uptime:TerminalSize:Disk:Battery"
+     CACHE STRING "Default module structure for detection")
+ set(PROJECT_VERSION_TWEAK_NUM 0)
+ set(TARGET_DIR_ROOT "")
+@@ -112,6 +112,7 @@ set(LIBFASTFETCH_SRC
+     src/modules/uptime/uptime.c
+     src/modules/terminalsize/terminalsize.c
+     src/modules/disk/disk.c
++    src/modules/battery/battery.c
+     src/modules/colors/colors.c
+     src/modules/break/break.c
+     src/modules/separator/separator.c
+@@ -126,6 +127,7 @@ set(LIBFASTFETCH_SRC
+     src/detection/uptime/uptime_pyxis.c
+     src/detection/terminalsize/terminalsize_pyxis.c
+     src/detection/disk/disk_pyxis.c
++    src/detection/battery/battery_pyxis.c
+ )
+ 
+ add_library(libfastfetch OBJECT ${LIBFASTFETCH_SRC})
+diff --git a/src/detection/battery/battery_pyxis.c b/src/detection/battery/battery_pyxis.c
+new file mode 100644
+index 0000000..310a76a
+--- /dev/null
++++ b/src/detection/battery/battery_pyxis.c
+@@ -0,0 +1,90 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "battery.h"
++
++#include <startup.h>
++#include <system_info.h>
++
++#define SECONDS_PER_HOUR 3600
++
++static void init_string(FFstrbuf *string, const char *value)
++{
++  ffStrbufInitS(string, value);
++  ffStrbufTrimRightSpace(string);
++}
++
++/* Discharge time as Linux computes it: remaining capacity over the present
++ * rate, both in the firmware's unit. */
++static int32_t time_remaining(const struct system_info_battery *battery)
++{
++  if (battery->remaining_capacity == SYSTEM_INFO_BATTERY_UNKNOWN ||
++      battery->present_rate == SYSTEM_INFO_BATTERY_UNKNOWN || battery->present_rate == 0) {
++    return -1;
++  }
++  uint64_t seconds = (uint64_t) battery->remaining_capacity * SECONDS_PER_HOUR / battery->present_rate;
++  return seconds > INT32_MAX ? INT32_MAX : (int32_t) seconds;
++}
++
++static const char *clear_batteries(FFlist *results, const char *error)
++{
++  FF_LIST_FOR_EACH (FFBatteryResult, result, *results) {
++    ffStrbufDestroy(&result->manufacturer);
++    ffStrbufDestroy(&result->manufactureDate);
++    ffStrbufDestroy(&result->modelName);
++    ffStrbufDestroy(&result->technology);
++    ffStrbufDestroy(&result->serial);
++  }
++  results->length = 0;
++  return error;
++}
++
++/* ACPI reports no temperature or manufacture date. Batteries without a
++ * percentage are skipped, as Linux skips those without a capacity. */
++const char *ffDetectBattery(FFBatteryOptions *options, FFlist *results)
++{
++  (void) options;
++  handle_t handle = startup_resource("system_info");
++  if (handle == HANDLE_INVALID) {
++    return "Missing system_info READ grant";
++  }
++  struct system_info_power power;
++  if (system_info_get_power(handle, &power) != CALL_OK) {
++    return "Native power query failed";
++  }
++
++  for (uint32_t i = 0; i < power.battery_count; ++i) {
++    struct system_info_battery battery;
++    if (system_info_get_battery(handle, i, &battery) != CALL_OK) {
++      return clear_batteries(results, "Native battery query failed");
++    }
++    if (!(battery.flags & SYSTEM_INFO_BATTERY_PRESENT) ||
++        battery.percent == SYSTEM_INFO_BATTERY_UNKNOWN) {
++      continue;
++    }
++
++    FFBatteryResult *result = FF_LIST_ADD(FFBatteryResult, *results);
++    init_string(&result->manufacturer, battery.oem);
++    init_string(&result->modelName, battery.model);
++    init_string(&result->technology, battery.type);
++    init_string(&result->serial, battery.serial);
++    ffStrbufInit(&result->manufactureDate);
++    result->capacity = battery.percent;
++    result->temperature = FF_BATTERY_TEMP_UNSET;
++    result->cycleCount = battery.cycle_count == SYSTEM_INFO_BATTERY_UNKNOWN ? 0 : battery.cycle_count;
++    result->timeRemaining = -1;
++    result->status = FF_BATTERY_STATUS_NONE;
++    if (power.ac == SYSTEM_INFO_AC_ONLINE) {
++      result->status |= FF_BATTERY_STATUS_AC_CONNECTED;
++    }
++    if (battery.flags & SYSTEM_INFO_BATTERY_CHARGING) {
++      result->status |= FF_BATTERY_STATUS_CHARGING;
++    }
++    if (battery.flags & SYSTEM_INFO_BATTERY_DISCHARGING) {
++      result->status |= FF_BATTERY_STATUS_DISCHARGING;
++      result->timeRemaining = time_remaining(&battery);
++    }
++    if (battery.flags & SYSTEM_INFO_BATTERY_CRITICAL) {
++      result->status |= FF_BATTERY_STATUS_CRITICAL;
++    }
++  }
++  return nullptr;
++}

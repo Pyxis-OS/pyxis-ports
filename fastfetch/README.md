@@ -27,9 +27,9 @@ by its explicit URI.
 ## Adaptation
 
 Fastfetch 2.69.0 is pinned to `0c3b852bf7bad2837a814c7a31bf332092048a2b`.
-Four ordered patches cover the SDK build, native integration, owner-supplied
-ASCII logo and native Disk consumer. The build selects the portable core and ten
-modules, links SDK startup and static libraries with libgcc, then converts ELF to
+Five ordered patches cover the SDK build, native integration, owner-supplied
+ASCII logo, native Disk consumer and native Battery detection. The build selects
+the portable core and eleven modules, links SDK startup and static libraries with libgcc, then converts ELF to
 P1F. No compiler rebuild, host-libc link, fake Unix services or optional graphics/thread/interpreter libraries
 are involved.
 
@@ -61,9 +61,11 @@ native/build/logo material is MPL-2.0. See `PORT-NOTICE` and the staged licenses
 | Uptime | Monotonic duration since HPET initialization, using clock READ |
 | TerminalSize | Columns/rows from the named `output` console grant |
 | Disk | Explicit startup root bindings with native directory FILESYSTEM_INFO authority |
+| Battery | `system_info` READ power and battery queries |
 | Colors, Break, Separator | Upstream presentation helpers |
 
-The seven data modules run by default; presentation helpers remain selectable.
+The eight data modules run by default; presentation helpers remain selectable.
+Battery prints nothing without a battery, as upstream does with errors hidden.
 The built-in `Pyxis`/`Pyxis OS` logo is selected from native OS identity. These
 queries are separate observations, not one atomic snapshot. CPU count is not
 physical cores or process allowance, and allocator total is not installed RAM.
@@ -108,6 +110,15 @@ the second contains bytes. Disk JSON adds a `native` object with `poolId`,
 `volumeId`, `selectedGeneration`, `poolAllocatableBytes`, `gptDegraded` and
 `filesystemDegraded`. IDs are 32 lowercase hexadecimal digits in ABI byte order;
 no UUID byte rearrangement is implied. Flags describe retained opening health.
+
+Battery reads `system_info_get_power` and `system_info_get_battery`, the
+kernel's latest ACPI poll. Each inserted battery with a known percentage is a
+row: `capacity` is the kernel's percentage, and manufacturer, model,
+technology and serial are the firmware's OEM, model, type and serial strings.
+`[AC Connected]` follows the AC adapter. While discharging, time remaining is
+remaining capacity times 3600 over the present rate, as Linux computes it.
+Temperature and manufacture date are unavailable. Power Adapter is not built:
+ACPI reports no adapter wattage, which that module prints.
 
 Actual stdout's startup binding controls automatic plain-output mode, separately
 from named console authority. Redirected defaults use plain text; upstream ASCII logo layout may remain
