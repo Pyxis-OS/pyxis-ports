@@ -176,7 +176,7 @@ index 0000000..875e0da
 +    LINK_DEPENDS "${PYXIS_LINKER_SCRIPT};${PYXIS_LIBRARIES};${PYXIS_START}")
 +target_compile_definitions(fastfetch PRIVATE FASTFETCH_TARGET_BINARY_NAME=fastfetch)
 +target_link_libraries(fastfetch PRIVATE libfastfetch "-Wl,--start-group"
-+    ${PYXIS_LIBRARIES} gcc "-Wl,--end-group")
++    ${PYXIS_LIBRARIES} ${PYXIS_RUNTIME_LIBRARY} "-Wl,--end-group")
 +target_link_options(fastfetch PRIVATE "LINKER:--gc-sections")
 +
 +add_custom_command(OUTPUT "${PROJECT_BINARY_DIR}/fastfetch.pxe"

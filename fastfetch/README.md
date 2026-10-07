@@ -29,7 +29,8 @@ by its explicit URI.
 Fastfetch 2.69.0 is pinned to `0c3b852bf7bad2837a814c7a31bf332092048a2b`.
 Five ordered patches cover the SDK build, native integration, owner-supplied
 ASCII logo, native Disk consumer and native Battery detection. The build selects
-the portable core and eleven modules, links SDK startup and static libraries with libgcc, then converts ELF to
+the portable core and eleven modules, links SDK startup and static libraries with the SDK's compiler runtime (libgcc
+or compiler-rt builtins), then converts ELF to
 P1F. No compiler rebuild, host-libc link, fake Unix services or optional graphics/thread/interpreter libraries
 are involved.
 
@@ -197,6 +198,19 @@ and allocator bytes to native kernel observations and uptime to clock
 nanoseconds divided by one million. The narrow terminal retains upstream
 layout: long logo/data lines may wrap; use `--logo none` and shorter formats.
 No port patches changed for this integration.
+
+On 2026-10-07 the recipe built with Pyxis's LLVM toolchain:
+- Clang/LLD 23.1.3 from `pyxis-llvm` `41ab6043cc4f`;
+- CMake 4.3.0;
+- an LLVM-built SDK.
+
+`fastfetch --structure OS:Kernel:CPU:Memory:Uptime` ran in an all-LLVM image
+(four-CPU nested KVM). Two recipe changes were needed:
+- **Patch 0002:** the Pyxis `main` now returns 0 explicitly. Under
+  `-ffreestanding`, Clang does not exempt `main` from `-Werror=return-type`.
+- **The CMake link:** it names the SDK's runtime library
+  (`PYXIS_RUNTIME_LIBRARY` from `pyxis.mk`) instead of `gcc`, and CMake no
+  longer receives the SDK's `-MMD -MP`.
 
 Native Disk integration passed an ordinary parent image build and interactive
 four-CPU nested-KVM runs with a read-only virtio-blk image. Local 160x48 and
