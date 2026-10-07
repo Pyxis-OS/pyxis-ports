@@ -180,7 +180,7 @@ index b8c4e20..a9b7efe 100644
  
 +#ifdef TCC_TARGET_PYXIS
 +    if (!s1->nostdlib) {
-+        static const char *const libraries[] = { "c", "term", "pyxis", "tcc1", "gcc" };
++        static const char *const libraries[] = { "c", "term", "pyxis", "tcc1", PYXIS_RUNTIME_LIBRARY };
 +        size_t previous;
 +        int i;
 +        /* Later archives can introduce references back into earlier ones.
