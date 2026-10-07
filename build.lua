@@ -88,16 +88,21 @@ local function main()
     -- for projects that publish no Git history.
     assert((archive and revision == nil) or (type(revision) == "string" and
       #revision == 40 and revision:match("^[0-9a-f]+$")), "source needs an exact Git commit")
+    assert(archive or (type(metadata.source.mirror) == "string" and
+      metadata.source.mirror:match("^https://")), "Git source needs an HTTPS mirror URL")
   else
     assert(not revision, "standalone files use a checksum instead of a Git commit")
     assert(type(source_file.name) == "string" and
       source_file.name:match("^[%w_][%w_.%-]*$"), "source file needs a plain filename")
     assert(#metadata.patches == 0, "standalone file recipes do not apply patches")
   end
+  -- Sources come only from the internal mirrors; url stays upstream provenance.
   local download = archive or source_file
   if download then
     assert(type(download.url) == "string" and download.url:match("^https://"),
-      "source download needs an HTTPS URL")
+      "source download needs an HTTPS upstream URL")
+    assert(type(download.mirror) == "string" and download.mirror:match("^https://"),
+      "source download needs an HTTPS mirror URL")
     assert(type(download.sha256) == "string" and #download.sha256 == 64 and
       download.sha256:match("^[0-9a-f]+$"), "source download needs a SHA-256 pin")
   end
@@ -135,7 +140,7 @@ local function main()
   if download then
     local downloaded = source_file and source .. "/" .. source_file.name or work .. "/source.tar"
     run({ "curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https",
-      "--output", downloaded, "--", download.url })
+      "--output", downloaded, "--", download.mirror })
     assert(capture({ "sha256sum", "--", downloaded }):match("^([0-9a-f]+)") == download.sha256,
       "source download checksum mismatch")
     if archive then
@@ -147,7 +152,7 @@ local function main()
     end
   else
     run({ "git", "init", "--quiet", source })
-    run({ "git", "-C", source, "fetch", "--depth=1", "--", metadata.source.url, revision })
+    run({ "git", "-C", source, "fetch", "--depth=1", "--", metadata.source.mirror, revision })
     run({ "git", "-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD" })
     assert(capture({ "git", "-C", source, "rev-parse", "HEAD" }) == revision, "source pin mismatch")
   end

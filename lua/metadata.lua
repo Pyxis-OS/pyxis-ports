@@ -1,6 +1,7 @@
 return {
   source = {
     url = "https://github.com/lua/lua.git",
+    mirror = "https://git.internal/mirrors/lua",
     commit = "7579fc9d7ed90240487251dfb69168f8e64e9294",
   },
   license = "MIT",

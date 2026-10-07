@@ -1,6 +1,7 @@
 return {
   source = {
     url = "https://github.com/TinyCC/tinycc.git",
+    mirror = "https://git.internal/mirrors/tinycc",
     commit = "3dc99dbc82f8e07308c5d398136803e62f9676df",
   },
   license = "LGPL-2.1-or-later; libtcc1.c has GPL-2.0-or-later with its stated linking exception",

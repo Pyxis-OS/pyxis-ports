@@ -1,6 +1,7 @@
 return {
   source = {
     url = "https://github.com/eggert/tz.git",
+    mirror = "https://git.internal/mirrors/tz",
     commit = "d633fe7ed3de8e00ce7cac991376a064a1373bb1",
   },
   version = "2026d",

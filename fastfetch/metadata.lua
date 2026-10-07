@@ -1,6 +1,7 @@
 return {
   source = {
     url = "https://github.com/fastfetch-cli/fastfetch.git",
+    mirror = "https://git.internal/mirrors/fastfetch",
     commit = "0c3b852bf7bad2837a814c7a31bf332092048a2b",
   },
   license = "MIT AND MPL-2.0",

@@ -1,6 +1,7 @@
 return {
   source = {
     url = "https://git.suckless.org/sbase",
+    mirror = "https://git.internal/mirrors/sbase",
     commit = "c546c3a5724c81cee9a11d816a38ccdf17472129",
   },
   license = "MIT AND ISC",

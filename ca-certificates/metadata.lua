@@ -2,6 +2,7 @@ return {
   source = {
     file = {
       url = "https://curl.se/ca/cacert-2026-09-25.pem",
+      mirror = "https://repo.internal/repository/raw-curl/ca/cacert-2026-09-25.pem",
       sha256 = "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
       name = "cacert.pem",
     },

@@ -1,6 +1,7 @@
 return {
   source = {
-    url = "https://github.com/mirror/busybox",
+    url = "https://git.busybox.net/busybox",
+    mirror = "https://git.internal/mirrors/busybox",
     commit = "f96d33d28a1f70fda5f27d221d5012b1ac0b7dad",
   },
   license = "GPL-2.0-only",

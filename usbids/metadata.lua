@@ -1,6 +1,7 @@
 return {
   source = {
     url = "https://github.com/usbids/usbids.git",
+    mirror = "https://git.internal/mirrors/usbids",
     commit = "5eb613762db1e34b9218da63a88f22dd26f743c5",
   },
   version = "2026.06.26",
