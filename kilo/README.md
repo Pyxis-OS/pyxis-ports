@@ -16,7 +16,7 @@ plus a `clock` grant with READ authority.
 
 `0001` replaces POSIX terminal and descriptor operations with libterm and
 Pyxis libc streams. It retains syntax highlighting and search, uses startup
-console grants and fixed terminal dimensions, and restores the cursor/style
+console grants and native terminal dimensions, and restores the cursor/style
 on normal exit or reported errors.
 
 `0002` checks allocation failures and size arithmetic, bounds syntax scanning,
@@ -48,11 +48,18 @@ with a diagnostic rather than edit unprotected, and process exit withdraws it.
 While Kilo runs, Ctrl+C cannot end it; use Ctrl-Q. `term_passthrough` comes
 from libterm, so the editor needs the matching SDK.
 
+`0007` waits for typed libterm resize events while idle and in search prompts,
+re-queries the viewport and redraws without a keypress. File text, logical cursor,
+search text/highlighting and the original five-second message deadline survive.
+Partial Escape/CSI sequences retain their decoder state and byte deadline across
+resize redraws. The existing minimum of two columns and three rows still applies;
+smaller dimensions report an error rather than continuing with an invalid layout.
+
 This is an ASCII text editor. It reads LF and CRLF, rejects NUL bytes, and
 saves LF with a final newline for each row. Saves use create/truncate/write;
 an error can leave a partial file. Read-only files can be viewed but not saved.
 Allocation failure exits with a diagnostic and loses unsaved edits. There is
-no autosave, resize handling or atomic replacement. `home://` persists on
+no autosave or atomic replacement. `home://` persists on
 installed systems and is RAM on live boots.
 
 Pyxis supplies a guarded 1 MiB initial userspace stack. The earlier 4 KiB

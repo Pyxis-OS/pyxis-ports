@@ -10,6 +10,14 @@ READ/SLEEP grant, plus the normal file/directory resources. It draws a 320x200
 frame at the largest integer scale that fits, centred with black borders, using
 the display's pitch and channel shifts. No GPU or calendar time is needed.
 
+At each frame boundary the adapter queries the geometry generation. A new
+size replaces the owned mapping and recomputes integer scale and letterboxing,
+keeping the engine's 320x200 frame and game state. If the destination becomes
+too small for scale one, it keeps the old mapping and runs with clipped output
+until a later size fits. A failed replacement likewise keeps the old frame;
+that generation is observed once, so allocation is retried only after another
+resize. Starting Doom still requires a display large enough for scale one.
+
 Use arrows to move/turn, Ctrl to fire, Space to use, Shift to run, Alt to strafe,
 and comma/period to strafe left/right. Escape opens the menu; F10 then Y quits.
 Super+Left/Right switches spaces. An inactive session blocks on keyboard input

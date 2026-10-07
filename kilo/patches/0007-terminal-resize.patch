@@ -1,0 +1,80 @@
+diff --git a/kilo.c b/kilo.c
+--- a/kilo.c
++++ b/kilo.c
+@@ -134,6 +134,7 @@
+ 
+ void editorSetStatusMessage(const char *fmt, ...);
+ void editorRefreshScreen(void);
++void updateWindowSize(void);
+ 
+ /* =========================== Syntax highlights DB =========================
+  *
+@@ -196,6 +197,7 @@
+ 
+ static struct terminal terminal;
+ static handle_t clock_handle;
++static struct term_event_reader event_reader;
+ static int terminal_ready;
+ 
+ static void restore_terminal(void) {
+@@ -226,10 +228,11 @@
+ 
+ int editorReadKey(void) {
+     unsigned key;
++    struct term_event event;
+     enum call_status status;
+     for (;;) {
+         if (!E.statusmsg_deadline) {
+-            status = term_read_key(&terminal,&key);
++            status = term_read_event(&event_reader,&event);
+         } else {
+             uint64_t now = monotonic_ns();
+             if (now >= E.statusmsg_deadline) {
+@@ -241,7 +244,12 @@
+             uint64_t remaining = E.statusmsg_deadline-now;
+             uint32_t timeout_ms = remaining/NANOSECONDS_PER_MILLISECOND +
+                                   (remaining%NANOSECONDS_PER_MILLISECOND != 0);
+-            status = term_read_key_timeout(&terminal,timeout_ms,&key);
++            status = term_read_event_timeout(&event_reader,timeout_ms,&event);
++        }
++        if (status == CALL_OK && event.kind == TERM_EVENT_RESIZED) {
++            updateWindowSize();
++            editorRefreshScreen();
++            continue;
+         }
+         if (status != CALL_TIMED_OUT) break;
+     }
+@@ -250,6 +258,7 @@
+         return KEY_NULL;
+     }
+     if (status != CALL_OK) fail("terminal input failed");
++    key = event.key;
+     if (key == TERM_KEY_EOF) {
+         if (E.dirty) fail("terminal input closed; unsaved edits lost");
+         restore_terminal();
+@@ -837,6 +846,16 @@
+     erow *r;
+     char buf[32];
+     struct abuf ab = ABUF_INIT;
++    /* Preserve file coordinates, including a search's saved cursor, while
++     * bringing their viewport position inside the current dimensions. */
++    if (E.cy >= E.screenrows) {
++        E.rowoff += E.cy-E.screenrows+1;
++        E.cy = E.screenrows-1;
++    }
++    if (E.cx >= E.screencols) {
++        E.coloff += E.cx-E.screencols+1;
++        E.cx = E.screencols-1;
++    }
+     int filerow = E.rowoff+E.cy;
+     erow *cursor_row = filerow < E.numrows ? &E.row[filerow] : NULL;
+     int filecol = E.coloff+E.cx;
+@@ -1284,6 +1303,8 @@
+     clock_handle = startup_resource("clock");
+     if (clock_handle == HANDLE_INVALID) fail("a clock capability with READ is required");
+     (void)monotonic_ns();
++    if (term_event_reader_init(&event_reader,&terminal,clock_handle) != CALL_OK)
++        fail("cannot initialize terminal resize observation");
+     /* Keep Ctrl+C as editor input for the whole session, so an armed shell
+      * cannot terminate the editor and discard unsaved edits. Kilo's own
+      * Ctrl+C handling is unchanged. Process exit withdraws the request. */

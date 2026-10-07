@@ -93,6 +93,7 @@ static bool game_down[256];
 static bool releasing_keys;
 static uint64_t started_at, paused_at, paused_ns;
 static unsigned scale, left, top;
+static uint64_t observed_generation;
 
 static const unsigned char keymap[KEY_COUNT] = {
   [KEY_ESCAPE] = DOOM_ESCAPE, [KEY_ENTER] = DOOM_ENTER,
@@ -156,6 +157,38 @@ static uint64_t now_ns(void)
   return now;
 }
 
+static void update_layout(void)
+{
+  scale = buffer.width / DOOMGENERIC_RESX;
+  if (scale > buffer.height / DOOMGENERIC_RESY) {
+    scale = buffer.height / DOOMGENERIC_RESY;
+  }
+  left = (buffer.width - DOOMGENERIC_RESX * scale) / 2;
+  top = (buffer.height - DOOMGENERIC_RESY * scale) / 2;
+}
+
+static void adapt_display(void)
+{
+  struct display_size_reply size;
+  require_ok(display_size(display, &size), "display size query");
+  if (size.generation == observed_generation) {
+    return;
+  }
+  observed_generation = size.generation;
+  /* A smaller destination clips the existing mapping. Keep game state and
+   * scale 1 running until a later geometry can hold the fixed engine frame. */
+  if (size.width < DOOMGENERIC_RESX || size.height < DOOMGENERIC_RESY) {
+    return;
+  }
+  enum call_status status = display_replace(display, size.generation, &buffer);
+  if (status == CALL_OK) {
+    update_layout(); /* New backing is zeroed, including the letterbox. */
+  } else {
+    fprintf(stderr, "doom: display replacement failed (status %u); retaining frame\n",
+        (unsigned)status);
+  }
+}
+
 void DG_Init(void)
 {
   /* doomgeneric_Create has expanded response files by this point. Use Doom's
@@ -186,17 +219,13 @@ void DG_Init(void)
   keyboard_owned = true;
   I_AtExit(release_resources, true);
 
-  scale = buffer.width / DOOMGENERIC_RESX;
-  if (scale > buffer.height / DOOMGENERIC_RESY) {
-    scale = buffer.height / DOOMGENERIC_RESY;
-  }
+  update_layout();
+  observed_generation = buffer.generation;
   if (scale == 0) {
     release_resources();
     fputs("doom: display is smaller than the game frame\n", stderr);
     exit(EXIT_FAILURE);
   }
-  left = (buffer.width - DOOMGENERIC_RESX * scale) / 2;
-  top = (buffer.height - DOOMGENERIC_RESY * scale) / 2;
   /* Doom asks for time before its first input poll. Consume initial focus
    * here so an inactive start cannot leave its tic loop waiting on time zero. */
   while (!focused) {
@@ -210,6 +239,7 @@ void DG_Init(void)
 
 void DG_DrawFrame(void)
 {
+  adapt_display();
   for (unsigned y = 0; y < DOOMGENERIC_RESY; ++y) {
     for (unsigned repeat = 0; repeat < scale; ++repeat) {
       volatile uint32_t *out = (volatile uint32_t *)(uintptr_t)
