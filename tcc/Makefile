@@ -28,7 +28,8 @@ $(BUILD)/host/config.mak: $(SOURCE)/configure $(RECIPE_MAKEFILE)
 host: $(BUILD)/host/config.mak
 	$(MAKE) -C $(BUILD)/host x86_64-pyxis-tcc \
 	  CPPFLAGS="-iquote $(PYXIS_SYSROOT)/usr/include -Wno-unused-function" \
-	  PYXIS_P1F_HEADER=$(PYXIS_SYSROOT)/usr/include/pxe/p1f.h
+	  PYXIS_P1F_HEADER=$(PYXIS_SYSROOT)/usr/include/pxe/p1f.h \
+	  PYXIS_RUNTIME_LIBRARY=$(PYXIS_RUNTIME_LIBRARY)
 
 GUEST_SOURCES := tcc.c libtcc.c tccpp.c tccgen.c tccdbg.c tccasm.c tccelf.c \
                  tccrun.c tccp1f.c x86_64-gen.c x86_64-link.c i386-asm.c
@@ -37,7 +38,8 @@ GUEST_DEFINES := -DTCC_TARGET_X86_64 -DTCC_TARGET_PYXIS \
                  -DCONFIG_TCC_SEMLOCK=0 -DCONFIG_DWARF_VERSION=5 \
                  -DCONFIG_SYSROOT='"$(GUEST_SYSROOT)"' \
                  -DCONFIG_TCCDIR='"$(GUEST_TCCDIR)"' \
-                 -DCONFIG_TCC_CROSSPREFIX='""'
+                 -DCONFIG_TCC_CROSSPREFIX='""' \
+                 -DPYXIS_RUNTIME_LIBRARY='"$(PYXIS_RUNTIME_LIBRARY)"'
 
 # Reuse upstream's generated version/predefines, but compile and link entirely
 # with the target SDK. The host target generates tccdefs_.h before this starts.

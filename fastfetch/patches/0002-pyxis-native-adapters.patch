@@ -696,7 +696,7 @@ index 4591301..470fa18 100644
      if (__builtin_expect(data.genConfigPath.length == 0, true)) {
          run(&data);
      } else {
-@@ -929,10 +1009,14 @@ int main(int argc, char** argv) {
+@@ -929,10 +1009,15 @@ int main(int argc, char** argv) {
          }
          writeConfigFile(&data);
      }
@@ -709,6 +709,7 @@ index 4591301..470fa18 100644
      ffStrbufDestroy(&data.genConfigPath);
 +#if defined(__pyxis__)
 +    ffDestroyInstance();
++    return 0;
 +#endif
  }
 diff --git a/src/logo/logo.c b/src/logo/logo.c

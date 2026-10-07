@@ -17,7 +17,7 @@ build/tcc/stage/host/bin/x86_64-pyxis-tcc -c /path/to/pyxis/userspace/mandelbrot
 
 The recipe also needs host `cc` and GNU Make. Only the host compiler links the
 host C runtime. The guest compiler, target support and application objects use
-the Pyxis GCC/SDK, with the guest ELF retained at `build/tcc/build/guest/tcc.elf`
+the SDK's compiler, with the guest ELF retained at `build/tcc/build/guest/tcc.elf`
 for GDB. The runner's usual `--work` and `--cross-prefix` options apply.
 
 The compiler records the selected SDK sysroot and stage directory. Rebuild if
@@ -27,8 +27,9 @@ TCC's own `stddef.h`, `stdarg.h`, `stdbool.h` and `float.h`. Do not supply GCC's
 private headers. Host CPATH/C_INCLUDE_PATH/LIBRARY_PATH are intentionally ignored;
 use explicit `-I`/`-L` options. `-print-search-dirs` shows the configured paths.
 
-The exported Pyxis SDK includes target libgcc, so host-running TCC can link
-against the same runtime without extra library paths:
+The exported Pyxis SDK includes its compiler runtime (libgcc or compiler-rt
+builtins), so host-running TCC can link against the same runtime without extra
+library paths:
 
 ```sh
 build/tcc/stage/host/bin/x86_64-pyxis-tcc \
@@ -48,17 +49,24 @@ is needed; P1F itself contains only loadable segments and the entry point.
 - ELF relocatable objects have a non-executable `.note.GNU-stack`. FP register
   transfers reserve temporary stack storage rather than using the red zone;
   LEA adjusts RSP without destroying pending integer condition flags.
-- `libtcc1.a` is built with the Pyxis GCC/SDK from `libtcc1.c`, `va_list.c` and
+- `libtcc1.a` is built with the SDK's compiler from `libtcc1.c`, `va_list.c` and
   `builtin.c`. It supplies unsigned-integer-to-FP conversions, `__fixxfdi`,
   `__va_arg` and TCC's bit-operation builtins. It does not import startup,
   dynamic-loader, backtrace, coverage, bounds-checking or atomic runtime code.
-- libgcc owns `__fixunssfdi`, `__fixunsdfdi` and `__fixunsxfdi`. The Pyxis patch
-  excludes their TCC copies and the unused signed float/double helpers;
-  `__fixxfdi` uses the libgcc long-double helper. The two archives have no
-  overlapping defined symbols with the current Pyxis GCC 16.2.0 toolchain.
+- The SDK's compiler runtime (libgcc, or compiler-rt builtins with the LLVM
+  toolchain) owns `__fixunssfdi`, `__fixunsdfdi` and `__fixunsxfdi`.
+  - The Pyxis patch excludes their TCC copies and the unused signed
+    float/double helpers. `__fixxfdi` uses the runtime's long-double helper.
+  - With GCC 16.2.0 the two archives have no overlapping defined symbols.
+  - compiler-rt also defines `__fixxfdi` and the three `__floatundi?f`
+    conversions. TCC searches libtcc1 first, so its copies are used, as with
+    GCC; compiler-rt keeps one function per archive member, so no member is
+    pulled twice.
 - Default linking adds `crt0.o` before application inputs, then rescans libc,
-  libterm, libpyxis, libtcc1 and libgcc until no further archive members are
-  extracted. This resolves dependencies back into earlier runtime libraries.
+  libterm, libpyxis, libtcc1 and the runtime until no further archive members are
+  extracted. The runtime's `-l` name comes from the SDK's
+  `PYXIS_RUNTIME_LIBRARY` (`gcc` or `clang_rt.builtins`) when TCC is built.
+  This resolves dependencies back into earlier runtime libraries.
   Explicit archives and `-l` inputs retain ordinary command-line order; place
   them after their users. `-nostdlib` omits both startup and default libraries.
 
@@ -94,8 +102,9 @@ for this port.
 
 The normal Pyxis image installs `bin/tcc.pxe` at `bin://tcc.pxe`. The SDK lives
 under read-only `boot://sdk`: shared headers in `usr/include`, `crt0.o` and the
-libc/libterm/libpyxis/libgcc archives in `usr/lib`, and this recipe's `lib/tcc`
-with libtcc1 and its four compiler-private headers. GCC builtin headers and host
+libc/libterm/libpyxis archives and the compiler runtime in `usr/lib`, and this
+recipe's `lib/tcc` with libtcc1 and its four compiler-private headers. The SDK
+compiler's builtin headers and host
 compiler/converter executables are not guest inputs.
 
 The recipe stages TCC's source pin and ordered patch copies under `share/tcc`,
@@ -150,7 +159,7 @@ the inherited directory chain; rooted paths use the named startup grants. The
 existing shell supplies these. TCC needs no launcher or process-management grant.
 
 The process stack stays 64 KiB. GCC stack-usage output reports a largest fixed
-compiler frame of 2,720 bytes for this build; recursive parsing is not bounded
+compiler frame of 2,720 bytes for this build, and Clang 23 2,824 bytes; recursive parsing is not bounded
 by that single-frame figure. Existing cat, shell preprocessing and Mandelbrot
 work in the guest. Compiling the existing line editor demonstrates an ordinary
 unsupported-C23 diagnostic and stream/process cleanup, not a new test source.
@@ -207,6 +216,21 @@ roughly 49 days, so benchmark intervals must be shorter than that. The stream pa
 names and removes an unnecessary `inttypes.h` dependency. Upstream algorithms
 and formatting are otherwise retained; the target remains x86-64 Pyxis, with
 ELF objects and P1F executables.
+
+With Pyxis's LLVM toolchain (Clang 23.1.3, `pyxis-llvm` `41ab6043cc4f`), the
+recipe builds unchanged apart from the runtime library name above.
+- **Warnings:** Clang reports 12 `-Wattribute-alias` warnings in upstream
+  `lib/builtin.c`. Its `long` builtins alias the `long long` ones, which have
+  the same size on LP64. They stay upstream.
+- **Size:** the guest compiler's text is about 31% larger than with GCC
+  (433,971 against 321,751 bytes). Clang inlines more in TCC's
+  single-translation-unit build.
+- **Checks:** in an all-LLVM image, the guest compiler built and ran a program
+  converting `long double` through the compiler-rt runtime. It also:
+  - preprocessed the shell;
+  - compiled and linked Mandelbrot;
+  - compiled and ran `cat` with `-include stdbool.h`. The current `cat` uses
+    C23 `bool`, which TCC rejects without it, under GCC too.
 
 Upstream `COPYING` contains LGPL 2.1. `lib/libtcc1.c` separately states GPL 2 or
 later with its explicit unlimited-linking exception; retain that notice as well.
