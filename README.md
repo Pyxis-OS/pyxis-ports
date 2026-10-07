@@ -3,10 +3,9 @@
 Pinned third-party programs built against the exported Pyxis SDK.
 
 Use Lua 5.4, Git, a POSIX shell, GNU coreutils, GNU Make and the
-`x86_64-unknown-pyxis-` toolchain that built the SDK on `PATH`. The SDK records
-it (GCC, or Clang and LLD from Pyxis's LLVM toolchain) in `share/toolchain.mk`;
-the runner checks that compiler, and recipes take every tool from the SDK's
-`pyxis.mk`. Sources come only from the
+`x86_64-unknown-pyxis-` LLVM toolchain that built the SDK on `PATH`. The runner
+checks its Clang, and recipes take every tool from the SDK's `pyxis.mk`.
+Executables link straight to P1F with LLD. Sources come only from the
 internal mirrors, so building needs access to `git.internal` and
 `repo.internal`. Export the SDK with `make sdk` in Pyxis first.
 

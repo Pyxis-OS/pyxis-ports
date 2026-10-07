@@ -3,8 +3,8 @@
 The recipe builds a **guest** `bin/tcc.pxe`, a **host-running** x86-64 Pyxis
 compiler and a **target** support archive. Both compilers preprocess, compile
 ELF objects and statically link native P1F executables. Pyxis packages the guest
-compiler and target SDK in its normal image; GCC remains the default compiler
-for maintained userspace and the OS.
+compiler and target SDK in its normal image; Clang is the compiler for
+maintained userspace and the OS.
 
 ## Build and use
 
@@ -17,18 +17,18 @@ build/tcc/stage/host/bin/x86_64-pyxis-tcc -c /path/to/pyxis/userspace/mandelbrot
 
 The recipe also needs host `cc` and GNU Make. Only the host compiler links the
 host C runtime. The guest compiler, target support and application objects use
-the SDK's compiler, with the guest ELF retained at `build/tcc/build/guest/tcc.elf`
-for GDB. The runner's usual `--work` and `--cross-prefix` options apply.
+the SDK's compiler. For GDB, relink `build/tcc/build/guest/tcc.o` with the
+recipe's link command plus `-Wl,--oformat=elf`; LLD writes an ELF with symbols at
+the same addresses as `tcc.pxe`. The runner's usual `--work` and `--cross-prefix` options apply.
 
 The compiler records the selected SDK sysroot and stage directory. Rebuild if
 moving the SDK; `-B` can select a relocated compiler-header/support directory.
 Its default includes are SDK `usr/include`, then `stage/lib/tcc/include` with
-TCC's own `stddef.h`, `stdarg.h`, `stdbool.h` and `float.h`. Do not supply GCC's
+TCC's own `stddef.h`, `stdarg.h`, `stdbool.h` and `float.h`. Do not supply Clang's
 private headers. Host CPATH/C_INCLUDE_PATH/LIBRARY_PATH are intentionally ignored;
 use explicit `-I`/`-L` options. `-print-search-dirs` shows the configured paths.
 
-The exported Pyxis SDK includes its compiler runtime (libgcc or compiler-rt
-builtins), so host-running TCC can link against the same runtime without extra
+The exported Pyxis SDK includes its compiler runtime (compiler-rt builtins), so host-running TCC can link against the same runtime without extra
 library paths:
 
 ```sh
@@ -53,19 +53,18 @@ is needed; P1F itself contains only loadable segments and the entry point.
   `builtin.c`. It supplies unsigned-integer-to-FP conversions, `__fixxfdi`,
   `__va_arg` and TCC's bit-operation builtins. It does not import startup,
   dynamic-loader, backtrace, coverage, bounds-checking or atomic runtime code.
-- The SDK's compiler runtime (libgcc, or compiler-rt builtins with the LLVM
-  toolchain) owns `__fixunssfdi`, `__fixunsdfdi` and `__fixunsxfdi`.
+- The SDK's compiler runtime (compiler-rt builtins) owns `__fixunssfdi`,
+  `__fixunsdfdi` and `__fixunsxfdi`.
   - The Pyxis patch excludes their TCC copies and the unused signed
     float/double helpers. `__fixxfdi` uses the runtime's long-double helper.
-  - With GCC 16.2.0 the two archives have no overlapping defined symbols.
   - compiler-rt also defines `__fixxfdi` and the three `__floatundi?f`
-    conversions. TCC searches libtcc1 first, so its copies are used, as with
-    GCC; compiler-rt keeps one function per archive member, so no member is
+    conversions. TCC searches libtcc1 first, so its copies are used;
+    compiler-rt keeps one function per archive member, so no member is
     pulled twice.
 - Default linking adds `crt0.o` before application inputs, then rescans libc,
   libterm, libpyxis, libtcc1 and the runtime until no further archive members are
   extracted. The runtime's `-l` name comes from the SDK's
-  `PYXIS_RUNTIME_LIBRARY` (`gcc` or `clang_rt.builtins`) when TCC is built.
+  `PYXIS_RUNTIME_LIBRARY` (`clang_rt.builtins`) when TCC is built.
   This resolves dependencies back into earlier runtime libraries.
   Explicit archives and `-l` inputs retain ordinary command-line order; place
   them after their users. `-nostdlib` omits both startup and default libraries.

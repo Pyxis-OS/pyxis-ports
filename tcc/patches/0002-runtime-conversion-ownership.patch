@@ -6,7 +6,7 @@ index 878f9512..4f650466 100644
      }
  }
  
-+/* Pyxis uses libgcc's ABI-matching unsigned conversion helpers. */
++/* Pyxis uses the compiler runtime's ABI-matching unsigned conversion helpers. */
 +#ifndef __pyxis__
  unsigned long long __fixunssfdi (float a1)
  {

@@ -27,10 +27,7 @@ $(BUILD)/sys_pyxis.o: $(RECIPE)/sys_pyxis.c
 $(BUILD)/quake_pyxis.o: $(RECIPE)/quake_pyxis.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/quake.elf: $(OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+$(BUILD)/quake.pxe: $(OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -Wl,--gc-sections -o $@ $(PYXIS_START) $(OBJECTS) $(PYXIS_LDLIBS)
-
-$(BUILD)/quake.pxe: $(BUILD)/quake.elf
-	$(PYXIS_ELF2PXE) --format p1f -o $@ $<
 
 -include $(OBJECTS:.o=.d)

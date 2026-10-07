@@ -29,9 +29,8 @@ by its explicit URI.
 Fastfetch 2.69.0 is pinned to `0c3b852bf7bad2837a814c7a31bf332092048a2b`.
 Five ordered patches cover the SDK build, native integration, owner-supplied
 ASCII logo, native Disk consumer and native Battery detection. The build selects
-the portable core and eleven modules, links SDK startup and static libraries with the SDK's compiler runtime (libgcc
-or compiler-rt builtins), then converts ELF to
-P1F. No compiler rebuild, host-libc link, fake Unix services or optional graphics/thread/interpreter libraries
+the portable core and eleven modules, links SDK startup and static libraries with the SDK's compiler runtime (compiler-rt builtins). LLD writes the P1F
+executable directly. No compiler rebuild, host-libc link, fake Unix services or optional graphics/thread/interpreter libraries
 are involved.
 
 | Changed area | Required adaptation |

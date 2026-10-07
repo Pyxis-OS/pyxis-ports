@@ -22,10 +22,7 @@ $(BUILD)/pyxis.o: $(RECIPE)/pyxis.c $(RECIPE)/pyxis.h $(RECIPE)/Makefile
 $(BUILD)/liblua.a: $(OBJECTS)
 	$(AR) rcs $@ $(OBJECTS)
 
-$(BUILD)/lua.elf: $(BUILD)/main.o $(BUILD)/pyxis.o $(BUILD)/liblua.a $(MBEDTLS_LIBRARIES) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+$(BUILD)/lua.pxe: $(BUILD)/main.o $(BUILD)/pyxis.o $(BUILD)/liblua.a $(MBEDTLS_LIBRARIES) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(BUILD)/main.o $(BUILD)/pyxis.o $(BUILD)/liblua.a $(MBEDTLS_LIBRARIES) $(PYXIS_LDLIBS)
-
-$(BUILD)/lua.pxe: $(BUILD)/lua.elf
-	$(PYXIS_ELF2PXE) --format p1f -o $@ $<
 
 -include $(OBJECTS:.o=.d) $(BUILD)/main.d $(BUILD)/pyxis.d

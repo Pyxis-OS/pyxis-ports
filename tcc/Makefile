@@ -52,11 +52,8 @@ $(BUILD)/guest/tcc.o: $(addprefix $(SOURCE)/,$(GUEST_SOURCES)) \
 	  -Wno-implicit-fallthrough -Wno-unused-function \
 	  -c $(SOURCE)/tcc.c -o $@
 
-$(BUILD)/guest/tcc.elf: $(BUILD)/guest/tcc.o $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+$(BUILD)/guest/tcc.pxe: $(BUILD)/guest/tcc.o $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $< $(PYXIS_LDLIBS)
-
-$(BUILD)/guest/tcc.pxe: $(BUILD)/guest/tcc.elf $(PYXIS_ELF2PXE)
-	$(PYXIS_ELF2PXE) --format p1f -o $@ $<
 
 $(BUILD)/runtime/%.o: $(SOURCE)/lib/%.c $(SDK)/share/pyxis.mk $(RECIPE_MAKEFILE)
 	mkdir -p $(@D)

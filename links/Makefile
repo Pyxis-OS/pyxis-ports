@@ -29,10 +29,7 @@ $(BUILD)/pyxis_console.o: $(RECIPE)/pyxis_console.c $(RECIPE)/pyxis_console.h
 $(BUILD)/network.o: $(RECIPE)/network.c $(HEADERS)
 	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) -Wno-unused-parameter -c $< -o $@
 
-$(BUILD)/links.elf: $(OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+$(BUILD)/links.pxe: $(OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(OBJECTS) $(PYXIS_LDLIBS)
-
-$(BUILD)/links.pxe: $(BUILD)/links.elf
-	$(PYXIS_ELF2PXE) --format p1f -o $@ $<
 
 -include $(OBJECTS:.o=.d)

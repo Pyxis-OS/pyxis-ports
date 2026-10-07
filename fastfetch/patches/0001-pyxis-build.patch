@@ -19,11 +19,11 @@ new file mode 100644
 index 0000000..875e0da
 --- /dev/null
 +++ b/cmake/pyxis.cmake
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,158 @@
 +# SPDX-License-Identifier: MPL-2.0
 +# The recipe supplies compile and link flags from the consumed SDK's pyxis.mk.
-+if(NOT PYXIS_SDK OR NOT CMAKE_SYSROOT)
-+    message(FATAL_ERROR "The Pyxis build requires PYXIS_SDK and CMAKE_SYSROOT")
++if(NOT CMAKE_SYSROOT)
++    message(FATAL_ERROR "The Pyxis build requires CMAKE_SYSROOT")
 +endif()
 +
 +set(CMAKE_C_STANDARD 23)
@@ -172,16 +172,9 @@ index 0000000..875e0da
 +    "${CMAKE_SYSROOT}/usr/lib/libterm.a"
 +    "${CMAKE_SYSROOT}/usr/lib/libpyxis.a")
 +add_executable(fastfetch src/fastfetch.c "${PYXIS_START}")
-+set_target_properties(fastfetch PROPERTIES SUFFIX ".elf"
++set_target_properties(fastfetch PROPERTIES SUFFIX ".pxe"
 +    LINK_DEPENDS "${PYXIS_LINKER_SCRIPT};${PYXIS_LIBRARIES};${PYXIS_START}")
 +target_compile_definitions(fastfetch PRIVATE FASTFETCH_TARGET_BINARY_NAME=fastfetch)
 +target_link_libraries(fastfetch PRIVATE libfastfetch "-Wl,--start-group"
 +    ${PYXIS_LIBRARIES} ${PYXIS_RUNTIME_LIBRARY} "-Wl,--end-group")
 +target_link_options(fastfetch PRIVATE "LINKER:--gc-sections")
-+
-+add_custom_command(OUTPUT "${PROJECT_BINARY_DIR}/fastfetch.pxe"
-+    COMMAND "${PYXIS_SDK}/bin/elf2pxe" --format p1f
-+        -o "${PROJECT_BINARY_DIR}/fastfetch.pxe" "$<TARGET_FILE:fastfetch>"
-+    DEPENDS fastfetch "${PYXIS_SDK}/bin/elf2pxe"
-+    VERBATIM)
-+add_custom_target(fastfetch_pxe ALL DEPENDS "${PROJECT_BINARY_DIR}/fastfetch.pxe")

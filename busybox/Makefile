@@ -18,11 +18,8 @@ $(BUILD)/vi.o: $(SOURCE)/editors/vi.c $(RECIPE)/libbb.h $(RECIPE)/vi_config.h
 $(BUILD)/busybox_pyxis.o: $(RECIPE)/busybox_pyxis.c $(RECIPE)/libbb.h $(RECIPE)/vi_config.h
 	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) -c $< -o $@
 
-$(BUILD)/vi.elf: $(OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+$(BUILD)/vi.pxe: $(OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(OBJECTS) $(PYXIS_LDLIBS)
-
-$(BUILD)/vi.pxe: $(BUILD)/vi.elf
-	$(PYXIS_ELF2PXE) --format p1f -o $@ $<
 
 -include $(OBJECTS:.o=.d)
 
@@ -32,11 +29,8 @@ $(BUILD)/less.o: $(SOURCE)/miscutils/less.c $(RECIPE)/less_support.h $(RECIPE)/l
 $(BUILD)/less_pyxis.o: $(RECIPE)/busybox_pyxis.c $(RECIPE)/libbb.h
 	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) -DPYXIS_APPLET_LESS -c $< -o $@
 
-$(BUILD)/less.elf: $(BUILD)/less.o $(BUILD)/less_pyxis.o $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+$(BUILD)/less.pxe: $(BUILD)/less.o $(BUILD)/less_pyxis.o $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(BUILD)/less.o $(BUILD)/less_pyxis.o $(PYXIS_LDLIBS)
-
-$(BUILD)/less.pxe: $(BUILD)/less.elf
-	$(PYXIS_ELF2PXE) --format p1f -o $@ $<
 
 -include $(BUILD)/less.d $(BUILD)/less_pyxis.d
 
@@ -54,10 +48,7 @@ $(BUILD)/tar_header.o: $(SOURCE)/archival/chksum_and_xwrite_tar_header.c $(RECIP
 $(BUILD)/tar_pyxis.o: $(RECIPE)/tar_pyxis.c $(RECIPE)/tar_support.h
 	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) -c $< -o $@
 
-$(BUILD)/tar.elf: $(TAR_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+$(BUILD)/tar.pxe: $(TAR_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(TAR_OBJECTS) $(PYXIS_LDLIBS)
-
-$(BUILD)/tar.pxe: $(BUILD)/tar.elf
-	$(PYXIS_ELF2PXE) --format p1f -o $@ $<
 
 -include $(TAR_OBJECTS:.o=.d)

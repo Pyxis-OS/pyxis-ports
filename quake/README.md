@@ -1,7 +1,7 @@
 # Quake
 
 Pinned erysdren/quakegeneric (the GPL WinQuake software renderer behind a small
-platform interface), built with the Pyxis SDK and GCC. The recipe produces
+platform interface), built with the Pyxis SDK and Clang. The recipe produces
 `bin/quake.pxe` and preserves upstream's GPL license. Game data is not
 downloaded or included by the recipe; the parent Pyxis build stages the pinned
 shareware pak or a locally supplied `QUAKE_DATA` directory.

@@ -15,10 +15,7 @@ $(BUILD)/%.o: $(DOOM_SOURCE)/%.c
 $(BUILD)/doomgeneric_%.o: $(RECIPE)/doomgeneric_%.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/doom.elf: $(OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+$(BUILD)/doom.pxe: $(OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -Wl,--gc-sections -o $@ $(PYXIS_START) $(OBJECTS) $(PYXIS_LDLIBS)
-
-$(BUILD)/doom.pxe: $(BUILD)/doom.elf
-	$(PYXIS_ELF2PXE) --format p1f -o $@ $<
 
 -include $(OBJECTS:.o=.d)
