@@ -17,10 +17,16 @@ must use the same configuration as the archives. The SDK remains independent
 of TLS. Target sources use upstream C99 with the SDK's freestanding headers and
 machine flags; no host C library is linked.
 
-The profile keeps `MBEDTLS_HAVE_ASM` and the SDK's `-O2` on x86-64 GCC.
-This matches upstream SECURITY.md guidance and the unaffected x86/assembly
-configuration in the [compiler-induced constant-time advisory](https://mbed-tls.readthedocs.io/en/latest/security-advisories/mbedtls-security-advisory-2026-03-compiler-induced-constant-time-violations/).
-No advanced compiler optimization passes are enabled.
+The profile keeps `MBEDTLS_HAVE_ASM` and the SDK's `-O2` on x86-64, with GCC
+or Clang. This matches upstream SECURITY.md guidance and the unaffected
+x86/assembly configuration in the [compiler-induced constant-time advisory](https://mbed-tls.readthedocs.io/en/latest/security-advisories/mbedtls-security-advisory-2026-03-compiler-induced-constant-time-violations/).
+The advisory also lists Clang at its default optimization levels as not known
+to be affected. No advanced compiler optimization passes, such as LLVM's
+select-optimize, are enabled.
+
+CMake receives the SDK's compile flags without `-MMD -MP`. CMake writes its own
+dependency files, and Clang reports the duplicate `-MD` as unused, which the
+upstream warnings-as-errors build rejects.
 
 The profile retains TLS 1.2/1.3 clients, RSA/ECDSA verification, upstream default
 certificate security policy, ALPN and SNI. It disables servers, DTLS, PSK,
