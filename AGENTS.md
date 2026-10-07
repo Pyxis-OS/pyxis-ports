@@ -4,6 +4,10 @@
   not a sandbox or a package manager. Never modify the consumed SDK.
 - Pin upstream sources to exact commits and preserve licenses. Record local
   changes as ordered patches; preserve upstream formatting and architecture.
+- Builds fetch only from the owner's mirrors (each recipe's `mirror`). A new
+  port, a moved pin or a new archive needs the owner to create or sync a
+  mirror first: tell them the upstream URL and the commit or file, before
+  building. Never fall back to upstream URLs.
 - Use the Pyxis compiler and SDK for target programs. Never link host libc.
   First-party C uses GNU C23, snake_case, two spaces and K&R control braces.
 - Validate with ordinary builds and manual QEMU/debugger work through Pyxis.

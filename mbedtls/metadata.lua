@@ -4,6 +4,7 @@ return {
     commit = "0a8fda272a5a0abef3b47c91bed37185d5a726b1",
     archive = {
       url = "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-4.1.1/mbedtls-4.1.1.tar.bz2",
+      mirror = "https://repo.internal/repository/raw-github/Mbed-TLS/mbedtls/releases/download/mbedtls-4.1.1/mbedtls-4.1.1.tar.bz2",
       sha256 = "3359a349e23db3d5536fcee032ae7b2ecbfc08972fab643089b5cbf2a375c98c",
     },
   },

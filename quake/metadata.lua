@@ -1,6 +1,7 @@
 return {
   source = {
     url = "https://github.com/erysdren/quakegeneric.git",
+    mirror = "https://git.internal/mirrors/quakegeneric",
     commit = "13052102577c629650cf07a46151a4b6e1b19c3c",
   },
   license = "GPL-2.0-or-later",

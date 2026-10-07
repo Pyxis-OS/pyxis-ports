@@ -2,9 +2,9 @@
 
 [Upstream BusyBox](https://git.busybox.net/busybox) is pinned to
 `f96d33d28a1f70fda5f27d221d5012b1ac0b7dad` (1.39.0.git) under GPL-2.0-only.
-The recipe fetches that commit from the
-[GitHub mirror](https://github.com/mirror/busybox), because upstream's server
-refuses commits that no branch points at.
+Upstream's server refuses commits that no branch points at, and the
+[GitHub mirror](https://github.com/mirror/busybox) stopped in July 2024, so
+the recipe fetches the commit from the internal mirror of upstream.
 The recipe selects vi, less and uncompressed tar separately. It stages
 `bin/vi.pxe`, `bin/less.pxe` and `bin/tar.pxe`, with
 `share/licenses/busybox/LICENSE`. Retain the license when distributing the

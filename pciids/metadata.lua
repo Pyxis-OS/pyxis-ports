@@ -1,6 +1,7 @@
 return {
   source = {
     url = "https://github.com/pciutils/pciids.git",
+    mirror = "https://git.internal/mirrors/pciids",
     commit = "75ba6ed06a7f85a4e27dbdbf777eec88c0115c4a",
   },
   version = "2026.10.01",
