@@ -117,14 +117,24 @@ and `-B` can select explicitly granted headers; `-L` selects library directories
 The paths above are the normal-image contract. Keep source and output in
 writable `home://`.
 
-From the shell, for example:
+From the shell, for example, with a program written in Kilo:
 
 ```text
-tcc boot://src/cat/main.c -o home://cat.pxe
+kilo home://hello.c
+tcc home://hello.c -o home://hello.pxe
+./hello.pxe
+tcc -c home://hello.c -o home://hello.o
+```
+
+The image ships no Pyxis sources. With a userland checkout exported as
+`host://` over virtio-fs (see Pyxis's `docs/devices/virtio-fs.md`), its programs
+compile too; `cat` uses C23 `bool`, which TCC needs `stdbool.h` for:
+
+```text
+tcc -include stdbool.h host://cat/main.c -o home://cat.pxe
 ./cat.pxe boot://share/hello.txt
-tcc -c boot://src/cat/main.c -o home://cat.o
-tcc -E -P boot://src/shell/main.c -o home://shell.i
-tcc -g -c boot://src/mandelbrot/main.c -o home://mandelbrot.o
+tcc -E -P host://shell/main.c -o home://shell.i
+tcc -g -c host://mandelbrot/main.c -o home://mandelbrot.o
 ```
 
 The guest driver accepts:
