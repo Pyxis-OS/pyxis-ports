@@ -409,14 +409,14 @@ index 0000000..801597d
 +  if (output == HANDLE_INVALID) {
 +    return false;
 +  }
-+  size_t columns, rows;
-+  if (console_size(output, &columns, &rows) != CALL_OK ||
-+      columns == 0 || rows == 0 || columns > UINT16_MAX || rows > UINT16_MAX) {
++  struct console_size_reply size;
++  if (console_size(output, &size) != CALL_OK ||
++      size.columns > UINT16_MAX || size.rows > UINT16_MAX) {
 +    return false;
 +  }
 +  *result = (FFTerminalSizeResult) {
-+    .columns = (uint16_t) columns,
-+    .rows = (uint16_t) rows,
++    .columns = (uint16_t) size.columns,
++    .rows = (uint16_t) size.rows,
 +  };
 +  return true;
 +}
