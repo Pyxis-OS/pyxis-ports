@@ -1,6 +1,6 @@
 # Doom
 
-Pinned ozkl/doomgeneric, built with the Pyxis SDK and GCC. The recipe produces
+Pinned ozkl/doomgeneric, built with the Pyxis SDK and Clang. The recipe produces
 `bin/doom.pxe` and preserves upstream's GPL license. Game data is not downloaded
 or included by the recipe. The parent Pyxis build can stage a locally supplied
 WAD and the two development demos separately.

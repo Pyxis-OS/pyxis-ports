@@ -114,7 +114,6 @@ local function main()
     "work must be outside the consumed SDK")
   require_file(sdk .. "/share/pyxis.mk")
   require_file(sdk .. "/sysroot/usr/lib/crt0.o")
-  require_file(sdk .. "/bin/elf2pxe")
   local mbedtls
   if name == "lua" then
     assert(options["--mbedtls"], "Lua needs --mbedtls PATH to the configured development prefix")
@@ -127,16 +126,9 @@ local function main()
   for _, tool in ipairs(metadata.dependencies.host) do
     run({ "sh", "-c", 'command -v "$1" >/dev/null || { echo "Missing host tool: $1" >&2; exit 1; }', "sh", tool })
   end
-  -- The SDK records the toolchain (gcc or llvm) that built its runtime
-  -- archives; its pyxis.mk selects the same compiler for the recipes.
-  local record = assert(io.open(sdk .. "/share/toolchain.mk", "r"), "SDK records no toolchain")
-  local toolchain = record:read("a"):match("PYXIS_TOOLCHAIN := (%w+)")
-  record:close()
-  local compiler = ({ gcc = "gcc", llvm = "clang" })[toolchain]
-  assert(compiler, "SDK names an unknown toolchain")
   local cross = options["--cross-prefix"] or os.getenv("CROSS_COMPILE") or "x86_64-unknown-pyxis-"
   make_path(cross)
-  assert(capture({ cross .. compiler, "-dumpmachine" }) == "x86_64-unknown-pyxis",
+  assert(capture({ cross .. "clang", "-dumpmachine" }) == "x86_64-unknown-pyxis",
     "use the Pyxis target compiler")
 
   -- Refuse existing work instead of deleting source edits or stale stage files.

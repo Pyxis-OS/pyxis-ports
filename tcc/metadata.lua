@@ -11,7 +11,7 @@ return {
   },
   patches = {
     "patches/0001-pyxis-object-target.patch",
-    "patches/0002-libgcc-conversion-ownership.patch",
+    "patches/0002-runtime-conversion-ownership.patch",
     "patches/0003-reserve-fp-scratch.patch",
     "patches/0004-native-streams-and-paths.patch",
     "patches/0005-guest-driver.patch",
