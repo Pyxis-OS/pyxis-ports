@@ -31,8 +31,14 @@ are usable. `chrono.h`, `ostream.h`, `std.h` and `xchar.h` need `std::locale`,
 `printf.h` needs `std::wstring`, and `os.h` needs `FMT_OS`; including any of
 them fails to compile. Formatting errors throw `fmt::format_error`.
 
+The Pyxis console shows the 16 standard colors and reverse video only. Use
+`fmt::terminal_color` with `fg`/`bg` from `color.h`: named `fmt::color` values
+and RGB colors produce 24-bit escape sequences that the console ignores, and it
+ignores emphasis such as bold.
+
 Development outputs are `stage/dev/lib/libfmt.a` and `stage/dev/include/fmt`.
 Pyxis exports them at `build/ports-dev/fmt`, outside the base and guest SDK.
 Consumers compile with that prefix's `include` path and the SDK's C++ settings,
 and link `libfmt.a` before the SDK runtime libraries. No program in the boot
-archive uses fmt yet, so nothing from it enters the boot payload.
+archive uses fmt yet, so nothing from it enters the boot payload. A port that
+ships an fmt program must also install fmt's license into the boot payload.
