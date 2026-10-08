@@ -22,8 +22,8 @@ those recipes fetch, adapt or package.
 - Each port's `metadata.lua`, README and source notices identify its upstream
   license, pinned revision and local changes.
 - Upstream-derived files and patches, including `busybox/patches/`, `doom/patches/`, `kilo/patches/`,
-  `links/patches/`, `lua/patches/`, `sbase/patches/`, `fastfetch/patches/`, `tcc/patches/` and
-  `quake/patches/`, retain the licenses of the upstream files they modify. This
+  `links/patches/`, `lua/patches/`, `sbase/patches/`, `fastfetch/patches/`, `tcc/patches/`,
+  `quake/patches/` and `sdl2/patches/`, retain the licenses of the upstream files they modify. This
   includes applicable runtime exceptions.
 - `quake/sys_pyxis.c` derives from quakegeneric's `sys_null.c` and keeps its
   GPL-2.0-or-later notice.
@@ -50,6 +50,9 @@ those recipes fetch, adapt or package.
   option, as recorded in [usbids/NOTICE](usbids/NOTICE) and
   [LICENSE](usbids/LICENSE). The staged `usb.ids` keeps its upstream header;
   the Git mirror's GPLv3 LICENSE is distinct from the site's database grant.
+- The SDL2 backend in `sdl2/pyxis/` and `sdl2/SDL_config.h` are original
+  Pyxis material under MPL-2.0, as recorded in `sdl2/PORT-NOTICE`. SDL itself
+  and the `sdl2/patches/` that modify it remain under SDL's zlib license.
 - Fastfetch's new native adapter/build files and project ASCII logo are original
   Pyxis material under MPL-2.0, as marked in the patch and `fastfetch/PORT-NOTICE`.
   Bundled yyjson remains MIT; its staged header preserves its notice.

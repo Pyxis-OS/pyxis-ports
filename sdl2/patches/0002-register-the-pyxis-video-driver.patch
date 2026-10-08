@@ -1,0 +1,26 @@
+diff --git a/src/video/SDL_sysvideo.h b/src/video/SDL_sysvideo.h
+index faf598b..aedeebc 100644
+--- a/src/video/SDL_sysvideo.h
++++ b/src/video/SDL_sysvideo.h
+@@ -473,6 +473,7 @@ extern VideoBootStrap N3DS_bootstrap;
+ extern VideoBootStrap RPI_bootstrap;
+ extern VideoBootStrap KMSDRM_bootstrap;
+ extern VideoBootStrap KMSDRM_LEGACY_bootstrap;
++extern VideoBootStrap PYXIS_bootstrap;
+ extern VideoBootStrap DUMMY_bootstrap;
+ extern VideoBootStrap DUMMY_evdev_bootstrap;
+ extern VideoBootStrap Wayland_bootstrap;
+diff --git a/src/video/SDL_video.c b/src/video/SDL_video.c
+index 2f6c631..c8438c8 100644
+--- a/src/video/SDL_video.c
++++ b/src/video/SDL_video.c
+@@ -145,6 +145,9 @@ static VideoBootStrap *bootstrap[] = {
+ #ifdef SDL_VIDEO_DRIVER_OFFSCREEN
+     &OFFSCREEN_bootstrap,
+ #endif
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    &PYXIS_bootstrap,
++#endif
+ #ifdef SDL_VIDEO_DRIVER_DUMMY
+     &DUMMY_bootstrap,
+ #ifdef SDL_INPUT_LINUXEV
