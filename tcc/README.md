@@ -94,8 +94,8 @@ existing directory grants. `-c` still writes ELF relocatable objects; `-g` can
 retain their debug information, but executables carry no debug sections.
 
 Output uses create/truncate streams and checks writes and close. An I/O failure
-may leave a partial file; no filesystem replacement/removal facility is invented
-for this port.
+may leave a partial file: the port does not yet write through a staged file and
+rename, although Pyxis now has replacement and removal operations.
 
 ## Guest SDK and use
 
@@ -167,7 +167,8 @@ directory with lookup/create rights and writable files. Relative paths require
 the inherited directory chain; rooted paths use the named startup grants. The
 existing shell supplies these. TCC needs no launcher or process-management grant.
 
-The process stack stays 64 KiB. GCC stack-usage output reports a largest fixed
+The compiler runs on the ordinary 1 MiB process stack with a guard page below it.
+GCC stack-usage output reports a largest fixed
 compiler frame of 2,720 bytes for this build, and Clang 23 2,824 bytes; recursive parsing is not bounded
 by that single-frame figure. Existing cat, shell preprocessing and Mandelbrot
 work in the guest. Compiling the existing line editor demonstrates an ordinary
@@ -181,8 +182,8 @@ which closes nested includes during normal completion and compile-error
 unwinding. Memory inputs have no stream; stdin is borrowed. Reads distinguish
 errors from EOF, binary seeks check their offsets, and object/archive read
 failures release temporary data. Output uses create/truncate streams and checks
-writes and close; a failed output can remain partial because Pyxis has no
-replacement/removal operation yet. Shared objects and linker scripts are
+writes and close; a failed output can remain partial because the port does not
+yet stage output and rename it into place. Shared objects and linker scripts are
 rejected by the Pyxis target.
 
 When the compiler itself is built for Pyxis:
