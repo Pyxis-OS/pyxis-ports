@@ -1,6 +1,7 @@
 return {
   ["ca-certificates"] = "ca-certificates",
   busybox = "busybox",
+  devilutionx = "devilutionx",
   doom = "doom",
   fastfetch = "fastfetch",
   fmt = "fmt",

@@ -1,0 +1,28 @@
+DevilutionX 1.5.5 is released under the Sustainable Use License 1.0, retained
+in LICENSE.md: it may be used and modified only for non-commercial or personal
+purposes, and distributed only free of charge for non-commercial purposes. Its
+bundled assets are part of that release. The exact commit, patches and
+dependency pins are recorded in share/devilutionx/source.txt.
+
+The executable also contains, with their licenses staged beside this notice:
+
+- libmpq, under the GNU GPL version 2 or later (libmpq-COPYING);
+- libsmackerdec, under the GNU LGPL version 2.1 (libsmackerdec-COPYING);
+- bzip2 (bzip2-LICENSE), SimpleIni under MIT (simpleini-LICENCE.txt) and
+  SDL_image 2.0.5's PNG loader under zlib (SDL_image-COPYING.txt);
+- SDL 2.32.10 with the Pyxis backend (SDL2-LICENSE.txt, SDL2-PORT-NOTICE) and
+  fmt under MIT (fmt-LICENSE); zlib and libpng are staged by their own ports;
+- from DevilutionX's own tree: Bjoern Hoehrmann's UTF-8 decoder (the BSD
+  notice in hoehrmann_utf8.h), tl::expected and tl::function_ref under CC0,
+  and Ladislav Zezula's PKWare implode/explode code, which carries no separate
+  license text there.
+
+The GPL's terms for libmpq and the Sustainable Use License's non-commercial
+terms cannot both be met by someone who distributes the combined executable.
+An image containing this program is therefore for the person who built it and
+must not be shared, for example as a published PXE or installation image.
+Pyxis builds it only on request, with local game data; CI and ordinary images
+never contain it.
+
+The four patches modify DevilutionX and remain under its license. The recipe
+files are original Pyxis material under MPL-2.0. No game data is included.

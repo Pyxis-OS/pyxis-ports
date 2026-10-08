@@ -1,0 +1,55 @@
+diff --git a/Source/platform/locale.cpp b/Source/platform/locale.cpp
+index c72fa4d..370234e 100644
+--- a/Source/platform/locale.cpp
++++ b/Source/platform/locale.cpp
+@@ -1,6 +1,7 @@
+ #include "locale.hpp"
+ 
+ #include <cstdint>
++#include <cstdlib>
+ 
+ #ifdef __ANDROID__
+ #include "SDL.h"
+diff --git a/Source/qol/xpbar.cpp b/Source/qol/xpbar.cpp
+index 6638098..0ac6d48 100644
+--- a/Source/qol/xpbar.cpp
++++ b/Source/qol/xpbar.cpp
+@@ -8,7 +8,7 @@
+ #include <array>
+ #include <cstdint>
+ 
+-#include <fmt/core.h>
++#include <fmt/format.h>
+ 
+ #include "control.h"
+ #include "engine/clx_sprite.hpp"
+diff --git a/Source/storm/storm_net.cpp b/Source/storm/storm_net.cpp
+index fff17eb..2863442 100644
+--- a/Source/storm/storm_net.cpp
++++ b/Source/storm/storm_net.cpp
+@@ -23,7 +23,12 @@ namespace devilution {
+ namespace {
+ std::unique_ptr<net::abstract_net> dvlnet_inst;
+ bool GameIsPublic = {};
+-thread_local uint32_t dwLastError = 0;
++#ifdef __pyxis__
++// Pyxis has no thread-local storage; single player runs on one thread.
++uint32_t dwLastError = 0;
++#else
++thread_local uint32_t dwLastError = 0;
++#endif
+ 
+ #ifndef NONET
+ SdlMutex storm_net_mutex;
+diff --git a/Source/utils/static_vector.hpp b/Source/utils/static_vector.hpp
+index 4e5a4cc..8a281b1 100644
+--- a/Source/utils/static_vector.hpp
++++ b/Source/utils/static_vector.hpp
+@@ -3,6 +3,7 @@
+ #include <cstddef>
+ #include <initializer_list>
+ #include <memory>
++#include <new>
+ #include <utility>
+ 
+ #include "appfat.h"

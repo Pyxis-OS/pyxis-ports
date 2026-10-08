@@ -1,0 +1,60 @@
+diff --git a/CMake/Platforms.cmake b/CMake/Platforms.cmake
+index ea02624..b960948 100644
+--- a/CMake/Platforms.cmake
++++ b/CMake/Platforms.cmake
+@@ -1,6 +1,10 @@
+ if(HAIKU)
+   include(platforms/haiku)
+ endif()
++
++if(CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
++  include(platforms/pyxis)
++endif()
+ 
+ if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD|OpenBSD|DragonFly|NetBSD")
+   if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+diff --git a/CMake/functions/devilutionx_library.cmake b/CMake/functions/devilutionx_library.cmake
+index 0ba57e2..d65d89a 100644
+--- a/CMake/functions/devilutionx_library.cmake
++++ b/CMake/functions/devilutionx_library.cmake
+@@ -45,7 +45,9 @@ function(add_devilutionx_library NAME)
+     target_compile_options(${NAME} PUBLIC -Wall -Wextra -Wno-unused-parameter)
+   endif()
+ 
+-  if(NOT WIN32 AND NOT APPLE AND NOT ${CMAKE_SYSTEM_NAME} STREQUAL FreeBSD)
++  # Pyxis libc is not POSIX; file_util.cpp has its own branches there.
++  if(NOT WIN32 AND NOT APPLE AND NOT ${CMAKE_SYSTEM_NAME} STREQUAL FreeBSD
++     AND NOT CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
+     # Enable POSIX extensions such as `readlink` and `ftruncate`.
+     add_definitions(-D_POSIX_C_SOURCE=200809L)
+   endif()
+diff --git a/CMake/platforms/pyxis.cmake b/CMake/platforms/pyxis.cmake
+new file mode 100644
+index 0000000..7ea8a71
+--- /dev/null
++++ b/CMake/platforms/pyxis.cmake
+@@ -0,0 +1,24 @@
++# Pyxis: single player without sound. The SDK's libc++ has no threads or
++# <filesystem>, and executables are P1F files the linker writes directly.
++set(ASAN OFF)
++set(UBSAN OFF)
++set(BUILD_TESTING OFF)
++set(NONET ON)
++set(NOSOUND ON)
++
++# The game data is loose assets; there is no smpq host tool to pack them.
++set(BUILD_ASSETS_MPQ OFF)
++
++# The Pyxis driver links libc++ statically; it has no -static-libstdc++.
++set(DEVILUTIONX_STATIC_CXX_STDLIB OFF)
++# llvm-strip cannot read P1F executables.
++set(DEVILUTIONX_DISABLE_STRIP ON)
++# Keep link-time optimization out of the first port.
++set(DISABLE_LTO ON)
++
++# There is no system threads library. Single player starts no threads, and
++# SDL reports thread creation as unsupported.
++list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/threads-stub")
++
++# file_util.cpp falls back to stdio and stat without <filesystem>.
++list(APPEND DEVILUTIONX_PLATFORM_COMPILE_DEFINITIONS DVL_NO_FILESYSTEM)

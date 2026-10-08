@@ -1,0 +1,71 @@
+diff --git a/Source/options.cpp b/Source/options.cpp
+index 8995874..dfc6cb8 100644
+--- a/Source/options.cpp
++++ b/Source/options.cpp
+@@ -340,7 +340,8 @@ Options sgOptions;
+ #if SDL_VERSION_ATLEAST(2, 0, 0)
+ bool HardwareCursorSupported()
+ {
+-#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1)
++// Pyxis has no system cursor yet, so the game draws its own.
++#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1) || defined(__pyxis__)
+ 	return false;
+ #else
+ 	SDL_version v;
+@@ -982,7 +983,8 @@ GraphicsOptions::GraphicsOptions()
+           ,
+           N_("Frame Rate Control"),
+           N_("Manages frame rate to balance performance, reduce tearing, or save power."),
+-#if defined(NXDK) || defined(USE_SDL1)
++// Pyxis presents without vertical sync, so limit the frame rate instead.
++#if defined(NXDK) || defined(USE_SDL1) || defined(__pyxis__)
+           FrameRateControl::CPUSleep
+ #else
+           FrameRateControl::VerticalSync
+diff --git a/Source/utils/paths.cpp b/Source/utils/paths.cpp
+index 6253e87..857677e 100644
+--- a/Source/utils/paths.cpp
++++ b/Source/utils/paths.cpp
+@@ -71,7 +71,12 @@ const std::string &NxdkGetPrefPath()
+ const std::string &BasePath()
+ {
+ 	if (!basePath) {
+-		basePath = FromSDL(SDL_GetBasePath());
++#ifdef __pyxis__
++		// Pyxis has no executable path; the shareware data is in the boot archive.
++		basePath = std::string("boot://share/diablo/");
++#else
++		basePath = FromSDL(SDL_GetBasePath());
++#endif
+ 	}
+ 	return *basePath;
+ }
+@@ -85,7 +90,8 @@ const std::string &PrefPath()
+ 		prefPath = NxdkGetPrefPath();
+ #else
+ 		prefPath = FromSDL(SDL_GetPrefPath("diasurgical", "devilution"));
+-#if !defined(__amigaos__)
++// On Pyxis, preferences always live in home://devilution/.
++#if !defined(__amigaos__) && !defined(__pyxis__)
+ 		if (FileExistsAndIsWriteable("diablo.ini")) {
+ 			prefPath = std::string("." DIRECTORY_SEPARATOR_STR);
+ 		}
+@@ -104,7 +110,8 @@ const std::string &ConfigPath()
+ 		configPath = NxdkGetPrefPath();
+ #else
+ 		configPath = FromSDL(SDL_GetPrefPath("diasurgical", "devilution"));
+-#if !defined(__amigaos__)
++// On Pyxis, preferences always live in home://devilution/.
++#if !defined(__amigaos__) && !defined(__pyxis__)
+ 		if (FileExistsAndIsWriteable("diablo.ini")) {
+ 			configPath = std::string("." DIRECTORY_SEPARATOR_STR);
+ 		}
+@@ -123,6 +130,8 @@ const std::string &AssetsPath()
+ 		assetsPath.emplace("D:\\assets\\");
+ #elif defined(__3DS__) || defined(__SWITCH__)
+ 		assetsPath.emplace("romfs:/");
++#elif defined(__pyxis__)
++		assetsPath.emplace("boot://share/devilutionx/assets/");
+ #elif defined(__APPLE__) && defined(USE_SDL1)
+ 		// In `Info.plist` we have
+ 		//
