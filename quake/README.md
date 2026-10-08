@@ -9,7 +9,7 @@ shareware pak or a locally supplied `QUAKE_DATA` directory.
 The adapter replaces upstream's `sys_null.c` and `quakegeneric.c`:
 
 - `quake_pyxis.c` (C23, Pyxis headers) owns the display, keyboard, optional
-  pointer and clock sessions, input translation, focus time and the 320x240
+  pointer and clock sessions, input translation, elapsed time and the 320x240
   frame blit at the largest integer scale, with palette conversion to the
   display's channel shifts.
 - `sys_pyxis.c` (gnu99, because Quake's headers define their own false/true
@@ -17,10 +17,14 @@ The adapter replaces upstream's `sys_null.c` and `quakegeneric.c`:
   through libc streams; `Sys_mkdir` uses libc `mkdir`; `Sys_Quit` runs
   `Host_Shutdown` so `config.cfg` is written. The heap is 32 MiB.
 
-The loop measures focused time, so time in another space is excluded, and sleeps
-to Quake's 72 Hz cap except during `timedemo`. Focus changes and input resets
-release every key and mouse button Quake holds. `+mlook` is queued at every start,
-and a first run without `config.cfg` binds the middle button to `impulse 10`.
+The loop measures elapsed monotonic time and sleeps to Quake's 72 Hz cap except
+during `timedemo`. It starts and keeps running without input focus, including
+while its graphics layer is hidden or another space is selected. Explicit game
+pause remains available. Focus changes and input resets release every key and
+mouse button Quake holds and discard pending motion; fresh presses are required.
+Keyboard and pointer notifications control only their own input eligibility.
+`+mlook` is queued at every start, and a first run without `config.cfg` binds
+the middle button to `impulse 10`.
 Defaults are `-basedir boot://share/quake` and `-writedir home://quake`, inserted
 before the caller's arguments so trailing `+commands` stay intact.
 

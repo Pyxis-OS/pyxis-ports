@@ -91,7 +91,7 @@ static bool display_owned, keyboard_owned, focused;
 static bool held[KEY_COUNT];
 static bool game_down[256];
 static bool releasing_keys;
-static uint64_t started_at, paused_at, paused_ns;
+static uint64_t started_at;
 static unsigned scale, left, top;
 static uint64_t observed_generation;
 
@@ -226,14 +226,7 @@ void DG_Init(void)
     fputs("doom: display is smaller than the game frame\n", stderr);
     exit(EXIT_FAILURE);
   }
-  /* Doom asks for time before its first input poll. Consume initial focus
-   * here so an inactive start cannot leave its tic loop waiting on time zero. */
-  while (!focused) {
-    struct keyboard_event event;
-    require_ok(keyboard_read(keyboard, 0, &event), "initial keyboard focus");
-    focused = (event.flags & KEYBOARD_EVENT_FOCUSED) != 0;
-  }
-  started_at = paused_at = now_ns();
+  started_at = now_ns();
   require_ok(display_present(display), "display presentation");
 }
 
@@ -265,8 +258,7 @@ void DG_SleepMs(uint32_t milliseconds)
 
 uint32_t DG_GetTicksMs(void)
 {
-  uint64_t now = focused ? now_ns() : paused_at;
-  return (uint32_t)((now - started_at - paused_ns) / 1000000);
+  return (uint32_t)((now_ns() - started_at) / 1000000);
 }
 
 int DG_GetKey(int *pressed, unsigned char *key)
@@ -287,8 +279,7 @@ int DG_GetKey(int *pressed, unsigned char *key)
     }
 
     struct keyboard_event event;
-    enum call_status status = keyboard_read(keyboard,
-        focused ? KEYBOARD_READ_POLL : 0, &event);
+    enum call_status status = keyboard_read(keyboard, KEYBOARD_READ_POLL, &event);
     if (status == CALL_TIMED_OUT) {
       return 0;
     }
@@ -296,19 +287,12 @@ int DG_GetKey(int *pressed, unsigned char *key)
 
     if (event.action == KEY_FOCUS_GAINED || event.action == KEY_FOCUS_LOST ||
         event.action == KEY_STATE_RESET) {
-      uint64_t now = now_ns();
-      bool next_focus = (event.flags & KEYBOARD_EVENT_FOCUSED) != 0;
-      if (focused && !next_focus) {
-        paused_at = now;
-      } else if (!focused && next_focus) {
-        paused_ns += now - paused_at;
-      }
-      focused = next_focus;
+      focused = (event.flags & KEYBOARD_EVENT_FOCUSED) != 0;
       memset(held, 0, sizeof(held));
       releasing_keys = true;
       continue;
     }
-    if (event.key >= KEY_COUNT || !keymap[event.key] ||
+    if (!focused || event.key >= KEY_COUNT || !keymap[event.key] ||
         (event.action != KEY_PRESS && event.action != KEY_RELEASE)) {
       continue;
     }

@@ -28,8 +28,8 @@ static bool display_owned, keyboard_owned, pointer_owned;
 static unsigned scale, left, top;
 static uint32_t palette_pixels[256];
 
-static bool focused;
-static uint64_t started_at, paused_at, paused_ns;
+static bool keyboard_focused, pointer_focused;
+static uint64_t started_at;
 
 static bool held[KEY_COUNT];
 static bool quake_down[QUAKE_KEY_COUNT];
@@ -119,20 +119,9 @@ static uint64_t now_ns(void)
   return now;
 }
 
-static void set_focus(bool next)
-{
-  if (focused && !next) {
-    paused_at = now_ns();
-  } else if (!focused && next) {
-    paused_ns += now_ns() - paused_at;
-  }
-  focused = next;
-}
-
 /* Focus changes and resets end every held input, in our state and Quake's. */
-static void reset_input(bool next_focus)
+static void reset_input(void)
 {
-  set_focus(next_focus);
   memset(held, 0, sizeof(held));
   pointer_buttons = 0;
   motion_x = motion_y = 0;
@@ -154,10 +143,11 @@ static void handle_key_event(const struct keyboard_event *event)
 {
   if (event->action == KEY_FOCUS_GAINED || event->action == KEY_FOCUS_LOST ||
       event->action == KEY_STATE_RESET) {
-    reset_input((event->flags & KEYBOARD_EVENT_FOCUSED) != 0);
+    keyboard_focused = (event->flags & KEYBOARD_EVENT_FOCUSED) != 0;
+    reset_input();
     return;
   }
-  if (event->key >= KEY_COUNT || !keymap[event->key]) {
+  if (!keyboard_focused || event->key >= KEY_COUNT || !keymap[event->key]) {
     return;
   }
   unsigned char key = keymap[event->key];
@@ -183,7 +173,11 @@ static void handle_key_event(const struct keyboard_event *event)
 static void handle_pointer_event(const struct pointer_event *event)
 {
   if (event->type != POINTER_INPUT) {
-    reset_input((event->flags & POINTER_EVENT_FOCUSED) != 0);
+    pointer_focused = (event->flags & POINTER_EVENT_FOCUSED) != 0;
+    reset_input();
+    return;
+  }
+  if (!pointer_focused) {
     return;
   }
   motion_x += event->dx;
@@ -275,30 +269,13 @@ void pyxis_quake_start(void)
   left = (buffer.width - QUAKEGENERIC_RES_X * scale) / 2;
   top = (buffer.height - QUAKEGENERIC_RES_Y * scale) / 2;
 
-  /* Acquisition queues the initial focus state; an inactive start waits here
-   * so game time begins when the space is first shown. */
-  while (!focused) {
-    struct keyboard_event event;
-    require_ok(keyboard_read(keyboard, 0, &event), "initial keyboard focus");
-    focused = (event.flags & KEYBOARD_EVENT_FOCUSED) != 0;
-  }
-  started_at = paused_at = now_ns();
+  started_at = now_ns();
   require_ok(display_present(display), "display presentation");
 }
 
 double pyxis_quake_time(void)
 {
-  uint64_t now = focused ? now_ns() : paused_at;
-  return (double)(now - started_at - paused_ns) / NANOSECONDS_PER_SECOND;
-}
-
-void pyxis_quake_wait_focus(void)
-{
-  while (!focused) {
-    struct keyboard_event event;
-    require_ok(keyboard_read(keyboard, 0, &event), "keyboard read");
-    handle_key_event(&event);
-  }
+  return (double)(now_ns() - started_at) / NANOSECONDS_PER_SECOND;
 }
 
 void pyxis_quake_sleep_until(double seconds)
@@ -306,7 +283,7 @@ void pyxis_quake_sleep_until(double seconds)
   if (seconds <= 0) {
     return;
   }
-  uint64_t deadline = started_at + paused_ns + (uint64_t)(seconds * NANOSECONDS_PER_SECOND);
+  uint64_t deadline = started_at + (uint64_t)(seconds * NANOSECONDS_PER_SECOND);
   require_ok(clock_sleep_until(clock, deadline), "sleep");
 }
 
@@ -368,7 +345,7 @@ int QG_GetKey(int *down, int *key)
       *key = next.key;
       return 1;
     }
-    if (!focused || (!read_keyboard() && !read_pointer())) {
+    if (!read_keyboard() && !read_pointer()) {
       return 0;
     }
   }
