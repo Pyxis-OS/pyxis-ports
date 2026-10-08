@@ -51,6 +51,25 @@ commit requirement; standalone file recipes do not apply patches. They list
 curl and sha256sum as host dependencies and retain upstream provenance beside
 the recipe.
 
+A recipe that builds bundled dependencies may list them in `source.extra`:
+
+```lua
+extra = {
+  { name = "bzip2", url = "https://...", mirror = "https://git.internal/mirrors/...",
+    commit = "..." },
+  { name = "sdl_image", url = "https://...",
+    archive = { url = "https://...", mirror = "https://repo.internal/...", sha256 = "..." } },
+}
+```
+
+Each entry is pinned and verified like the main source: either an exact commit
+from a Git mirror or an archive with its SHA-256. The runner places it in
+`extra/NAME` in the work directory and gives the recipe its path as
+`ctx.extra.NAME`. Patches apply only to the main source; a recipe that would
+need to change a dependency packages it as a port of its own instead. The
+recipe must keep the build offline, for example with CMake's
+`FETCHCONTENT_FULLY_DISCONNECTED`, and record each dependency's pin and license.
+
 Boot-archive inclusion is handled by Pyxis; this repository only stages files.
 
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's

@@ -55,6 +55,50 @@ local function make_path(path)
   return path
 end
 
+local function check_commit(commit, what)
+  assert(type(commit) == "string" and #commit == 40 and commit:match("^[0-9a-f]+$"),
+    what .. " needs an exact Git commit")
+end
+
+local function check_mirror(mirror, what)
+  assert(type(mirror) == "string" and mirror:match("^https://"),
+    what .. " needs an HTTPS mirror URL")
+end
+
+local function check_download(download, what)
+  assert(type(download.url) == "string" and download.url:match("^https://"),
+    what .. " download needs an HTTPS upstream URL")
+  assert(type(download.mirror) == "string" and download.mirror:match("^https://"),
+    what .. " download needs an HTTPS mirror URL")
+  assert(type(download.sha256) == "string" and #download.sha256 == 64 and
+    download.sha256:match("^[0-9a-f]+$"), what .. " download needs a SHA-256 pin")
+end
+
+-- Download a mirror copy to file and verify its pinned checksum.
+local function download_file(download, file)
+  run({ "curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https",
+    "--output", file, "--", download.mirror })
+  assert(capture({ "sha256sum", "--", file }):match("^([0-9a-f]+)") == download.sha256,
+    "source download checksum mismatch: " .. download.mirror)
+end
+
+-- Extract a release archive without its single top-level directory.
+local function extract_archive(file, directory)
+  run({ "tar", "--extract", "--file", file, "--directory", directory,
+    "--strip-components=1", "--no-same-owner" })
+  -- git apply resolves paths from the enclosing repository, which may be
+  -- the checkout holding the work directory; give the source its own.
+  run({ "git", "init", "--quiet", directory })
+end
+
+local function fetch_commit(mirror, commit, directory)
+  run({ "git", "init", "--quiet", directory })
+  run({ "git", "-C", directory, "fetch", "--depth=1", "--", mirror, commit })
+  run({ "git", "-C", directory, "checkout", "--quiet", "--detach", "FETCH_HEAD" })
+  assert(capture({ "git", "-C", directory, "rev-parse", "HEAD" }) == commit,
+    "source pin mismatch: " .. mirror)
+end
+
 local function main()
   if arg[1] == "--help" or not arg[1] then
     print("Usage: lua build.lua PORT --sdk PATH [--work PATH] [--cross-prefix PREFIX]")
@@ -87,10 +131,12 @@ local function main()
   if not source_file then
     -- A release archive is pinned by its checksum; a Git commit is optional
     -- for projects that publish no Git history.
-    assert((archive and revision == nil) or (type(revision) == "string" and
-      #revision == 40 and revision:match("^[0-9a-f]+$")), "source needs an exact Git commit")
-    assert(archive or (type(metadata.source.mirror) == "string" and
-      metadata.source.mirror:match("^https://")), "Git source needs an HTTPS mirror URL")
+    if revision ~= nil or not archive then
+      check_commit(revision, "source")
+    end
+    if not archive then
+      check_mirror(metadata.source.mirror, "Git source")
+    end
   else
     assert(not revision, "standalone files use a checksum instead of a Git commit")
     assert(type(source_file.name) == "string" and
@@ -100,12 +146,26 @@ local function main()
   -- Sources come only from the internal mirrors; url stays upstream provenance.
   local download = archive or source_file
   if download then
-    assert(type(download.url) == "string" and download.url:match("^https://"),
-      "source download needs an HTTPS upstream URL")
-    assert(type(download.mirror) == "string" and download.mirror:match("^https://"),
-      "source download needs an HTTPS mirror URL")
-    assert(type(download.sha256) == "string" and #download.sha256 == 64 and
-      download.sha256:match("^[0-9a-f]+$"), "source download needs a SHA-256 pin")
+    check_download(download, "source")
+  end
+  -- Extra sources are pinned like the main one and left unpatched; the recipe
+  -- finds each at ctx.extra[name].
+  local extra = metadata.source.extra or {}
+  local extra_names = {}
+  for _, entry in ipairs(extra) do
+    assert(type(entry.name) == "string" and entry.name:match("^[a-z0-9][a-z0-9_-]*$") and
+      not extra_names[entry.name], "extra sources need distinct plain names")
+    extra_names[entry.name] = true
+    assert(type(entry.url) == "string" and entry.url:match("^https://"),
+      "extra source " .. entry.name .. " needs an HTTPS upstream URL")
+    if entry.commit ~= nil or not entry.archive then
+      check_commit(entry.commit, "extra source " .. entry.name)
+    end
+    if entry.archive then
+      check_download(entry.archive, "extra source " .. entry.name)
+    else
+      check_mirror(entry.mirror, "extra source " .. entry.name)
+    end
   end
   assert(metadata.license and metadata.outputs.license, "record and stage the upstream license")
 
@@ -147,22 +207,28 @@ local function main()
   run({ "mkdir", "--", source, build, stage })
   if download then
     local downloaded = source_file and source .. "/" .. source_file.name or work .. "/source.tar"
-    run({ "curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https",
-      "--output", downloaded, "--", download.mirror })
-    assert(capture({ "sha256sum", "--", downloaded }):match("^([0-9a-f]+)") == download.sha256,
-      "source download checksum mismatch")
+    download_file(download, downloaded)
     if archive then
-      run({ "tar", "--extract", "--file", downloaded, "--directory", source,
-        "--strip-components=1", "--no-same-owner" })
-      -- git apply resolves paths from the enclosing repository, which may be
-      -- the checkout holding the work directory; give the source its own.
-      run({ "git", "init", "--quiet", source })
+      extract_archive(downloaded, source)
     end
   else
-    run({ "git", "init", "--quiet", source })
-    run({ "git", "-C", source, "fetch", "--depth=1", "--", metadata.source.mirror, revision })
-    run({ "git", "-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD" })
-    assert(capture({ "git", "-C", source, "rev-parse", "HEAD" }) == revision, "source pin mismatch")
+    fetch_commit(metadata.source.mirror, revision, source)
+  end
+  local extra_sources = {}
+  if #extra > 0 then
+    run({ "mkdir", "--", work .. "/extra" })
+  end
+  for _, entry in ipairs(extra) do
+    local directory = work .. "/extra/" .. entry.name
+    run({ "mkdir", "--", directory })
+    if entry.archive then
+      local downloaded = work .. "/extra/" .. entry.name .. ".tar"
+      download_file(entry.archive, downloaded)
+      extract_archive(downloaded, directory)
+    else
+      fetch_commit(entry.mirror, entry.commit, directory)
+    end
+    extra_sources[entry.name] = directory
   end
   for _, patch in ipairs(metadata.patches) do
     run({ "git", "-C", source, "apply", "--whitespace=error-all", "--", recipe .. "/" .. relative(patch) })
@@ -171,7 +237,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib })
+    metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))
   end
