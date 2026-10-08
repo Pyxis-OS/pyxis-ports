@@ -3,6 +3,7 @@ return {
   busybox = "busybox",
   doom = "doom",
   fastfetch = "fastfetch",
+  fmt = "fmt",
   kilo = "kilo",
   links = "links",
   libpng = "libpng",
