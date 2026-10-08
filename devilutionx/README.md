@@ -56,7 +56,9 @@ The build uses CMake's FetchContent with downloads turned off
    one thread.
 4. `0004-pyxis-paths-and-defaults` sets Pyxis paths and defaults:
    - **Paths:** data in `boot://share/diablo/` unless `--data-dir` says
-     otherwise, and assets in `boot://share/devilutionx/assets/`.
+     otherwise. Assets come from `boot://share/devilutionx/assets/`, or, when
+     the boot archive has none, from `assets/` inside the data directory, for
+     a standalone bundle.
    - **Preferences:** saves and `diablo.ini` always go to SDL's preference path,
      `home://devilution/`. A writable `diablo.ini` in the working directory no
      longer redirects them.
