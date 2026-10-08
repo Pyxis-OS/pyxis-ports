@@ -25,6 +25,8 @@ SDK's Make path restrictions. The SDK is consumed without modification.
 dependencies, ordered patches and staged outputs in `metadata.lua`.
 Its `build.lua` receives the SDK, sysroot, compiler prefix, recipe, source,
 build and stage paths, metadata and an argument-array command runner.
+Recipes for CMake projects configure them with the SDK's toolchain file,
+`share/pyxis.cmake`, and pass the compile flags from `share/pyxis.mk`.
 Recipes are trusted Lua code; dependencies are prerequisites, not a package
 resolver. See each recipe's README for adaptation notes and limitations.
 

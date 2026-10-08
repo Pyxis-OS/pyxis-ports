@@ -6,11 +6,9 @@ CMAKE_PYXIS_CFLAGS := $(filter-out -MMD -MP,$(PYXIS_CFLAGS))
 .PHONY: all
 all:
 	cmake -S $(SOURCE) -B $(BUILD) -G "Unix Makefiles" \
-	  -DCMAKE_TOOLCHAIN_FILE=$(RECIPE)/toolchain.cmake \
-	  -DCMAKE_C_COMPILER=$(shell command -v $(CC)) \
-	  -DCMAKE_AR=$(shell command -v $(AR)) \
-	  -DCMAKE_SYSROOT=$(PYXIS_SYSROOT) \
-	  -DCMAKE_C_FLAGS="$(PYXIS_CPPFLAGS) $(CMAKE_PYXIS_CFLAGS)" \
+	  -DCMAKE_TOOLCHAIN_FILE=$(PYXIS_SDK)/share/pyxis.cmake \
+	  -DPYXIS_CROSS_COMPILE=$(CROSS_COMPILE) \
+	  -DCMAKE_C_FLAGS="$(CMAKE_PYXIS_CFLAGS)" \
 	  -DMBEDTLS_USER_CONFIG_FILE=$(RECIPE)/pyxis_tls_config.h \
 	  -DTF_PSA_CRYPTO_USER_CONFIG_FILE=$(RECIPE)/pyxis_crypto_config.h \
 	  -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF -DGEN_FILES=OFF \
