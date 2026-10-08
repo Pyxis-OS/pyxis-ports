@@ -248,7 +248,7 @@ static void handle_pointer(const struct pointer_event *event)
   }
   /* Pyxis counts toward the user as positive; SDL counts away from the user. */
   if (event->wheel) {
-    SDL_SendMouseWheel(pyxis_video.window, 0, 0.0f, (float)-event->wheel,
+    SDL_SendMouseWheel(pyxis_video.window, 0, 0.0f, -(float)event->wheel,
         SDL_MOUSEWHEEL_NORMAL);
   }
 }
