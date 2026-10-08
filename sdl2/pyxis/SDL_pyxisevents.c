@@ -20,6 +20,7 @@
 
 static bool keyboard_focused;
 static bool pointer_focused;
+static bool pointer_inside;
 static uint32_t held_buttons; /* Pyxis POINTER_BUTTON_* bits SDL has pressed. */
 
 static const SDL_Scancode scancodes[KEY_COUNT] = {
@@ -78,29 +79,6 @@ static const struct {
   {POINTER_BUTTON_MIDDLE, SDL_BUTTON_MIDDLE},
 };
 
-/* The only place pointer movement becomes an SDL position. Pyxis reports
- * relative counts, so SDL keeps the position, clamped to the window. When the
- * system pointer reports positions, this becomes an absolute update. */
-static void send_pointer_motion(int32_t dx, int32_t dy)
-{
-  if (dx || dy) {
-    SDL_SendMouseMotion(pyxis_video.window, 0, SDL_TRUE, dx, dy);
-  }
-}
-
-/* SDL owns the position, so warping only moves SDL's copy of it. */
-static void PYXIS_WarpMouse(SDL_Window *window, int x, int y)
-{
-  SDL_SendMouseMotion(window, 0, SDL_FALSE, x, y);
-}
-
-/* Every pointer event is already relative; SDL derives both modes from it. */
-static int PYXIS_SetRelativeMouseMode(SDL_bool enabled)
-{
-  (void)enabled;
-  return 0;
-}
-
 static void release_buttons(void)
 {
   for (size_t i = 0; i < SDL_arraysize(buttons); ++i) {
@@ -117,13 +95,19 @@ void PYXIS_ResetInput(void)
   release_buttons();
   keyboard_focused = false;
   pointer_focused = false;
+  pointer_inside = false;
+  SDL_Mouse *mouse = SDL_GetMouse();
+  mouse->relative_mode = SDL_FALSE;
+  mouse->relative_mode_warp = SDL_FALSE;
+  mouse->xdelta = mouse->ydelta = 0;
+  mouse->scale_accum_x = mouse->scale_accum_y = 0.0f;
+  mouse->has_position = SDL_FALSE;
+  SDL_FlushEvent(SDL_MOUSEMOTION);
 }
 
 void PYXIS_InitInput(void)
 {
-  SDL_Mouse *mouse = SDL_GetMouse();
-  mouse->WarpMouse = PYXIS_WarpMouse;
-  mouse->SetRelativeMouseMode = PYXIS_SetRelativeMouseMode;
+  PYXIS_InitMouse();
 }
 
 static void send_text(const struct keyboard_event *event)
@@ -158,18 +142,68 @@ static void handle_key(const struct keyboard_event *event)
   }
 }
 
+static void update_pointer_state(uint64_t flags, bool reset)
+{
+  SDL_Mouse *mouse = SDL_GetMouse();
+  bool locked = (flags & POINTER_EVENT_LOCKED) != 0;
+  if (reset || (!locked && mouse->relative_mode)) {
+    release_buttons();
+    mouse->xdelta = mouse->ydelta = 0;
+    mouse->scale_accum_x = mouse->scale_accum_y = 0.0f;
+    mouse->has_position = SDL_FALSE;
+    SDL_FlushEvent(SDL_MOUSEMOTION);
+    SDL_FlushEvent(SDL_MOUSEWHEEL);
+  }
+  if (!locked && mouse->relative_mode) {
+    /* The kernel already revoked it. SDL's setter would warp on exit. */
+    mouse->relative_mode = SDL_FALSE;
+    mouse->relative_mode_warp = SDL_FALSE;
+    SDL_UpdateWindowGrab(pyxis_video.window);
+    SDL_SetCursor(NULL);
+  }
+  pointer_focused = (flags & POINTER_EVENT_FOCUSED) != 0;
+  SDL_SetMouseFocus(pointer_focused && (pointer_inside || locked) ? pyxis_video.window : NULL);
+}
+
 static void handle_pointer(const struct pointer_event *event)
 {
+  bool locked = (event->flags & POINTER_EVENT_LOCKED) != 0;
+  if (event->type == POINTER_ENTER || event->type == POINTER_INPUT ||
+      event->type == POINTER_ACTIVATED) {
+    pointer_inside = true;
+  } else if (event->type == POINTER_LEAVE || event->type == POINTER_FOCUS_LOST) {
+    pointer_inside = false;
+  }
   if (event->type != POINTER_INPUT) {
-    release_buttons();
-    pointer_focused = (event->flags & POINTER_EVENT_FOCUSED) != 0;
-    SDL_SetMouseFocus(pointer_focused ? pyxis_video.window : NULL);
+    bool keep_buttons = locked && event->type == POINTER_GEOMETRY_CHANGED;
+    update_pointer_state(event->flags, !keep_buttons);
     return;
   }
+  update_pointer_state(event->flags, false);
   if (!pointer_focused) {
     return;
   }
-  send_pointer_motion(event->dx, event->dy);
+  if (locked) {
+    if (!SDL_GetRelativeMouseMode()) {
+      return;
+    }
+    if (event->dx || event->dy) {
+      SDL_SendMouseMotion(pyxis_video.window, 0, SDL_TRUE, event->dx, event->dy);
+    }
+  } else {
+    struct pointer_geometry geometry;
+    if (pointer_geometry(pyxis_video.pointer, &geometry) != CALL_OK ||
+        event->generation != geometry.generation ||
+        event->mapping_identity != geometry.mapping_identity ||
+        geometry.generation != pyxis_video.generation ||
+        geometry.mapping_width != pyxis_video.buffer.width ||
+        geometry.mapping_height != pyxis_video.buffer.height ||
+        event->x < SDL_MIN_SINT32 || event->x > SDL_MAX_SINT32 ||
+        event->y < SDL_MIN_SINT32 || event->y > SDL_MAX_SINT32) {
+      return;
+    }
+    SDL_SendMouseMotion(pyxis_video.window, 0, SDL_FALSE, (int)event->x, (int)event->y);
+  }
   for (size_t i = 0; i < SDL_arraysize(buttons); ++i) {
     uint32_t button = buttons[i].pyxis;
     if ((event->buttons ^ held_buttons) & button) {
@@ -223,6 +257,10 @@ void PYXIS_PumpEvents(SDL_VideoDevice *device)
   while (pyxis_video.pointer_owned &&
          pointer_read(pyxis_video.pointer, POINTER_READ_POLL, &motion) == CALL_OK) {
     handle_pointer(&motion);
+  }
+  uint64_t flags;
+  if (pyxis_video.pointer_owned && pointer_state(pyxis_video.pointer, &flags) == CALL_OK) {
+    update_pointer_state(flags, false);
   }
 }
 

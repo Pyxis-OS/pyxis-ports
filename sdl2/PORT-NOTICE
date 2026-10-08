@@ -2,9 +2,10 @@ SDL 2.32.10 is copyright Sam Lantinga and its contributors, under the zlib
 license retained in LICENSE.txt. The exact commit and patches are recorded in
 share/sdl2/source.txt.
 
-Pyxis builds upstream sources as a static library with three patches:
+Pyxis builds upstream sources as a static library with four patches:
 the dynamic API is off, the Pyxis video driver is registered, and the Steam
-virtual gamepad file is not read because Pyxis stat has no modification time.
+virtual gamepad file is not read because Pyxis stat has no modification time,
+and Pyxis pointer positions, warp and lock are authoritative in SDL mouse core.
 The patches retain SDL's zlib license.
 
 The Pyxis backend in pyxis/ (video, input, timer and paths) and SDL_config.h

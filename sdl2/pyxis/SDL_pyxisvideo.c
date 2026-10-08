@@ -171,17 +171,6 @@ static int PYXIS_CreateWindow(SDL_VideoDevice *device, SDL_Window *window)
     return SDL_SetError("Pyxis keyboard acquisition failed (status %u)", (unsigned)status);
   }
   pyxis_video.keyboard_owned = true;
-  /* Without a pointer grant or a mouse, the program runs from the keyboard. */
-  if (pyxis_video.pointer != HANDLE_INVALID) {
-    status = pointer_acquire(pyxis_video.pointer);
-    if (status == CALL_OK) {
-      pyxis_video.pointer_owned = true;
-    } else if (status != CALL_UNAVAILABLE) {
-      release_input();
-      return SDL_SetError("Pyxis pointer acquisition failed (status %u)", (unsigned)status);
-    }
-  }
-
   /* The window always covers the display; focus arrives as input events. */
   const SDL_DisplayMode *mode = &device->displays[0].desktop_mode;
   window->flags |= SDL_WINDOW_FULLSCREEN;
@@ -223,6 +212,10 @@ static int PYXIS_CreateWindowFramebuffer(SDL_VideoDevice *device, SDL_Window *wi
     }
     pyxis_video.display_owned = true;
     /* A change since VideoInit is followed on the next event pump. */
+  }
+
+  if (PYXIS_AcquirePointer() < 0) {
+    return -1;
   }
 
   int width, height;

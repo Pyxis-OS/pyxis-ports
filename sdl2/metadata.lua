@@ -14,6 +14,7 @@ return {
     "patches/0001-disable-the-dynamic-api-on-pyxis.patch",
     "patches/0002-register-the-pyxis-video-driver.patch",
     "patches/0003-steam-gamepad-info-without-modification-time.patch",
+    "patches/0004-native-pyxis-pointer-authority.patch",
   },
   outputs = {
     library = "dev/lib/libSDL2.a",

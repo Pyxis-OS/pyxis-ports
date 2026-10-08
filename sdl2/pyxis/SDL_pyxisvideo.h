@@ -14,8 +14,8 @@ struct pyxis_video {
   handle_t keyboard;
   handle_t pointer; /* HANDLE_INVALID without a pointer grant. */
   SDL_Window *window; /* The only window, or NULL. */
-  /* The sessions belong to the window: acquired when it is created and
-   * released when it is destroyed. */
+  /* Input sessions belong to the window. Keyboard starts at window creation;
+   * pointer starts after graphics acquisition. Destruction releases both. */
   bool keyboard_owned;
   bool pointer_owned;
   /* The display session starts with the first window framebuffer. */
@@ -33,6 +33,8 @@ extern struct pyxis_video pyxis_video;
 void PYXIS_FollowDisplaySize(SDL_VideoDevice *device);
 
 void PYXIS_InitInput(void);
+void PYXIS_InitMouse(void);
+int PYXIS_AcquirePointer(void);
 void PYXIS_PumpEvents(SDL_VideoDevice *device);
 /* Release held keys and buttons in SDL; the sessions are released separately. */
 void PYXIS_ResetInput(void);
