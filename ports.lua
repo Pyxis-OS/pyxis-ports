@@ -13,6 +13,7 @@ return {
   picohttpparser = "picohttpparser",
   quake = "quake",
   sbase = "sbase",
+  sdl2 = "sdl2",
   tcc = "tcc",
   tzdata = "tzdata",
   usbids = "usbids",

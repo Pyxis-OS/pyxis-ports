@@ -1,0 +1,14 @@
+diff --git a/src/joystick/SDL_steam_virtual_gamepad.c b/src/joystick/SDL_steam_virtual_gamepad.c
+index 403f7e7..8a39858 100644
+--- a/src/joystick/SDL_steam_virtual_gamepad.c
++++ b/src/joystick/SDL_steam_virtual_gamepad.c
+@@ -60,6 +60,9 @@ static Uint64 GetFileModificationTime(const char *file)
+         }
+         SDL_free(wFile);
+     }
++#elif defined(__pyxis__)
++    /* Pyxis stat records no modification time, so the file never loads. */
++    (void)file;
+ #else
+     struct stat sb;
+ 
