@@ -23,7 +23,7 @@ index 8995874..dfc6cb8 100644
  #else
            FrameRateControl::VerticalSync
 diff --git a/Source/utils/paths.cpp b/Source/utils/paths.cpp
-index 6253e87..857677e 100644
+index 6253e87..cb0472a 100644
 --- a/Source/utils/paths.cpp
 +++ b/Source/utils/paths.cpp
 @@ -71,7 +71,12 @@ const std::string &NxdkGetPrefPath()
@@ -60,12 +60,17 @@ index 6253e87..857677e 100644
  		if (FileExistsAndIsWriteable("diablo.ini")) {
  			configPath = std::string("." DIRECTORY_SEPARATOR_STR);
  		}
-@@ -123,6 +130,8 @@ const std::string &AssetsPath()
+@@ -123,6 +130,13 @@ const std::string &AssetsPath()
  		assetsPath.emplace("D:\\assets\\");
  #elif defined(__3DS__) || defined(__SWITCH__)
  		assetsPath.emplace("romfs:/");
 +#elif defined(__pyxis__)
-+		assetsPath.emplace("boot://share/devilutionx/assets/");
++		// The boot archive's assets come first. A standalone bundle keeps them in
++		// assets/ inside its data directory, because Pyxis has no executable path.
++		if (DirectoryExists("boot://share/devilutionx/assets/"))
++			assetsPath.emplace("boot://share/devilutionx/assets/");
++		else
++			assetsPath.emplace(BasePath() + "assets/");
  #elif defined(__APPLE__) && defined(USE_SDL1)
  		// In `Info.plist` we have
  		//
