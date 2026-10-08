@@ -5,6 +5,7 @@ return {
   fastfetch = "fastfetch",
   kilo = "kilo",
   links = "links",
+  libpng = "libpng",
   lua = "lua",
   mbedtls = "mbedtls",
   pciids = "pciids",

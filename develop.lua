@@ -5,5 +5,6 @@ return function(inputs)
     { tree = inputs.ports .. "/picohttpparser/stage/dev", at = "picohttpparser" },
     { tree = inputs.ports .. "/mbedtls/stage/dev", at = "mbedtls" },
     { tree = inputs.ports .. "/zlib/stage/dev", at = "zlib" },
+    { tree = inputs.ports .. "/libpng/stage/dev", at = "libpng" },
   }
 end
