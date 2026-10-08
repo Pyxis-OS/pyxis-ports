@@ -1,0 +1,18 @@
+diff --git a/include/fmt/base.h b/include/fmt/base.h
+index 5d0241c..e8f5c2f 100644
+--- a/include/fmt/base.h
++++ b/include/fmt/base.h
+@@ -888,7 +888,12 @@ template <typename Char = char> class parse_context {
+ };
+ 
+ #ifndef FMT_USE_LOCALE
+-#  define FMT_USE_LOCALE (FMT_OPTIMIZE_SIZE <= 1)
++// libc++ built without localization provides no std::locale.
++#  if defined(_LIBCPP_HAS_LOCALIZATION) && !_LIBCPP_HAS_LOCALIZATION
++#    define FMT_USE_LOCALE 0
++#  else
++#    define FMT_USE_LOCALE (FMT_OPTIMIZE_SIZE <= 1)
++#  endif
+ #endif
+ 
+ // A type-erased reference to std::locale to avoid the heavy <locale> include.
