@@ -36,7 +36,10 @@ The Pyxis console shows the 16 standard colors and reverse video only. Use
 and RGB colors produce 24-bit escape sequences that the console ignores, and it
 ignores emphasis such as bold.
 
-Development outputs are `stage/dev/lib/libfmt.a` and `stage/dev/include/fmt`.
+Development outputs are `stage/dev/lib/libfmt.a` and `stage/dev/include/fmt`,
+installed by fmt's own CMake install. It also writes `lib/cmake/fmt`, so CMake
+projects using the SDK's `share/pyxis.cmake` find `fmt::fmt` with
+`find_package(fmt)`, and `lib/pkgconfig/fmt.pc`.
 Pyxis exports them at `build/ports-dev/fmt`, outside the base and guest SDK.
 Consumers compile with that prefix's `include` path and the SDK's C++ settings,
 and link `libfmt.a` before the SDK runtime libraries. No program in the boot

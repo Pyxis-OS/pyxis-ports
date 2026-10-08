@@ -17,6 +17,7 @@ return {
   outputs = {
     library = "dev/lib/libfmt.a",
     header = "dev/include/fmt/format.h",
+    package = "dev/lib/cmake/fmt/fmt-config.cmake",
     license = "dev/share/licenses/fmt/LICENSE",
     provenance = "dev/share/fmt/source.txt",
   },
