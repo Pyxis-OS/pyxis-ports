@@ -13,8 +13,14 @@ lua build.lua sdl2 --sdk /path/to/pyxis/build/sdk
 ## Using it
 
 Compile with `-Ipath/to/sdl2/include/SDL2` and link `lib/libSDL2.a` before the
-SDK libraries. The installed `SDL_config.h` replaces upstream's platform
-dispatcher, so programs see the same configuration the library was built with.
+SDK libraries. CMake projects using the SDK's `share/pyxis.cmake` can add the
+prefix to `CMAKE_FIND_ROOT_PATH` and call `find_package(SDL2)`: the package
+provides upstream's static target `SDL2::SDL2-static` and the usual
+`SDL2_INCLUDE_DIRS` and `SDL2_LIBRARIES` variables. There is no shared
+`SDL2::SDL2` or `SDL2::SDL2main`.
+
+The installed `SDL_config.h` replaces upstream's platform dispatcher, so
+programs see the same configuration the library was built with.
 A program needs the `display`, `keyboard` and `clock` grants; `pointer` is
 optional, and without it or a mouse the program runs from the keyboard.
 

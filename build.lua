@@ -55,18 +55,65 @@ local function make_path(path)
   return path
 end
 
+local function check_commit(commit, what)
+  assert(type(commit) == "string" and #commit == 40 and commit:match("^[0-9a-f]+$"),
+    what .. " needs an exact Git commit")
+end
+
+local function check_mirror(mirror, what)
+  assert(type(mirror) == "string" and mirror:match("^https://"),
+    what .. " needs an HTTPS mirror URL")
+end
+
+local function check_download(download, what)
+  assert(type(download.url) == "string" and download.url:match("^https://"),
+    what .. " download needs an HTTPS upstream URL")
+  assert(type(download.mirror) == "string" and download.mirror:match("^https://"),
+    what .. " download needs an HTTPS mirror URL")
+  assert(type(download.sha256) == "string" and #download.sha256 == 64 and
+    download.sha256:match("^[0-9a-f]+$"), what .. " download needs a SHA-256 pin")
+end
+
+-- Download a mirror copy to file and verify its pinned checksum.
+local function download_file(download, file)
+  run({ "curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https",
+    "--output", file, "--", download.mirror })
+  assert(capture({ "sha256sum", "--", file }):match("^([0-9a-f]+)") == download.sha256,
+    "source download checksum mismatch: " .. download.mirror)
+end
+
+-- Extract a release archive without its single top-level directory.
+local function extract_archive(file, directory)
+  run({ "tar", "--extract", "--file", file, "--directory", directory,
+    "--strip-components=1", "--no-same-owner" })
+  -- git apply resolves paths from the enclosing repository, which may be
+  -- the checkout holding the work directory; give the source its own.
+  run({ "git", "init", "--quiet", directory })
+end
+
+local function fetch_commit(mirror, commit, directory)
+  run({ "git", "init", "--quiet", directory })
+  run({ "git", "-C", directory, "fetch", "--depth=1", "--", mirror, commit })
+  run({ "git", "-C", directory, "checkout", "--quiet", "--detach", "FETCH_HEAD" })
+  assert(capture({ "git", "-C", directory, "rev-parse", "HEAD" }) == commit,
+    "source pin mismatch: " .. mirror)
+end
+
 local function main()
   if arg[1] == "--help" or not arg[1] then
     print("Usage: lua build.lua PORT --sdk PATH [--work PATH] [--cross-prefix PREFIX]")
     print("The work directory must not exist; default: build/PORT.")
     print("Lua also requires --mbedtls PATH to its configured development prefix.")
     print("Libpng also requires --zlib PATH to its development prefix.")
+    print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
     return
   end
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
-    ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" }
+    ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
+    ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
+    ["--sdl2"] = name == "devilutionx" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -87,10 +134,12 @@ local function main()
   if not source_file then
     -- A release archive is pinned by its checksum; a Git commit is optional
     -- for projects that publish no Git history.
-    assert((archive and revision == nil) or (type(revision) == "string" and
-      #revision == 40 and revision:match("^[0-9a-f]+$")), "source needs an exact Git commit")
-    assert(archive or (type(metadata.source.mirror) == "string" and
-      metadata.source.mirror:match("^https://")), "Git source needs an HTTPS mirror URL")
+    if revision ~= nil or not archive then
+      check_commit(revision, "source")
+    end
+    if not archive then
+      check_mirror(metadata.source.mirror, "Git source")
+    end
   else
     assert(not revision, "standalone files use a checksum instead of a Git commit")
     assert(type(source_file.name) == "string" and
@@ -100,12 +149,26 @@ local function main()
   -- Sources come only from the internal mirrors; url stays upstream provenance.
   local download = archive or source_file
   if download then
-    assert(type(download.url) == "string" and download.url:match("^https://"),
-      "source download needs an HTTPS upstream URL")
-    assert(type(download.mirror) == "string" and download.mirror:match("^https://"),
-      "source download needs an HTTPS mirror URL")
-    assert(type(download.sha256) == "string" and #download.sha256 == 64 and
-      download.sha256:match("^[0-9a-f]+$"), "source download needs a SHA-256 pin")
+    check_download(download, "source")
+  end
+  -- Extra sources are pinned like the main one and left unpatched; the recipe
+  -- finds each at ctx.extra[name].
+  local extra = metadata.source.extra or {}
+  local extra_names = {}
+  for _, entry in ipairs(extra) do
+    assert(type(entry.name) == "string" and entry.name:match("^[a-z0-9][a-z0-9_-]*$") and
+      not extra_names[entry.name], "extra sources need distinct plain names")
+    extra_names[entry.name] = true
+    assert(type(entry.url) == "string" and entry.url:match("^https://"),
+      "extra source " .. entry.name .. " needs an HTTPS upstream URL")
+    if entry.commit ~= nil or not entry.archive then
+      check_commit(entry.commit, "extra source " .. entry.name)
+    end
+    if entry.archive then
+      check_download(entry.archive, "extra source " .. entry.name)
+    else
+      check_mirror(entry.mirror, "extra source " .. entry.name)
+    end
   end
   assert(metadata.license and metadata.outputs.license, "record and stage the upstream license")
 
@@ -122,12 +185,26 @@ local function main()
     require_file(mbedtls .. "/share/mbedtls.mk")
   end
   local zlib
-  if name == "libpng" then
-    assert(options["--zlib"], "Libpng needs --zlib PATH to its development prefix")
+  if name == "libpng" or name == "devilutionx" then
+    assert(options["--zlib"], name .. " needs --zlib PATH to its development prefix")
     zlib = make_path(capture({ "realpath", "-e", "--", options["--zlib"] }))
     require_file(zlib .. "/include/zlib.h")
     require_file(zlib .. "/include/zconf.h")
     require_file(zlib .. "/lib/libz.a")
+  end
+  -- DevilutionX finds these through CMake; check the files it will look for.
+  local libpng, fmt, sdl2
+  if name == "devilutionx" then
+    for _, option in ipairs({ "--libpng", "--fmt", "--sdl2" }) do
+      assert(options[option], "DevilutionX needs " .. option .. " PATH to its development prefix")
+    end
+    libpng = make_path(capture({ "realpath", "-e", "--", options["--libpng"] }))
+    require_file(libpng .. "/include/png.h")
+    require_file(libpng .. "/lib/libpng.a")
+    fmt = make_path(capture({ "realpath", "-e", "--", options["--fmt"] }))
+    require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
+    sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
+    require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
   end
   for _, library in ipairs(metadata.dependencies.pyxis) do
     require_file(sdk .. "/sysroot/usr/lib/" .. library .. ".a")
@@ -147,22 +224,28 @@ local function main()
   run({ "mkdir", "--", source, build, stage })
   if download then
     local downloaded = source_file and source .. "/" .. source_file.name or work .. "/source.tar"
-    run({ "curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https",
-      "--output", downloaded, "--", download.mirror })
-    assert(capture({ "sha256sum", "--", downloaded }):match("^([0-9a-f]+)") == download.sha256,
-      "source download checksum mismatch")
+    download_file(download, downloaded)
     if archive then
-      run({ "tar", "--extract", "--file", downloaded, "--directory", source,
-        "--strip-components=1", "--no-same-owner" })
-      -- git apply resolves paths from the enclosing repository, which may be
-      -- the checkout holding the work directory; give the source its own.
-      run({ "git", "init", "--quiet", source })
+      extract_archive(downloaded, source)
     end
   else
-    run({ "git", "init", "--quiet", source })
-    run({ "git", "-C", source, "fetch", "--depth=1", "--", metadata.source.mirror, revision })
-    run({ "git", "-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD" })
-    assert(capture({ "git", "-C", source, "rev-parse", "HEAD" }) == revision, "source pin mismatch")
+    fetch_commit(metadata.source.mirror, revision, source)
+  end
+  local extra_sources = {}
+  if #extra > 0 then
+    run({ "mkdir", "--", work .. "/extra" })
+  end
+  for _, entry in ipairs(extra) do
+    local directory = work .. "/extra/" .. entry.name
+    run({ "mkdir", "--", directory })
+    if entry.archive then
+      local downloaded = work .. "/extra/" .. entry.name .. ".tar"
+      download_file(entry.archive, downloaded)
+      extract_archive(downloaded, directory)
+    else
+      fetch_commit(entry.mirror, entry.commit, directory)
+    end
+    extra_sources[entry.name] = directory
   end
   for _, patch in ipairs(metadata.patches) do
     run({ "git", "-C", source, "apply", "--whitespace=error-all", "--", recipe .. "/" .. relative(patch) })
@@ -171,7 +254,8 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib })
+    metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib,
+    libpng = libpng, fmt = fmt, sdl2 = sdl2, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))
   end

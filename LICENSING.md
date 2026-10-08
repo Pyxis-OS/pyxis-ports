@@ -53,6 +53,10 @@ those recipes fetch, adapt or package.
 - The SDL2 backend in `sdl2/pyxis/` and `sdl2/SDL_config.h` are original
   Pyxis material under MPL-2.0, as recorded in `sdl2/PORT-NOTICE`. SDL itself
   and the `sdl2/patches/` that modify it remain under SDL's zlib license.
+- `devilutionx/patches/` modify DevilutionX and remain under its Sustainable
+  Use License. The program it builds also links GPL and LGPL libraries, so
+  an image containing it is for the person who built it and must not be
+  shared; see `devilutionx/PORT-NOTICE`. Pyxis builds it only on request.
 - Fastfetch's new native adapter/build files and project ASCII logo are original
   Pyxis material under MPL-2.0, as marked in the patch and `fastfetch/PORT-NOTICE`.
   Bundled yyjson remains MIT; its staged header preserves its notice.

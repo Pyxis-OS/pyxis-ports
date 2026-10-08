@@ -2,10 +2,8 @@ return function(ctx)
   ctx.run({ "make", "-f", ctx.recipe .. "/Makefile",
     "SDK=" .. ctx.sdk, "SOURCE=" .. ctx.source, "BUILD=" .. ctx.build,
     "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile })
-  ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/libfmt.a",
-    ctx.stage .. "/" .. ctx.metadata.outputs.library })
-  ctx.run({ "mkdir", "-p", "--", ctx.stage .. "/dev/include" })
-  ctx.run({ "cp", "-R", "--", ctx.source .. "/include/fmt", ctx.stage .. "/dev/include/" })
+  -- fmt's own install also writes its CMake package and pkg-config files.
+  ctx.run({ "cmake", "--install", ctx.build, "--prefix", ctx.stage .. "/dev" })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
 
