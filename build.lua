@@ -105,12 +105,15 @@ local function main()
     print("The work directory must not exist; default: build/PORT.")
     print("Lua also requires --mbedtls PATH to its configured development prefix.")
     print("Libpng also requires --zlib PATH to its development prefix.")
+    print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
     return
   end
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
-    ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" }
+    ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
+    ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
+    ["--sdl2"] = name == "devilutionx" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -182,12 +185,26 @@ local function main()
     require_file(mbedtls .. "/share/mbedtls.mk")
   end
   local zlib
-  if name == "libpng" then
-    assert(options["--zlib"], "Libpng needs --zlib PATH to its development prefix")
+  if name == "libpng" or name == "devilutionx" then
+    assert(options["--zlib"], name .. " needs --zlib PATH to its development prefix")
     zlib = make_path(capture({ "realpath", "-e", "--", options["--zlib"] }))
     require_file(zlib .. "/include/zlib.h")
     require_file(zlib .. "/include/zconf.h")
     require_file(zlib .. "/lib/libz.a")
+  end
+  -- DevilutionX finds these through CMake; check the files it will look for.
+  local libpng, fmt, sdl2
+  if name == "devilutionx" then
+    for _, option in ipairs({ "--libpng", "--fmt", "--sdl2" }) do
+      assert(options[option], "DevilutionX needs " .. option .. " PATH to its development prefix")
+    end
+    libpng = make_path(capture({ "realpath", "-e", "--", options["--libpng"] }))
+    require_file(libpng .. "/include/png.h")
+    require_file(libpng .. "/lib/libpng.a")
+    fmt = make_path(capture({ "realpath", "-e", "--", options["--fmt"] }))
+    require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
+    sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
+    require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
   end
   for _, library in ipairs(metadata.dependencies.pyxis) do
     require_file(sdk .. "/sysroot/usr/lib/" .. library .. ".a")
@@ -237,7 +254,8 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib, extra = extra_sources })
+    metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib,
+    libpng = libpng, fmt = fmt, sdl2 = sdl2, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))
   end
