@@ -30,6 +30,9 @@ motion, buttons and wheel only while locked. A refused or revoked lock leaves
 keyboard play and rendering available. Super+Esc unlocks without opening the
 game menu; a fresh left click on the game surface is consumed by the kernel and
 allows Quake to request lock again. Focus gain alone never requests lock.
+If the initial request was refused while the space was inactive, a fresh ordinary
+left-button press also requests lock and is not applied as a shot. A held button
+or motion cannot repeat that request.
 `+mlook` is queued at every start, and a first run without `config.cfg` binds
 the middle button to `impulse 10`.
 Defaults are `-basedir boot://share/quake` and `-writedir home://quake`, inserted

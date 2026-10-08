@@ -36,7 +36,7 @@ static bool quake_down[QUAKE_KEY_COUNT];
 static bool releasing_keys, releasing_mouse;
 static struct pending_key pending[PENDING_CAPACITY];
 static size_t pending_head, pending_count;
-static uint32_t pointer_buttons;
+static uint32_t pointer_buttons, ordinary_buttons;
 static int64_t motion_x, motion_y;
 
 static const unsigned char keymap[KEY_COUNT] = {
@@ -124,6 +124,7 @@ static void reset_input(void)
 {
   memset(held, 0, sizeof(held));
   pointer_buttons = 0;
+  ordinary_buttons = 0;
   motion_x = motion_y = 0;
   pending_head = pending_count = 0;
   releasing_keys = true;
@@ -213,6 +214,7 @@ static void handle_pointer_event(const struct pointer_event *event)
 {
   bool locked = (event->flags & POINTER_EVENT_LOCKED) != 0;
   if (pointer_locked != locked) {
+    ordinary_buttons = 0;
     reset_pointer_input();
   }
   pointer_locked = locked;
@@ -221,6 +223,7 @@ static void handle_pointer_event(const struct pointer_event *event)
     if (event->type == POINTER_GEOMETRY_CHANGED && pointer_locked) {
       return;
     }
+    ordinary_buttons = 0;
     reset_pointer_input();
     if (event->type == POINTER_ACTIVATED) {
       request_pointer_lock();
@@ -228,8 +231,15 @@ static void handle_pointer_event(const struct pointer_event *event)
     return;
   }
   if (!pointer_locked) {
+    bool fresh_click = (event->buttons & POINTER_BUTTON_LEFT) != 0 &&
+        (ordinary_buttons & POINTER_BUTTON_LEFT) == 0;
+    ordinary_buttons = event->buttons;
+    if (fresh_click) {
+      request_pointer_lock();
+    }
     return;
   }
+  ordinary_buttons = 0;
   motion_x += event->dx;
   motion_y += event->dy;
   for (size_t i = 0; i < sizeof(button_keys) / sizeof(button_keys[0]); ++i) {
