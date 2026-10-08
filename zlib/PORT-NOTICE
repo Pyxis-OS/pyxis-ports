@@ -1,0 +1,12 @@
+zlib is copyright Jean-loup Gailly and Mark Adler, under the zlib license.
+The complete upstream notice is retained in LICENSE and the public zlib.h.
+The exact release archive and checksum are recorded in share/zlib/source.txt.
+
+Pyxis builds unmodified upstream sources as a static core library, including
+compression/decompression, checksums and compress/uncompress convenience APIs.
+The default allocators and shipped static tables are retained. The build omits
+gz file I/O, contrib, shared libraries and upstream programs/tests.
+
+The public zlib.h and zconf.h remain unmodified. They also declare gz file APIs
+that this profile does not provide; those APIs are unavailable at link time.
+No host libc, source patches or compatibility stubs are included.

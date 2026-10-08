@@ -14,4 +14,5 @@ return {
   tcc = "tcc",
   tzdata = "tzdata",
   usbids = "usbids",
+  zlib = "zlib",
 }
