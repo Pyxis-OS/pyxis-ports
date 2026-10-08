@@ -172,7 +172,7 @@ index 7ec4b63..4ef7f6f 100644
              }
 -            break;
 +            // Drain releases too: a focus reset can release several held keys
-+            // before the Pyxis adapter blocks waiting for focus to return.
++            // before the next frame updates the game's input state.
          }
      }
  

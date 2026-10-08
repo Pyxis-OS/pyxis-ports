@@ -20,9 +20,11 @@ resize. Starting Doom still requires a display large enough for scale one.
 
 Use arrows to move/turn, Ctrl to fire, Space to use, Shift to run, Alt to strafe,
 and comma/period to strafe left/right. Escape opens the menu; F10 then Y quits.
-Super+Left/Right switches spaces. An inactive session blocks on keyboard input
-and excludes the inactive interval from game time. Focus changes and input resets
-release all held Doom keys, including modifiers shared by left/right keys.
+Super+Left/Right switches spaces. Doom starts and keeps rendering and advancing
+game time without input focus, including while its graphics layer is hidden or
+another space is selected. Explicit game pause remains available. Input is polled
+continuously; focus changes and input resets release all held Doom keys, including
+modifiers shared by left/right keys. Returning to graphics requires fresh presses.
 
 The default IWAD path is `boot://share/doom/DOOM.WAD`; `-iwad` overrides it.
 `-playdemo path` plays a demo and returns to the shell when it finishes.

@@ -246,7 +246,6 @@ int main(int argc, char **argv)
 
   double previous = pyxis_quake_time();
   for (;;) {
-    pyxis_quake_wait_focus();
     double now = pyxis_quake_time();
     Host_Frame(now - previous);
     previous = now;
