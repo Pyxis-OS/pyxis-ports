@@ -165,18 +165,56 @@ static void update_pointer_state(uint64_t flags, bool reset)
   SDL_SetMouseFocus(pointer_focused && (pointer_inside || locked) ? pyxis_video.window : NULL);
 }
 
+static bool ordinary_geometry(const struct pointer_event *event,
+    struct pointer_geometry *geometry)
+{
+  return pointer_geometry(pyxis_video.pointer, geometry) == CALL_OK &&
+      event->generation == geometry->generation &&
+      event->mapping_identity == geometry->mapping_identity &&
+      geometry->generation == pyxis_video.generation &&
+      geometry->mapping_width == pyxis_video.buffer.width &&
+      geometry->mapping_height == pyxis_video.buffer.height &&
+      event->x >= SDL_MIN_SINT32 && event->x <= SDL_MAX_SINT32 &&
+      event->y >= SDL_MIN_SINT32 && event->y <= SDL_MAX_SINT32;
+}
+
+static void send_ordinary_position(const struct pointer_event *event)
+{
+  SDL_SendMouseMotion(pointer_inside ? pyxis_video.window : NULL, 0, SDL_FALSE,
+      (int)event->x, (int)event->y);
+}
+
+static void restore_ordinary_position(const struct pointer_event *event)
+{
+  struct pointer_geometry geometry;
+  if (!pointer_focused || !ordinary_geometry(event, &geometry) ||
+      event->x < 0 || event->y < 0 ||
+      (uint64_t)event->x >= SDL_min(geometry.width, geometry.mapping_width) ||
+      (uint64_t)event->y >= SDL_min(geometry.height, geometry.mapping_height)) {
+    return;
+  }
+  /* State events carry the native parked position. Restore it even when no
+   * device movement follows; ENTER separately establishes ordinary hover. */
+  send_ordinary_position(event);
+}
+
 static void handle_pointer(const struct pointer_event *event)
 {
   bool locked = (event->flags & POINTER_EVENT_LOCKED) != 0;
-  if (event->type == POINTER_ENTER || event->type == POINTER_INPUT ||
-      event->type == POINTER_ACTIVATED) {
+  if (!locked && (event->type == POINTER_ENTER || event->type == POINTER_ACTIVATED)) {
     pointer_inside = true;
-  } else if (event->type == POINTER_LEAVE || event->type == POINTER_FOCUS_LOST) {
+  } else if (event->type == POINTER_LEAVE || event->type == POINTER_FOCUS_LOST ||
+      (!locked && event->type == POINTER_LOCK_CHANGED)) {
     pointer_inside = false;
   }
   if (event->type != POINTER_INPUT) {
     bool keep_buttons = locked && event->type == POINTER_GEOMETRY_CHANGED;
     update_pointer_state(event->flags, !keep_buttons);
+    if (!locked && (event->type == POINTER_ENTER ||
+        event->type == POINTER_GEOMETRY_CHANGED || event->type == POINTER_LOCK_CHANGED ||
+        event->type == POINTER_STATE_RESET || event->type == POINTER_ACTIVATED)) {
+      restore_ordinary_position(event);
+    }
     return;
   }
   update_pointer_state(event->flags, false);
@@ -192,17 +230,12 @@ static void handle_pointer(const struct pointer_event *event)
     }
   } else {
     struct pointer_geometry geometry;
-    if (pointer_geometry(pyxis_video.pointer, &geometry) != CALL_OK ||
-        event->generation != geometry.generation ||
-        event->mapping_identity != geometry.mapping_identity ||
-        geometry.generation != pyxis_video.generation ||
-        geometry.mapping_width != pyxis_video.buffer.width ||
-        geometry.mapping_height != pyxis_video.buffer.height ||
-        event->x < SDL_MIN_SINT32 || event->x > SDL_MAX_SINT32 ||
-        event->y < SDL_MIN_SINT32 || event->y > SDL_MAX_SINT32) {
+    if (!ordinary_geometry(event, &geometry)) {
       return;
     }
-    SDL_SendMouseMotion(pyxis_video.window, 0, SDL_FALSE, (int)event->x, (int)event->y);
+    pointer_inside = true;
+    SDL_SetMouseFocus(pyxis_video.window);
+    send_ordinary_position(event);
   }
   for (size_t i = 0; i < SDL_arraysize(buttons); ++i) {
     uint32_t button = buttons[i].pyxis;

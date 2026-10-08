@@ -54,7 +54,9 @@ The files in `pyxis/` are the platform layer:
     Relative mode requests native lock and returns an error when refused,
     including before first presentation or while inactive. Super+Esc and
     focus/device loss revoke it; the event pump clears SDL relative mode,
-    pending motion and held buttons without warping. A fresh consumed surface
+    pending motion and held buttons without warping. Native ordinary state and
+    enter events restore the parked position without requiring device movement.
+    A fresh consumed surface
     click permits a new explicit relative-mode request; the adapter does not
     automatically relock. Locked resize keeps held buttons. The wheel follows
     SDL's sign: toward the user is negative.
