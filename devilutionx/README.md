@@ -62,12 +62,23 @@ The build uses CMake's FetchContent with downloads turned off
    - **Preferences:** saves and `diablo.ini` always go to SDL's preference path,
      `home://devilution/`. A writable `diablo.ini` in the working directory no
      longer redirects them.
-   - **Cursor:** the hardware cursor is reported unsupported, so the game draws
-     its own.
    - **Frame rate:** defaults to "Limit FPS", because Pyxis has no vertical sync.
 
 DevilutionX's files use CRLF line endings. The patches add lines with LF, so
 `git apply --whitespace=error-all` accepts them.
+
+## Cursor options
+
+The game's "Hardware Cursor" option uses its program-supplied SDL color cursor
+as the native Pyxis surface image. Pyxis currently composes that image in
+software; the VirtIO hardware cursor is a later pointer milestone task.
+Disabling the option keeps DevilutionX's own software cursor and hides the native
+cursor through SDL.
+
+The SDL backend accepts cursor images from 1 to 64 pixels on each axis, after
+DevilutionX's scaling. A larger image makes `SDL_CreateColorCursor` fail;
+upstream logs the refusal, disables that cursor and draws its software fallback.
+The game data and asset inputs stay unchanged.
 
 ## Staged files
 
