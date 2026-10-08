@@ -6,6 +6,10 @@ return function(ctx)
     ctx.stage .. "/" .. ctx.metadata.outputs.library })
   ctx.run({ "mkdir", "-p", "--", ctx.stage .. "/dev/include" })
   ctx.run({ "cp", "-R", "--", ctx.build .. "/include/SDL2", ctx.stage .. "/dev/include/" })
+  for _, name in ipairs({ "SDL2Config.cmake", "SDL2ConfigVersion.cmake" }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/cmake/" .. name,
+      ctx.stage .. "/dev/lib/cmake/SDL2/" .. name })
+  end
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE.txt",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/PORT-NOTICE",
