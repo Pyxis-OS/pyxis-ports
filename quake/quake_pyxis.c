@@ -28,12 +28,12 @@ static bool display_owned, keyboard_owned, pointer_owned;
 static unsigned scale, left, top;
 static uint32_t palette_pixels[256];
 
-static bool keyboard_focused, pointer_focused;
+static bool keyboard_focused, pointer_locked;
 static uint64_t started_at;
 
 static bool held[KEY_COUNT];
 static bool quake_down[QUAKE_KEY_COUNT];
-static bool releasing_keys;
+static bool releasing_keys, releasing_mouse;
 static struct pending_key pending[PENDING_CAPACITY];
 static size_t pending_head, pending_count;
 static uint32_t pointer_buttons;
@@ -119,7 +119,7 @@ static uint64_t now_ns(void)
   return now;
 }
 
-/* Focus changes and resets end every held input, in our state and Quake's. */
+/* Keyboard focus changes and resets end every held input. */
 static void reset_input(void)
 {
   memset(held, 0, sizeof(held));
@@ -127,6 +127,45 @@ static void reset_input(void)
   motion_x = motion_y = 0;
   pending_head = pending_count = 0;
   releasing_keys = true;
+}
+
+static bool mouse_key(int key)
+{
+  return key == K_MOUSE1 || key == K_MOUSE2 || key == K_MOUSE3 ||
+      key == K_MWHEELUP || key == K_MWHEELDOWN;
+}
+
+static void reset_pointer_input(void)
+{
+  pointer_buttons = 0;
+  motion_x = motion_y = 0;
+
+  size_t kept = 0;
+  for (size_t i = 0; i < pending_count; ++i) {
+    struct pending_key next = pending[(pending_head + i) % PENDING_CAPACITY];
+    if (!mouse_key(next.key)) {
+      pending[(pending_head + kept) % PENDING_CAPACITY] = next;
+      ++kept;
+    }
+  }
+  pending_count = kept;
+  releasing_mouse = true;
+}
+
+static void request_pointer_lock(void)
+{
+  reset_pointer_input();
+  pointer_locked = false;
+  enum call_status status = pointer_lock(pointer);
+  if (status != CALL_OK) {
+    fprintf(stderr, "quake: pointer lock refused (status %u); keyboard play remains available\n",
+        (unsigned)status);
+    return;
+  }
+
+  uint64_t flags;
+  require_ok(pointer_state(pointer, &flags), "pointer state");
+  pointer_locked = (flags & POINTER_EVENT_LOCKED) != 0;
 }
 
 static void push_key(int key, bool down)
@@ -172,12 +211,23 @@ static void handle_key_event(const struct keyboard_event *event)
 
 static void handle_pointer_event(const struct pointer_event *event)
 {
+  bool locked = (event->flags & POINTER_EVENT_LOCKED) != 0;
+  if (pointer_locked != locked) {
+    reset_pointer_input();
+  }
+  pointer_locked = locked;
   if (event->type != POINTER_INPUT) {
-    pointer_focused = (event->flags & POINTER_EVENT_FOCUSED) != 0;
-    reset_input();
+    /* Same-session resize keeps the lock and accepted device buttons. */
+    if (event->type == POINTER_GEOMETRY_CHANGED && pointer_locked) {
+      return;
+    }
+    reset_pointer_input();
+    if (event->type == POINTER_ACTIVATED) {
+      request_pointer_lock();
+    }
     return;
   }
-  if (!pointer_focused) {
+  if (!pointer_locked) {
     return;
   }
   motion_x += event->dx;
@@ -271,6 +321,9 @@ void pyxis_quake_start(void)
 
   started_at = now_ns();
   require_ok(display_present(display), "display presentation");
+  if (pointer_owned) {
+    request_pointer_lock();
+  }
 }
 
 double pyxis_quake_time(void)
@@ -325,9 +378,9 @@ void QG_DrawFrame(void *pixels)
 int QG_GetKey(int *down, int *key)
 {
   for (;;) {
-    if (releasing_keys) {
+    if (releasing_keys || releasing_mouse) {
       for (unsigned i = 0; i < QUAKE_KEY_COUNT; ++i) {
-        if (quake_down[i]) {
+        if (quake_down[i] && (releasing_keys || mouse_key((int)i))) {
           quake_down[i] = false;
           *down = 0;
           *key = (int)i;
@@ -335,6 +388,7 @@ int QG_GetKey(int *down, int *key)
         }
       }
       releasing_keys = false;
+      releasing_mouse = false;
     }
     if (pending_count) {
       struct pending_key next = pending[pending_head];

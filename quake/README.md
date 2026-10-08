@@ -20,9 +20,16 @@ The adapter replaces upstream's `sys_null.c` and `quakegeneric.c`:
 The loop measures elapsed monotonic time and sleeps to Quake's 72 Hz cap except
 during `timedemo`. It starts and keeps running without input focus, including
 while its graphics layer is hidden or another space is selected. Explicit game
-pause remains available. Focus changes and input resets release every key and
-mouse button Quake holds and discard pending motion; fresh presses are required.
-Keyboard and pointer notifications control only their own input eligibility.
+pause remains available. Keyboard focus changes and resets release every held
+input; pointer focus, reset and lock changes release held mouse buttons and
+discard pending mouse input while preserving keyboard play. Fresh presses are
+required. Geometry changes preserve locked mouse input.
+The optional pointer session is an ordinary surface subscription. Quake requests
+lock once after its first successful presentation and applies device-relative
+motion, buttons and wheel only while locked. A refused or revoked lock leaves
+keyboard play and rendering available. Super+Esc unlocks without opening the
+game menu; a fresh left click on the game surface is consumed by the kernel and
+allows Quake to request lock again. Focus gain alone never requests lock.
 `+mlook` is queued at every start, and a first run without `config.cfg` binds
 the middle button to `impulse 10`.
 Defaults are `-basedir boot://share/quake` and `-writedir home://quake`, inserted
