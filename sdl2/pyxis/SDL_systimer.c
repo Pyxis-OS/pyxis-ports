@@ -1,5 +1,5 @@
-/* SDL ticks and delays from the Pyxis monotonic clock. Sleeps end on the
- * kernel's preemption tick, so a delay can run up to 8.33 ms long. */
+/* SDL ticks and delays from the Pyxis monotonic clock. HPET deadline sleeps
+ * never finish early; interrupt delivery and scheduling can delay resumption. */
 
 #include "SDL_internal.h"
 

@@ -57,7 +57,9 @@ The files in `pyxis/` are the platform layer:
     one `wait_many` and polls the pointer.
 - **Timer** (`SDL_systimer.c`): ticks and the performance counter come from
   `clock_now` in nanoseconds, and `SDL_Delay` from `clock_sleep_for`. Sleeps
-  end on the kernel's 120 Hz preemption tick.
+  use HPET deadlines and never finish before the requested deadline. Interrupt
+  delivery and scheduling can delay resumption; nanosecond clock values do not
+  guarantee wakeup precision.
 - **Paths** (`SDL_sysfilesystem.c`):
   - `SDL_GetPrefPath(org, app)` creates and returns `home://APP/`; the
     organisation is not used.
