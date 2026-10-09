@@ -16,6 +16,7 @@ return {
     "patches/0003-steam-gamepad-info-without-modification-time.patch",
     "patches/0004-native-pyxis-pointer-authority.patch",
     "patches/0005-blocking-wait-without-thread-wakeup.patch",
+    "patches/0006-private-pyxis-clipboard-command-identity.patch",
   },
   outputs = {
     library = "dev/lib/libSDL2.a",

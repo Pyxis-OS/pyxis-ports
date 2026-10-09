@@ -90,6 +90,39 @@ The files in `pyxis/` are the platform layer:
   - `SDL_GetBasePath` is unsupported, because Pyxis has no reliable
     executable path.
 
+## Clipboard
+
+All three clipboard hooks use native explicitly delegated `clipboard_local`
+and `clipboard_shared` grants, including when either grant is absent. No SDL
+private cache reports a publication or supplies text. A fresh physical local
+Ctrl+C/V or Ctrl+Shift+C/V command supplies one operation-specific attempt;
+shared Super+Shift+C/V arrives as one Ctrl+C/V event with a private native
+identity and per-event Control snapshot. Global modifiers retain their real
+state. Held shared command repeats and releases remain consumed through their
+physical release, even after modifiers change.
+
+The private event queue node retains the native identity through single-event
+GET delivery; public SDL events, PEEK and synthetic pushes supply none. An
+unused delivered command is refused before the next real event delivery. Batch
+GET, overlapping commands, filtering, command discard, failed enqueue,
+focus/input reset, display geometry change and ownership release refuse the
+pending action. Native ownership, epoch, identity and five-second expiry checks
+remain authoritative. Applications must make clipboard calls while handling
+the original command; Has-then-Get is supported.
+
+Set accepts Unicode scalar UTF-8 through the first NUL, at most 64 KiB excluding
+the terminator, preserving bytes and line endings. Invalid or over-limit text
+consumes the attempt and preserves the store. Get returns an SDL-allocated
+NUL-terminated copy; refusal returns allocated empty text with an SDL error
+(NULL is possible on allocation failure). Has reveals only whether nonempty
+text currently exists with a live delivered Paste action; it does not consume
+or extend that action. No background/menu access, layer fallback, primary
+selection, FILE/rich formats or host clipboard bridge is provided.
+
+The [manual exercise](manual/README.md) is explicitly built and loaded by the
+operator; ordinary recipes and images do not include it. DevilutionX's text
+editor is the in-tree Set and Has-then-Get consumer.
+
 ## Patches
 
 1. `0001` turns off the dynamic API: Pyxis links statically and has no `dlopen`.
@@ -103,6 +136,12 @@ The files in `pyxis/` are the platform layer:
    There are no asynchronous SDL event producers in this configuration. A
    threaded port needs a real wakeup sender before using this path.
 
+6. `0006` retains the Pyxis native clipboard action identity on the original
+   private event queue node. Only original single-event removal delivers it;
+   mutation, filtering, discard and ambiguous batches cannot rearm it. The
+   Pyxis native keyboard helper translates a shared command's event modifiers
+   without modifying global keyboard state. Other drivers keep upstream behavior.
+
 ## Not built
 
 These facilities report themselves as unsupported, as upstream does:
@@ -115,5 +154,5 @@ These facilities report themselves as unsupported, as upstream does:
 - **Joysticks.** They use SDL's dummy driver: `SDL_INIT_JOYSTICK` succeeds
   with zero devices.
 
-Named SDL system-cursor shapes, message boxes and the clipboard are unsupported.
+Named SDL system-cursor shapes and message boxes are unsupported.
 `SDL_main` and `SDL_test` are not built.

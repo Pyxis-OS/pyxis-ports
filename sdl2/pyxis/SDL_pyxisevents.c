@@ -7,6 +7,7 @@
 #ifdef SDL_VIDEO_DRIVER_PYXIS
 
 #include <clock.h>
+#include <clipboard.h>
 #include <keyboard.h>
 #include <pointer.h>
 #include <pxe/key_layout.h>
@@ -22,6 +23,8 @@
 #define INPUT_WAIT_CAPACITY 3
 
 static bool keyboard_focused;
+static bool shared_c_held;
+static bool shared_v_held;
 static bool pointer_focused;
 static bool pointer_inside;
 static uint32_t held_buttons; /* Pyxis POINTER_BUTTON_* bits SDL has pressed. */
@@ -99,6 +102,8 @@ static void release_buttons(void)
 void PYXIS_ResetInput(void)
 {
   waited = false;
+  PYXIS_CancelClipboard();
+  shared_c_held = shared_v_held = false;
   SDL_ResetKeyboard();
   release_buttons();
   keyboard_focused = false;
@@ -135,6 +140,8 @@ static void handle_key(const struct keyboard_event *event)
 {
   if (event->action == KEY_FOCUS_GAINED || event->action == KEY_FOCUS_LOST ||
       event->action == KEY_STATE_RESET) {
+    PYXIS_CancelClipboard();
+    shared_c_held = shared_v_held = false;
     keyboard_focused = (event->flags & KEYBOARD_EVENT_FOCUSED) != 0;
     SDL_ResetKeyboard();
     SDL_SetKeyboardFocus(keyboard_focused ? pyxis_video.window : NULL);
@@ -143,8 +150,36 @@ static void handle_key(const struct keyboard_event *event)
   if (!keyboard_focused || event->key >= KEY_COUNT || !scancodes[event->key]) {
     return;
   }
+  bool *shared_held = event->key == KEY_C ? &shared_c_held :
+      event->key == KEY_V ? &shared_v_held : NULL;
+  if (shared_held && *shared_held) {
+    if (event->action == KEY_RELEASE) {
+      *shared_held = false;
+    }
+    return;
+  }
+  bool shared_command = (event->key == KEY_C || event->key == KEY_V) &&
+      (event->modifiers & (KEY_MOD_CONTROL | KEY_MOD_ALT | KEY_MOD_SUPER | KEY_MOD_SHIFT)) ==
+      (KEY_MOD_SUPER | KEY_MOD_SHIFT);
+  if (shared_command && event->action == KEY_PRESS) {
+    *shared_held = true;
+  }
+  if (shared_command && !event->clipboard_action_id) {
+    return;
+  }
   bool pressed = event->action != KEY_RELEASE;
-  SDL_SendKeyboardKey(pressed ? SDL_PRESSED : SDL_RELEASED, scancodes[event->key]);
+  if (event->clipboard_action_id && event->action == KEY_PRESS) {
+    bool armed = PYXIS_QueueClipboard(event->clipboard_action_id,
+        event->clipboard_operation, event->clipboard_layer);
+    int posted = SDL_SendKeyboardKeyWithClipboard(SDL_PRESSED, scancodes[event->key],
+        armed ? event->clipboard_action_id : 0,
+        event->clipboard_layer == CLIPBOARD_LAYER_SHARED);
+    if (!posted) {
+      PYXIS_CancelClipboard();
+    }
+  } else {
+    SDL_SendKeyboardKey(pressed ? SDL_PRESSED : SDL_RELEASED, scancodes[event->key]);
+  }
   if (pressed) {
     send_text(event);
   }

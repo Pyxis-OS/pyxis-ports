@@ -2,14 +2,16 @@ SDL 2.32.10 is copyright Sam Lantinga and its contributors, under the zlib
 license retained in LICENSE.txt. The exact commit and patches are recorded in
 share/sdl2/source.txt.
 
-Pyxis builds upstream sources as a static library with five patches:
+Pyxis builds upstream sources as a static library with six patches:
 the dynamic API is off, the Pyxis video driver is registered, and the Steam
 virtual gamepad file is not read because Pyxis stat has no modification time,
 and Pyxis pointer positions, warp and lock are authoritative in SDL mouse core.
 The threadless Pyxis driver can wait without a cross-thread wakeup sender.
+A private Pyxis event identity follows physical clipboard commands through
+the original queue node; shared commands change only their event modifiers.
 The patches retain SDL's zlib license.
 
-The Pyxis backend in pyxis/ (video, input, timer and paths) and SDL_config.h
+The Pyxis backend in pyxis/ (video, input, clipboard, timer and paths) and SDL_config.h
 are original Pyxis material under the Mozilla Public License, version 2.0;
 see the ports repository's LICENSE and LICENSING.md. The backend uses the
 shared US key layout exported by the Pyxis SDK.
@@ -17,3 +19,6 @@ shared US key layout exported by the Pyxis SDK.
 Threads, audio devices, haptics, sensors, HIDAPI, shared objects, OpenGL,
 Vulkan, SDL_main and SDL_test are not built. No host libc or compatibility
 stubs are included.
+
+The opt-in manual SDL clipboard exercise in manual/ is original Pyxis material
+under MPL-2.0. Its small bitmap glyph rows follow the native mousetest tool.

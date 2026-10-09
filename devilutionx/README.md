@@ -64,6 +64,13 @@ The build uses CMake's FetchContent with downloads turned off
      longer redirects them.
    - **Frame rate:** defaults to "Limit FPS", because Pyxis has no vertical sync.
 
+5. `0005-pyxis-command-modifier-snapshot` makes the text editor use the
+   delivered key command's modifiers on Pyxis. Shared Copy/Paste arrives as one
+   Ctrl+C/V event; the adapter leaves global Control state unchanged. The editor
+   retains upstream Set and Has-then-Get calls, including visible Set errors.
+   Ctrl+X has no native Copy activation and therefore cannot delete selected
+   text by claiming a successful clipboard publication.
+
 DevilutionX's files use CRLF line endings. The patches add lines with LF, so
 `git apply --whitespace=error-all` accepts them.
 

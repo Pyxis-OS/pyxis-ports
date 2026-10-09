@@ -1,0 +1,246 @@
+--- a/src/events/SDL_events.c
++++ b/src/events/SDL_events.c
+@@ -33,6 +33,9 @@
+ #endif
+ #include "../video/SDL_sysvideo.h"
+ #include "SDL_syswm.h"
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++#include "SDL_pyxisvideo.h"
++#endif
+ 
+ /* An arbitrary limit so we don't have unbounded growth */
+ #define SDL_MAX_QUEUED_EVENTS 65535
+@@ -71,6 +74,9 @@
+ {
+     SDL_Event event;
+     SDL_SysWMmsg msg;
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    Uint64 pyxis_clipboard_id;
++#endif
+     struct _SDL_EventEntry *prev;
+     struct _SDL_EventEntry *next;
+ } SDL_EventEntry;
+@@ -540,6 +546,9 @@
+ 
+ void SDL_StopEventLoop(void)
+ {
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    PYXIS_CancelClipboard();
++#endif
+     const char *report = SDL_GetHint("SDL_EVENT_QUEUE_STATISTICS");
+     int i;
+     SDL_EventEntry *entry;
+@@ -653,7 +662,7 @@
+ }
+ 
+ /* Add an event to the event queue -- called with the queue locked */
+-static int SDL_AddEvent(SDL_Event *event)
++static int SDL_AddEvent(SDL_Event *event, Uint64 pyxis_clipboard_id)
+ {
+     SDL_EventEntry *entry;
+     const int initial_count = SDL_AtomicGet(&SDL_EventQ.count);
+@@ -679,6 +688,11 @@
+     }
+ 
+     entry->event = *event;
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    entry->pyxis_clipboard_id = pyxis_clipboard_id;
++#else
++    (void)pyxis_clipboard_id;
++#endif
+     if (event->type == SDL_POLLSENTINEL) {
+         SDL_AtomicAdd(&SDL_sentinel_pending, 1);
+     } else if (event->type == SDL_SYSWMEVENT) {
+@@ -710,6 +724,10 @@
+ /* Remove an event from the queue -- called with the queue locked */
+ static void SDL_CutEvent(SDL_EventEntry *entry)
+ {
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    PYXIS_DiscardClipboard(entry->pyxis_clipboard_id);
++    entry->pyxis_clipboard_id = 0;
++#endif
+     if (entry->prev) {
+         entry->prev->next = entry->next;
+     }
+@@ -775,7 +793,7 @@
+         }
+         if (action == SDL_ADDEVENT) {
+             for (i = 0; i < numevents; ++i) {
+-                used += SDL_AddEvent(&events[i]);
++                used += SDL_AddEvent(&events[i], 0);
+             }
+         } else {
+             SDL_EventEntry *entry, *next;
+@@ -818,6 +836,12 @@
+                         }
+ 
+                         if (action == SDL_GETEVENT) {
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++                            if (type != SDL_POLLSENTINEL) {
++                                PYXIS_DeliverClipboard(entry->pyxis_clipboard_id, numevents != 1);
++                            }
++                            entry->pyxis_clipboard_id = 0;
++#endif
+                             SDL_CutEvent(entry);
+                         }
+                     }
+@@ -871,6 +895,11 @@
+ 
+ void SDL_FlushEvents(Uint32 minType, Uint32 maxType)
+ {
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    if (minType <= SDL_KEYDOWN && SDL_KEYDOWN <= maxType) {
++        PYXIS_CancelClipboard();
++    }
++#endif
+     SDL_EventEntry *entry, *next;
+     Uint32 type;
+     /* !!! FIXME: we need to manually SDL_free() the strings in TEXTINPUT and
+@@ -1159,8 +1188,14 @@
+     }
+ }
+ 
+-int SDL_PushEvent(SDL_Event *event)
+-{
++static int SDL_PushEventInternal(SDL_Event *event, Uint64 pyxis_clipboard_id)
++{
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    SDL_KeyboardEvent original;
++    if (pyxis_clipboard_id) {
++        original = event->key;
++    }
++#endif
+     event->common.timestamp = SDL_GetTicks();
+ 
+     if (SDL_EventOK.callback || SDL_event_watchers_count > 0) {
+@@ -1199,8 +1234,32 @@
+         SDL_UnlockMutex(SDL_event_watchers_lock);
+     }
+ 
+-    if (SDL_PeepEvents(event, 1, SDL_ADDEVENT, 0, 0) <= 0) {
+-        return -1;
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    if (pyxis_clipboard_id &&
++        (event->key.type != original.type || event->key.state != original.state ||
++         event->key.repeat != original.repeat || event->key.windowID != original.windowID ||
++         event->key.keysym.scancode != original.keysym.scancode ||
++         event->key.keysym.sym != original.keysym.sym || event->key.keysym.mod != original.keysym.mod)) {
++        PYXIS_DiscardClipboard(pyxis_clipboard_id);
++        pyxis_clipboard_id = 0;
++    }
++    if (pyxis_clipboard_id) {
++        SDL_LockMutex(SDL_EventQ.lock);
++        if (!SDL_EventQ.active || !SDL_AddEvent(event, pyxis_clipboard_id)) {
++            SDL_UnlockMutex(SDL_EventQ.lock);
++            PYXIS_DiscardClipboard(pyxis_clipboard_id);
++            return -1;
++        }
++        SDL_UnlockMutex(SDL_EventQ.lock);
++        SDL_SendWakeupEvent();
++    } else
++#else
++    (void)pyxis_clipboard_id;
++#endif
++    {
++        if (SDL_PeepEvents(event, 1, SDL_ADDEVENT, 0, 0) <= 0) {
++            return -1;
++        }
+     }
+ 
+     SDL_GestureProcessEvent(event);
+@@ -1208,8 +1267,23 @@
+     return 1;
+ }
+ 
++int SDL_PushEvent(SDL_Event *event)
++{
++    return SDL_PushEventInternal(event, 0);
++}
++
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++int PYXIS_PushClipboardEvent(SDL_Event *event, Uint64 id)
++{
++    return SDL_PushEventInternal(event, id);
++}
++#endif
++
+ void SDL_SetEventFilter(SDL_EventFilter filter, void *userdata)
+ {
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    PYXIS_CancelClipboard();
++#endif
+     SDL_LockMutex(SDL_event_watchers_lock);
+     {
+         /* Set filter and discard pending events */
+@@ -1286,6 +1360,9 @@
+ 
+ void SDL_FilterEvents(SDL_EventFilter filter, void *userdata)
+ {
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    PYXIS_CancelClipboard();
++#endif
+     SDL_LockMutex(SDL_EventQ.lock);
+     {
+         SDL_EventEntry *entry, *next;
+--- a/src/events/SDL_keyboard.c
++++ b/src/events/SDL_keyboard.c
+@@ -28,6 +28,10 @@
+ #include "SDL_events_c.h"
+ #include "../video/SDL_sysvideo.h"
+ #include "scancodes_ascii.h"
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++#include "SDL_pyxisvideo.h"
++static Uint64 pyxis_clipboard_id;
++#endif
+ 
+ /* #define DEBUG_KEYBOARD */
+ 
+@@ -936,7 +940,16 @@
+         event.key.keysym.sym = keycode;
+         event.key.keysym.mod = keyboard->modstate;
+         event.key.windowID = keyboard->focus ? keyboard->focus->id : 0;
+-        posted = (SDL_PushEvent(&event) > 0);
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++        if (pyxis_clipboard_id) {
++            Uint64 id = pyxis_clipboard_id;
++            pyxis_clipboard_id = 0; /* Event callbacks cannot inherit native identity. */
++            posted = (PYXIS_PushClipboardEvent(&event, id) > 0);
++        } else
++#endif
++        {
++            posted = (SDL_PushEvent(&event) > 0);
++        }
+     }
+ 
+     /* If the keyboard is grabbed and the grabbed window is in full-screen,
+@@ -987,6 +1000,30 @@
+ {
+     return SDL_SendKeyboardKeyInternal(KEYBOARD_VIRTUAL, state, scancode, SDLK_UNKNOWN);
+ }
++
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++int SDL_SendKeyboardKeyWithClipboard(Uint8 state, SDL_Scancode scancode, Uint64 id, bool shared)
++{
++    int posted;
++    if (shared) {
++        SDL_Event event;
++        SDL_zero(event);
++        event.key.type = SDL_KEYDOWN;
++        event.key.state = SDL_PRESSED;
++        event.key.keysym.scancode = scancode;
++        event.key.keysym.sym = SDL_keyboard.keymap[scancode];
++        event.key.keysym.mod = KMOD_CTRL;
++        event.key.windowID = SDL_keyboard.focus ? SDL_keyboard.focus->id : 0;
++        /* Shared is one system command, not a held application key. */
++        return SDL_GetEventState(SDL_KEYDOWN) == SDL_ENABLE &&
++               PYXIS_PushClipboardEvent(&event, id) > 0;
++    }
++    pyxis_clipboard_id = id;
++    posted = SDL_SendKeyboardKeyInternal(KEYBOARD_HARDWARE, state, scancode, SDLK_UNKNOWN);
++    pyxis_clipboard_id = 0;
++    return posted;
++}
++#endif
+ 
+ int SDL_SendKeyboardKey(Uint8 state, SDL_Scancode scancode)
+ {

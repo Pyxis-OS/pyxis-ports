@@ -24,6 +24,8 @@ struct pyxis_video pyxis_video = {
   .keyboard = HANDLE_INVALID,
   .pointer = HANDLE_INVALID,
   .clock = HANDLE_INVALID,
+  .clipboard_local = HANDLE_INVALID,
+  .clipboard_shared = HANDLE_INVALID,
 };
 
 static bool display_mode(const struct display_size_reply *size, SDL_DisplayMode *mode)
@@ -75,6 +77,7 @@ static void release_display(void)
 
 static void release_input(void)
 {
+  PYXIS_CancelClipboard();
   if (pyxis_video.pointer_owned) {
     pointer_release(pyxis_video.pointer);
     pyxis_video.pointer_owned = false;
@@ -93,6 +96,7 @@ void PYXIS_FollowDisplaySize(SDL_VideoDevice *device)
     return;
   }
 
+  PYXIS_CancelClipboard();
   if (pyxis_video.display_owned && pyxis_video.buffer.generation != size.generation) {
     enum call_status status = display_replace(pyxis_video.display, size.generation,
         &pyxis_video.buffer);
@@ -137,6 +141,8 @@ static int PYXIS_VideoInit(SDL_VideoDevice *device)
   pyxis_video.keyboard = startup_resource("keyboard");
   pyxis_video.pointer = startup_resource("pointer");
   pyxis_video.clock = startup_resource("clock");
+  pyxis_video.clipboard_local = startup_resource("clipboard_local");
+  pyxis_video.clipboard_shared = startup_resource("clipboard_shared");
   if (pyxis_video.display == HANDLE_INVALID || pyxis_video.keyboard == HANDLE_INVALID ||
       pyxis_video.clock == HANDLE_INVALID) {
     return SDL_SetError("Pyxis video needs the display, keyboard and clock grants");
@@ -265,6 +271,9 @@ static SDL_VideoDevice *PYXIS_CreateDevice(void)
     SDL_OutOfMemory();
     return NULL;
   }
+  device->SetClipboardText = PYXIS_SetClipboardText;
+  device->GetClipboardText = PYXIS_GetClipboardText;
+  device->HasClipboardText = PYXIS_HasClipboardText;
   device->VideoInit = PYXIS_VideoInit;
   device->VideoQuit = PYXIS_VideoQuit;
   device->PumpEvents = PYXIS_PumpEvents;

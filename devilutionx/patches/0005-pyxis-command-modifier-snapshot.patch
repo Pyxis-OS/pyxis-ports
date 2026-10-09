@@ -1,0 +1,18 @@
+--- a/Source/DiabloUI/text_input.cpp
++++ b/Source/DiabloUI/text_input.cpp
+@@ -24,7 +24,14 @@
+     tl::function_ref<bool(string_view)> typeFn,
+     [[maybe_unused]] tl::function_ref<bool(string_view)> assignFn)
+ {
+-	const auto modState = SDL_GetModState();
++#ifdef __pyxis__
++	// Pyxis shared clipboard commands carry a per-event Control snapshot.
++	const auto modState = event.type == SDL_KEYDOWN
++	    ? static_cast<SDL_Keymod>(event.key.keysym.mod)
++	    : SDL_GetModState();
++#else
++	const auto modState = SDL_GetModState();
++#endif
+ 	const bool isCtrl = (modState & KMOD_CTRL) != 0;
+ 	const bool isAlt = (modState & KMOD_ALT) != 0;
+ 	const bool isShift = (modState & KMOD_SHIFT) != 0;

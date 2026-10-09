@@ -36,6 +36,7 @@ return {
     "patches/0002-pyxis-file-checks.patch",
     "patches/0003-libcxx-fmt12-and-no-tls.patch",
     "patches/0004-pyxis-paths-and-defaults.patch",
+    "patches/0005-pyxis-command-modifier-snapshot.patch",
   },
   outputs = {
     executable = "bin/devilutionx.pxe",

@@ -36,7 +36,7 @@ OBJECTS := $(UPSTREAM_OBJECTS) $(BACKEND_OBJECTS)
 PUBLIC_HEADERS := $(filter-out $(S)/include/SDL_config%,$(wildcard $(S)/include/*.h))
 HEADER_STAMP := $(BUILD)/include.stamp
 
-CPPFLAGS := -I$(INCLUDE) -I$(S)/src $(PYXIS_CPPFLAGS)
+CPPFLAGS := -I$(INCLUDE) -I$(S)/src -I$(RECIPE)/pyxis $(PYXIS_CPPFLAGS)
 # Upstream builds with -Wall, without strict aliasing and with the compiler's
 # default C standard; its warnings stay visible. The backend uses SDK C23.
 UPSTREAM_CFLAGS := $(filter-out -std=gnu23 -Wextra,$(PYXIS_CFLAGS)) -std=gnu17 -fno-strict-aliasing
