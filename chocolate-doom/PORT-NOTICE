@@ -1,0 +1,12 @@
+Chocolate Doom 3.1.1 for Pyxis
+Upstream: https://github.com/chocolate-doom/chocolate-doom.git
+Revision: 410d96855b5df5410ff591a90efeafa889119224 (tag chocolate-doom-3.1.1)
+Patches: 0001-pyxis-sdl2-static-target.patch, 0002-pyxis-platform.patch,
+         0003-pyxis-software-scaling.patch
+
+Chocolate Doom and the patched files remain under the GNU General Public
+License, version 2 or later, in COPYING.md. The program links the Pyxis SDL2
+port statically; SDL2's zlib licence is SDL2-LICENSE.txt.
+
+The build leaves out SDL2_mixer and SDL2_net through upstream's options, so
+this program has no sound, music or network play.

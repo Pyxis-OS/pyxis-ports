@@ -1,0 +1,318 @@
+diff --git a/src/d_iwad.c b/src/d_iwad.c
+index 5b6db20..62066af 100644
+--- a/src/d_iwad.c
++++ b/src/d_iwad.c
+@@ -628,7 +628,7 @@ static void AddIWADPath(const char *path, const char *suffix)
+     free(dup_path);
+ }
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+ // Add standard directories where IWADs are located on Unix systems.
+ // To respect the freedesktop.org specification we support overriding
+ // using standard environment variables. See the XDG Base Directory
+@@ -723,7 +723,7 @@ static void AddSteamDirs(void)
+     free(steampath);
+ }
+ #endif // __MACOSX__
+-#endif // !_WIN32
++#endif // !_WIN32 && !__pyxis__
+ 
+ //
+ // Build a list of IWAD files
+@@ -772,6 +772,9 @@ static void BuildIWADDirList(void)
+ 
+     CheckSteamGUSPatches();
+ 
++#elif defined(__pyxis__)
++    // The image stages its IWAD here.
++    AddIWADDir("boot://share/doom");
+ #else
+     AddXdgDirs();
+ #ifndef __MACOSX__
+diff --git a/src/i_sdlmusic.c b/src/i_sdlmusic.c
+index 70502d0..75f37ce 100644
+--- a/src/i_sdlmusic.c
++++ b/src/i_sdlmusic.c
+@@ -44,6 +44,9 @@
+ 
+ char *timidity_cfg_path = "";
+ 
++// The Timidity configuration only feeds SDL_mixer's MIDI playback.
++#ifndef DISABLE_SDL2MIXER
++
+ static char *temp_timidity_cfg = NULL;
+ 
+ // If the temp_timidity_cfg config variable is set, generate a "wrapper"
+@@ -122,8 +125,6 @@ void I_InitTimidityConfig(void)
+ }
+ 
+ 
+-#ifndef DISABLE_SDL2MIXER
+-
+ #include "SDL_mixer.h"
+ 
+ 
+diff --git a/src/i_sound.c b/src/i_sound.c
+index 7a7bdb3..3f59366 100644
+--- a/src/i_sound.c
++++ b/src/i_sound.c
+@@ -246,12 +246,14 @@ void I_InitSound(GameMission_t mission)
+         // the TIMIDITY_CFG environment variable here before SDL_mixer
+         // is opened.
+ 
++#ifndef DISABLE_SDL2MIXER
+         if (!nomusic
+          && (snd_musicdevice == SNDDEVICE_GENMIDI
+           || snd_musicdevice == SNDDEVICE_GUS))
+         {
+             I_InitTimidityConfig();
+         }
++#endif // DISABLE_SDL2MIXER
+ 
+         if (!nosfx)
+         {
+diff --git a/src/i_sound.h b/src/i_sound.h
+index 376e1bb..8ef0225 100644
+--- a/src/i_sound.h
++++ b/src/i_sound.h
+@@ -254,7 +254,9 @@ void I_OPL_DevMessages(char *, size_t);
+ 
+ // Sound modules
+ 
++#ifndef DISABLE_SDL2MIXER
+ void I_InitTimidityConfig(void);
++#endif
+ extern const sound_module_t sound_sdl_module;
+ extern const sound_module_t sound_pcsound_module;
+ extern const music_module_t music_sdl_module;
+diff --git a/src/i_system.c b/src/i_system.c
+index dba3590..bb23500 100644
+--- a/src/i_system.c
++++ b/src/i_system.c
+@@ -27,6 +27,7 @@
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+ #else
++#include <sys/stat.h>
+ #include <unistd.h>
+ #endif
+ 
+@@ -218,9 +219,14 @@ void I_PrintStartupBanner(const char *gamedescription)
+ 
+ boolean I_ConsoleStdout(void)
+ {
+-#ifdef _WIN32
++#if defined(_WIN32)
+     // SDL "helpfully" always redirects stdout to a file.
+     return false;
++#elif defined(__pyxis__)
++    // Pyxis has no isatty; a terminal reports itself as a character device.
++    struct stat st;
++
++    return fstat(fileno(stdout), &st) == 0 && S_ISCHR(st.st_mode);
+ #else
+     return isatty(fileno(stdout));
+ #endif
+diff --git a/src/i_video.c b/src/i_video.c
+index 6ff3b80..01b5cd5 100644
+--- a/src/i_video.c
++++ b/src/i_video.c
+@@ -1129,11 +1129,16 @@ static void SetSDLVideoDriver(void)
+ 
+     if (strcmp(video_driver, "") != 0)
+     {
++#ifdef __pyxis__
++        // Pyxis has no putenv; SDL reads the same choice from its hint.
++        SDL_SetHint(SDL_HINT_VIDEODRIVER, video_driver);
++#else
+         char *env_string;
+ 
+         env_string = M_StringJoin("SDL_VIDEODRIVER=", video_driver, NULL);
+         putenv(env_string);
+         free(env_string);
++#endif
+     }
+ }
+ 
+@@ -1417,11 +1422,13 @@ void I_InitGraphics(void)
+ {
+     SDL_Event dummy;
+     byte *doompal;
+-    char *env;
+ 
+     // Pass through the XSCREENSAVER_WINDOW environment variable to 
+     // SDL_WINDOWID, to embed the SDL window into the Xscreensaver
+-    // window.
++    // window. Pyxis has no X screensaver to embed into.
++
++#ifndef __pyxis__
++    char *env;
+ 
+     env = getenv("XSCREENSAVER_WINDOW");
+ 
+@@ -1435,6 +1442,7 @@ void I_InitGraphics(void)
+ 
+         putenv(winenv);
+     }
++#endif
+ 
+     SetSDLVideoDriver();
+ 
+diff --git a/src/m_config.c b/src/m_config.c
+index e1a0260..10fd4f7 100644
+--- a/src/m_config.c
++++ b/src/m_config.c
+@@ -2288,11 +2288,17 @@ static void SetVariable(default_t *def, const char *value)
+             // mitigate this, we replace the first non-digit,
+             // non-minus character in the string with the current
+             // locale's decimal separator before passing it to atof().
++#ifdef __pyxis__
++            // Pyxis's libc has only the "C" locale, and no localeconv.
++            char dec = '.', *str;
++            int i = 0;
++#else
+             struct lconv *lc = localeconv();
+             char dec, *str;
+             int i = 0;
+ 
+             dec = lc->decimal_point[0];
++#endif
+             str = M_StringDuplicate(value);
+ 
+             // Skip sign indicators.
+diff --git a/src/m_misc.c b/src/m_misc.c
+index daa58ff..8b5770c 100644
+--- a/src/m_misc.c
++++ b/src/m_misc.c
+@@ -339,7 +339,14 @@ boolean M_FileExists(const char *filename)
+         // If we can't open because the file is a directory, the 
+         // "file" exists at least!
+ 
++#ifdef __pyxis__
++        // Pyxis reports no EISDIR; ask whether a directory is there.
++        struct stat st;
++
++        return stat(filename, &st) == 0 && S_ISDIR(st.st_mode);
++#else
+         return errno == EISDIR;
++#endif
+     }
+ }
+ 
+diff --git a/textscreen/txt_fileselect.c b/textscreen/txt_fileselect.c
+index 08c0c8f..ca349f9 100644
+--- a/textscreen/txt_fileselect.c
++++ b/textscreen/txt_fileselect.c
+@@ -41,7 +41,7 @@ struct txt_fileselect_s {
+ 
+ const char *TXT_DIRECTORY[] = { "__directory__", NULL };
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+ 
+ #include <fcntl.h>
+ #include <unistd.h>
+@@ -141,6 +141,20 @@ static char *ExecReadOutput(char **argv)
+ 
+ #endif
+ 
++#if defined(__pyxis__)
++
++// Pyxis has no external file picker; the input box remains usable.
++
++int TXT_CanSelectFiles(void)
++{
++    return 0;
++}
++
++char *TXT_SelectFile(const char *window_title, const char **extensions)
++{
++    return NULL;
++}
++
+ // This is currently disabled on Windows because it doesn't work.
+ // Current issues:
+ //   * On Windows Vista+ the mouse cursor freezes when the dialog is
+@@ -149,7 +163,7 @@ static char *ExecReadOutput(char **argv)
+ //     TXT_UpdateScreen can be run in the background).
+ //   * On Windows XP the program exits/crashes when the dialog is
+ //     closed.
+-#if defined(_WIN32)
++#elif defined(_WIN32)
+ 
+ int TXT_CanSelectFiles(void)
+ {
+diff --git a/textscreen/txt_spinctrl.c b/textscreen/txt_spinctrl.c
+index 2a93e96..c32c1ce 100644
+--- a/textscreen/txt_spinctrl.c
++++ b/textscreen/txt_spinctrl.c
+@@ -27,13 +27,30 @@
+ #include "txt_utf8.h"
+ #include "txt_window.h"
+ 
++// Decimal places needed to show a step: ceil(-log10(step)), counted without
++// libm's logarithms, which Pyxis's libc doesn't provide.
++
++static int StepPrecision(float step)
++{
++    int precision = 0;
++    float scale = 1;
++
++    while (step > 0 && step * scale < 1 && precision < 9)
++    {
++        scale *= 10;
++        ++precision;
++    }
++
++    return precision;
++}
++
+ // Generate the format string to be used for displaying floats
+ 
+ static void FloatFormatString(float step, char *buf, size_t buf_len)
+ {
+     int precision;
+ 
+-    precision = (int) ceil(-log(step) / log(10));
++    precision = StepPrecision(step);
+ 
+     if (precision > 0)
+     {
+@@ -67,7 +84,7 @@ static unsigned int FloatWidth(float val, float step)
+ 
+     // Add a decimal part if the precision specifies it
+ 
+-    precision = (unsigned int) ceil(-log(step) / log(10));
++    precision = (unsigned int) StepPrecision(step);
+ 
+     if (precision > 0)
+     {
+diff --git a/textscreen/txt_window.c b/textscreen/txt_window.c
+index 141a441..ceda9e4 100644
+--- a/textscreen/txt_window.c
++++ b/textscreen/txt_window.c
+@@ -520,13 +520,22 @@ void TXT_SetWindowHelpURL(txt_window_t *window, const char *help_url)
+     window->help_url = help_url;
+ }
+ 
+-#ifdef _WIN32
++#if defined(_WIN32)
+ 
+ void TXT_OpenURL(const char *url)
+ {
+     ShellExecute(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+ }
+ 
++#elif defined(__pyxis__)
++
++// Pyxis has no URL opener to run.
++
++void TXT_OpenURL(const char *url)
++{
++    fprintf(stderr, "Can't open this URL:\n%s\n", url);
++}
++
+ #else
+ 
+ void TXT_OpenURL(const char *url)

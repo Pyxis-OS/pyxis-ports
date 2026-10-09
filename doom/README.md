@@ -35,10 +35,14 @@ and makes normal quit actually exit. It drains key releases to support focus
 resets. Upstream's generic configuration persistence remains disabled; this
 save/load adaptation uses native directory creation and libc atomic rename.
 
+`-timedemo demo1` plays a demo as fast as possible and exits with upstream's
+report, `timed N gametics in M realtics (F fps)`, on stderr. Realtics are
+1/35 s, so a short demo's figure is coarse.
+
 Audio, networking, mouse input, configuration persistence, demo
-recording, timedemo reporting and alternate render formats/scaling are outside
-this first port. `-record`, `-timedemo`, `-gfxmode` and `-scaling`
-are rejected explicitly. The renderer remains single-buffered and can tear.
+recording and alternate render formats/scaling are outside this first port.
+`-record`, `-gfxmode` and `-scaling` are rejected explicitly. Each frame is
+drawn into a held display slot and submitted whole.
 A second patch gives the deferred demo name static storage: the generic entry
 point returns while playback still borrows that name. It also restores immediate
 exit on a recursive error rather than recursing through shutdown callbacks.

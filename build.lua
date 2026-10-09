@@ -106,6 +106,7 @@ local function main()
     print("Lua also requires --mbedtls PATH to its configured development prefix.")
     print("Libpng also requires --zlib PATH to its development prefix.")
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
+    print("Chocolate Doom also requires --sdl2 PATH to its development prefix.")
     return
   end
   local name, options = arg[1], {}
@@ -113,7 +114,7 @@ local function main()
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
-    ["--sdl2"] = name == "devilutionx" }
+    ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -192,7 +193,7 @@ local function main()
     require_file(zlib .. "/include/zconf.h")
     require_file(zlib .. "/lib/libz.a")
   end
-  -- DevilutionX finds these through CMake; check the files it will look for.
+  -- CMake consumers find these packages; check the files they will look for.
   local libpng, fmt, sdl2
   if name == "devilutionx" then
     for _, option in ipairs({ "--libpng", "--fmt", "--sdl2" }) do
@@ -203,6 +204,9 @@ local function main()
     require_file(libpng .. "/lib/libpng.a")
     fmt = make_path(capture({ "realpath", "-e", "--", options["--fmt"] }))
     require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
+  end
+  if name == "devilutionx" or name == "chocolate-doom" then
+    assert(options["--sdl2"], name .. " needs --sdl2 PATH to its development prefix")
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
   end

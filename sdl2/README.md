@@ -35,12 +35,14 @@ The files in `pyxis/` are the platform layer:
     framebuffer acquires graphics and then the optional pointer subscription;
     destroying the window releases these sessions.
   - **Drawing.** SDL draws into its own surface; `SDL_UpdateWindowSurface`
-    and `SDL_RenderPresent` copy the updated rectangles into the display
-    mapping. The presenter therefore never shows a cleared or half-drawn
-    frame, though rows can still tear. The first presentation shows graphics.
-  - **Resize.** When the display geometry changes, the mapping is replaced,
-    the display mode updated and the window gets SDL's resized event. A failed
-    replacement keeps the old mapping until the next change.
+    and `SDL_RenderPresent` copy the whole surface into a held display slot
+    and submit it. Slots rotate and keep older frames, so dirty rectangles
+    alone would leave stale areas. The presenter shows only complete frames.
+    The first submission shows graphics.
+  - **Resize.** When the display geometry changes, the slots are replaced and
+    the last frame resubmitted, the display mode updated and the window gets
+    SDL's resized event. A failed replacement keeps the old slots until the
+    next change.
 - **Input** (`SDL_pyxisevents.c`):
   - **Keyboard.** Pyxis key positions map to SDL scancodes; keycodes follow
     SDL's US defaults. Text input uses the SDK's shared US layout

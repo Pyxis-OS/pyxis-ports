@@ -195,7 +195,7 @@ void DG_Init(void)
 {
   /* doomgeneric_Create has expanded response files by this point. Use Doom's
    * case-insensitive parser so those files cannot bypass the format boundary. */
-  char *const unsupported[] = {"-gfxmode", "-scaling", "-record", "-timedemo"};
+  char *const unsupported[] = {"-gfxmode", "-scaling", "-record"};
   for (size_t i = 0; i < sizeof(unsupported) / sizeof(unsupported[0]); ++i) {
     if (M_ParmExists(unsupported[i])) {
       fprintf(stderr, "doom: %s is not supported by this port\n", unsupported[i]);

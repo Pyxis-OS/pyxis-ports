@@ -1,0 +1,46 @@
+diff --git a/src/i_video.c b/src/i_video.c
+index 01b5cd5..45aa433 100644
+--- a/src/i_video.c
++++ b/src/i_video.c
+@@ -141,9 +141,14 @@ int integer_scaling = false;
+ int vga_porch_flash = false;
+ 
+ // Force software rendering, for systems which lack effective hardware
+-// acceleration
++// acceleration. Pyxis has only SDL's software renderer, so the two-stage
++// upscale would run on the CPU; it starts with one direct stretch instead.
+ 
++#ifdef __pyxis__
++int force_software_renderer = true;
++#else
+ int force_software_renderer = false;
++#endif
+ 
+ // Time to wait for the screen to settle on startup before starting the
+ // game (ms)
+@@ -554,18 +559,22 @@ static void LimitTextureSize(int *w_upscale, int *h_upscale)
+     orig_w = *w_upscale;
+     orig_h = *h_upscale;
+ 
+-    // Query renderer and limit to maximum texture dimensions of hardware:
++    // Query renderer and limit to maximum texture dimensions of hardware.
++    // A maximum of zero means the renderer has no limit, as SDL's software
++    // renderer reports.
+     if (SDL_GetRendererInfo(renderer, &rinfo) != 0)
+     {
+         I_Error("CreateUpscaledTexture: SDL_GetRendererInfo() call failed: %s",
+                 SDL_GetError());
+     }
+ 
+-    while (*w_upscale * SCREENWIDTH > rinfo.max_texture_width)
++    while (rinfo.max_texture_width > 0
++        && *w_upscale * SCREENWIDTH > rinfo.max_texture_width)
+     {
+         --*w_upscale;
+     }
+-    while (*h_upscale * SCREENHEIGHT > rinfo.max_texture_height)
++    while (rinfo.max_texture_height > 0
++        && *h_upscale * SCREENHEIGHT > rinfo.max_texture_height)
+     {
+         --*h_upscale;
+     }
