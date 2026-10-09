@@ -4,7 +4,7 @@ return {
     mirror = "https://git.internal/mirrors/sbase",
     commit = "c546c3a5724c81cee9a11d816a38ccdf17472129",
   },
-  license = "MIT AND ISC AND BSD-3-Clause",
+  license = "MIT AND ISC AND BSD-3-Clause AND Unicode-3.0",
   dependencies = {
     host = { "make" },
     pyxis = { "libc", "libpyxis" },
@@ -30,5 +30,6 @@ return {
     memmem_notice = "share/licenses/sbase/memmem.c",
     reallocarray_notice = "share/licenses/sbase/reallocarray.c",
     queue_notice = "share/licenses/sbase/queue.h",
+    unicode_notice = "share/licenses/sbase/unicode-license.txt",
   },
 }

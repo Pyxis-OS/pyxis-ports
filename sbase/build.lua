@@ -28,4 +28,6 @@ return function(ctx)
     ctx.stage .. "/" .. ctx.metadata.outputs.reallocarray_notice })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/queue.h",
     ctx.stage .. "/" .. ctx.metadata.outputs.queue_notice })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/UNICODE-LICENSE.txt",
+    ctx.stage .. "/" .. ctx.metadata.outputs.unicode_notice })
 end
