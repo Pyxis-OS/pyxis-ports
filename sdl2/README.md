@@ -99,8 +99,10 @@ Ctrl+C/V or Ctrl+Shift+C/V command supplies one operation-specific attempt;
 shared Super+Shift+C/V arrives as one Ctrl+C/V event with a private native
 identity and per-event Control snapshot. Global modifiers retain their real
 state. Unsupported shared commands, including absent grants and refused native
-identity, emit no SDL command. Shared press, repeats and releases remain consumed
-through physical release, even after modifiers change. Owner-scoped keyboard
+identity, emit no SDL command. Native shared-layer classification also suppresses
+refused commands when a focus/acquisition reset removes accepted modifiers; that
+classification supplies no authority. Shared press, repeats and releases remain
+consumed through physical release, even after modifiers change. Owner-scoped keyboard
 refusal consumes a cancelled action without requiring that layer's clipboard
 grant, so a refused shared action does not block a later local gesture.
 

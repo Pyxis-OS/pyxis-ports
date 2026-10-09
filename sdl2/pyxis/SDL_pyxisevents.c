@@ -159,8 +159,9 @@ static void handle_key(const struct keyboard_event *event)
     return;
   }
   bool shared_command = (event->key == KEY_C || event->key == KEY_V) &&
-      (event->modifiers & (KEY_MOD_CONTROL | KEY_MOD_ALT | KEY_MOD_SUPER | KEY_MOD_SHIFT)) ==
-      (KEY_MOD_SUPER | KEY_MOD_SHIFT);
+      (event->clipboard_layer == CLIPBOARD_LAYER_SHARED ||
+       (event->modifiers & (KEY_MOD_CONTROL | KEY_MOD_ALT | KEY_MOD_SUPER | KEY_MOD_SHIFT)) ==
+       (KEY_MOD_SUPER | KEY_MOD_SHIFT));
   if (shared_command) {
     if (event->action != KEY_PRESS) {
       return;
