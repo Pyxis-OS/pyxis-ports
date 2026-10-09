@@ -1,0 +1,40 @@
+diff --git a/editors/vi.c b/editors/vi.c
+index 5059df7..51b7c03 100644
+--- a/editors/vi.c
++++ b/editors/vi.c
+@@ -2351,29 +2351,18 @@ static uintptr_t string_insert(char *p, const char *s, int undo) // insert the s
+ 
+ static int file_write(char *fn, char *first, char *last)
+ {
+-	int fd, cnt, charcnt;
++	int cnt;
+ 
+ 	if (fn == 0) {
+ 		status_line_bold("No current filename");
+ 		return -2;
+ 	}
+-	// By popular request we do not open file with O_TRUNC,
+-	// but instead ftruncate() it _after_ successful write.
+-	// Might reduce amount of data lost on power fail etc.
+-	fd = open(fn, (O_WRONLY | O_CREAT), 0666);
+-	if (fd < 0)
+-		return -1;
++	// Pyxis replaces the file through a synced temporary file, so a failed
++	// write leaves the old contents instead of a truncated file.
+ 	cnt = last - first + 1;
+-	charcnt = full_write(fd, first, cnt);
+-	ftruncate(fd, charcnt);
+-	if (charcnt == cnt) {
+-		// good write
+-		//modified_count = FALSE;
+-	} else {
+-		charcnt = 0;
+-	}
+-	close(fd);
+-	return charcnt;
++	if (pyxis_vi_replace_file(fn, first, cnt) < 0)
++		return -1;
++	return cnt;
+ }
+ 
+ #if ENABLE_FEATURE_VI_SEARCH

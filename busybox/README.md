@@ -72,13 +72,18 @@ every later file opened with `:n` or `:e` also showed `[Readonly]` and refused
 
 ## Saves
 
-A save opens the file without truncation, writes the buffer, then calls libc
-`ftruncate` (native RESIZE) to the number of bytes written. This is upstream's
-order and is unchanged. A short write reports an error, but the file has
-already been overwritten up to that point and truncated there. Upstream also
-ignores the `ftruncate` result. Saves are not atomic: a crash between the
-write and the resize can leave old bytes after the new text. `home://` persists
-on installed systems and is RAM on live boots.
+Patch `0005-vi-replace-file-on-save.patch` replaces upstream's in-place write
+and `ftruncate` in `file_write`, which serves `:w`, `:w NAME`, `:wq`, `:x` and
+`ZZ`. `pyxis_vi_replace_file` in the adapter reserves a random `NAME.XXXXXX`
+beside the target with `mkstemp` (native exclusive creation), writes the whole
+buffer, `fsync`s, closes and renames it over the target. A failed write, sync,
+close or rename removes the temporary file, leaves the old file untouched and
+reports the error; a short write is never reported as success. Rename replaces
+atomically on one volume, but libc has no directory sync, so a crash can lose
+the new name (the old contents remain) or leave a stray temporary file.
+Saving needs CREATE and REMOVE on the directory, not only WRITE on the file,
+and there is no in-place fallback. `home://` persists on installed systems and
+is RAM on live boots.
 
 ## Limits
 
