@@ -14,6 +14,7 @@ return {
     "patches/0002-clear-read-only-file-between-buffers.patch",
     "patches/0003-less-native-console.patch",
     "patches/0004-pyxis-tar-ustar-subset.patch",
+    "patches/0005-vi-replace-file-on-save.patch",
   },
   outputs = {
     executable = "bin/vi.pxe",

@@ -547,6 +547,60 @@ bool pyxis_vi_absent(const char *path)
   return errno == ENOENT;
 }
 
+#define REPLACE_SUFFIX ".XXXXXX"
+
+/* mkstemp reserves the name with native exclusive creation. The rename replaces
+ * the file atomically on one volume, and the filesystem flushes the moved file
+ * first. Libc has no directory sync, so after a crash the old contents or the
+ * new ones remain, but the new name itself may not have reached the disk. A
+ * crash before the rename leaves the temporary file behind. */
+int pyxis_vi_replace_file(const char *path, const char *bytes, size_t size)
+{
+  size_t length = strlen(path);
+  char *temporary = malloc(length + sizeof(REPLACE_SUFFIX));
+  if (!temporary) {
+    return -1;
+  }
+  memcpy(temporary, path, length);
+  memcpy(temporary + length, REPLACE_SUFFIX, sizeof(REPLACE_SUFFIX));
+
+  int descriptor = mkstemp(temporary);
+  if (descriptor < 0) {
+    free(temporary);
+    return -1;
+  }
+  int error = 0;
+  size_t done = 0;
+  while (!error && done < size) {
+    ssize_t count = write(descriptor, bytes + done, size - done);
+    if (count < 0) {
+      error = errno;
+    } else if (count == 0) {
+      error = EIO;
+    } else {
+      done += (size_t)count;
+    }
+  }
+  if (!error && fsync(descriptor) != 0) {
+    error = errno;
+  }
+  if (close(descriptor) != 0 && !error) {
+    error = errno;
+  }
+  if (!error && rename(temporary, path) != 0) {
+    error = errno;
+  }
+  if (error) {
+    unlink(temporary);
+  }
+  free(temporary);
+  if (error) {
+    errno = error;
+    return -1;
+  }
+  return 0;
+}
+
 #ifdef PYXIS_APPLET_LESS
 void *bb_realloc_vector(void *pointer, size_t element, unsigned shift, unsigned index)
 {

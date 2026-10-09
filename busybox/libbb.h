@@ -130,5 +130,9 @@ int pyxis_vi_input_pending(int milliseconds);
 bool pyxis_vi_writable(const char *path);
 /* True only when opening reports ENOENT; any other result counts as present. */
 bool pyxis_vi_absent(const char *path);
+/* Replace path with the given bytes: write a uniquely named file beside it,
+ * sync it and rename it over path. Returns 0, or -1 with errno and the old
+ * file untouched; the temporary file is removed on every failure. */
+int pyxis_vi_replace_file(const char *path, const char *bytes, size_t size);
 
 #endif
