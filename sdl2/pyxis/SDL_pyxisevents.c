@@ -6,6 +6,7 @@
 
 #ifdef SDL_VIDEO_DRIVER_PYXIS
 
+#include <clock.h>
 #include <keyboard.h>
 #include <pointer.h>
 #include <pxe/key_layout.h>
@@ -17,11 +18,17 @@
 
 #define ASCII_FIRST_PRINTABLE ' '
 #define ASCII_LAST_PRINTABLE '~'
+#define NANOSECONDS_PER_MILLISECOND UINT64_C(1000000)
+#define INPUT_WAIT_CAPACITY 3
 
 static bool keyboard_focused;
 static bool pointer_focused;
 static bool pointer_inside;
 static uint32_t held_buttons; /* Pyxis POINTER_BUTTON_* bits SDL has pressed. */
+/* The threadless SDL loop pumps immediately after the wait hook. Consume its
+ * observation once, avoiding a second BSP handoff before draining input. */
+static bool waited;
+static uint64_t waited_events[INPUT_WAIT_CAPACITY];
 
 static const SDL_Scancode scancodes[KEY_COUNT] = {
   [KEY_ESCAPE] = SDL_SCANCODE_ESCAPE,
@@ -91,6 +98,7 @@ static void release_buttons(void)
 
 void PYXIS_ResetInput(void)
 {
+  waited = false;
   SDL_ResetKeyboard();
   release_buttons();
   keyboard_focused = false;
@@ -261,33 +269,122 @@ static void drain_keyboard(void)
   }
 }
 
+static size_t input_interests(struct wait_interest interests[INPUT_WAIT_CAPACITY])
+{
+  size_t count = 0;
+  interests[count++] = (struct wait_interest){
+    .handle = pyxis_video.display, .events = WAIT_RESIZED,
+    .observed_generation = pyxis_video.generation,
+  };
+  if (pyxis_video.keyboard_owned) {
+    interests[count++] = (struct wait_interest){
+      .handle = pyxis_video.keyboard, .events = WAIT_READABLE,
+    };
+  }
+  if (pyxis_video.pointer_owned) {
+    interests[count++] = (struct wait_interest){
+      .handle = pyxis_video.pointer, .events = WAIT_READABLE,
+    };
+  }
+  return count;
+}
+
+int PYXIS_WaitEventTimeout(SDL_VideoDevice *device, int timeout)
+{
+  (void)device;
+  if (!pyxis_video.window || !pyxis_video.keyboard_owned) {
+    return -1;
+  }
+
+  struct wait_interest interests[INPUT_WAIT_CAPACITY];
+  size_t count = input_interests(interests);
+  uint64_t end = 0;
+  if (timeout > 0) {
+    uint64_t now;
+    uint64_t duration = (uint64_t)timeout * NANOSECONDS_PER_MILLISECOND;
+    if (clock_now(pyxis_video.clock, &now) != CALL_OK || now > UINT64_MAX - duration) {
+      return -1;
+    }
+    end = now + duration;
+  }
+
+  for (;;) {
+    uint64_t deadline = 0;
+    if (timeout != 0) {
+      uint64_t now;
+      if (clock_now(pyxis_video.clock, &now) != CALL_OK ||
+          now > UINT64_MAX - WAIT_MAX_WAIT_NS) {
+        return -1;
+      }
+      deadline = now + WAIT_MAX_WAIT_NS;
+      if (timeout > 0 && end < deadline) {
+        deadline = end;
+      }
+    }
+
+    uint64_t events[INPUT_WAIT_CAPACITY] = {0};
+    enum call_status status = wait_many(interests, count, deadline, events);
+    if (status == CALL_OK) {
+      bool ready = false;
+      for (size_t i = 0; i < count; ++i) {
+        if (events[i] & WAIT_ERROR) {
+          return -1; /* Ownership/backend loss needs the polling fallback. */
+        }
+        ready |= (events[i] & interests[i].events) != 0;
+      }
+      if (ready) {
+        SDL_memcpy(waited_events, events, sizeof(waited_events));
+        waited = true;
+      }
+      /* SDL pumps again before taking an event from its queue. */
+      return ready ? 1 : (timeout == 0 ? 0 : -1);
+    }
+    if (status != CALL_TIMED_OUT) {
+      return -1;
+    }
+    if (timeout > 0 && deadline == end) {
+      return 0;
+    }
+    /* Native waits are bounded to 30 seconds. Re-arm long/infinite waits;
+     * each call checks readiness before interpreting an expired deadline. */
+  }
+}
+
 void PYXIS_PumpEvents(SDL_VideoDevice *device)
 {
   if (!pyxis_video.window) {
     return;
   }
 
-  /* One poll covers display geometry and keyboard readiness. The pointer
-   * cannot be waited on, so it is always polled. */
-  struct wait_interest interests[2] = {
-    {.handle = pyxis_video.display, .events = WAIT_RESIZED,
-     .observed_generation = pyxis_video.generation},
-    {.handle = pyxis_video.keyboard, .events = WAIT_READABLE},
-  };
-  uint64_t events[2] = {0};
-  if (wait_many(interests, SDL_arraysize(interests), 0, events) == CALL_OK) {
+  struct wait_interest interests[INPUT_WAIT_CAPACITY];
+  size_t count = input_interests(interests);
+  uint64_t events[INPUT_WAIT_CAPACITY] = {0};
+  bool pointer_ready = true;
+  enum call_status status;
+  if (waited) {
+    SDL_memcpy(events, waited_events, sizeof(events));
+    waited = false;
+    status = CALL_OK;
+  } else {
+    status = wait_many(interests, count, 0, events);
+  }
+  if (status == CALL_OK) {
     if (events[0] & WAIT_RESIZED) {
       PYXIS_FollowDisplaySize(device);
     }
-    if (events[1] & (WAIT_READABLE | WAIT_ERROR)) {
+    if (pyxis_video.keyboard_owned && (events[1] & (WAIT_READABLE | WAIT_ERROR))) {
       drain_keyboard();
     }
+    pointer_ready = pyxis_video.pointer_owned &&
+        (events[count - 1] & (WAIT_READABLE | WAIT_ERROR));
   } else {
-    drain_keyboard();
+    if (pyxis_video.keyboard_owned) {
+      drain_keyboard();
+    }
   }
 
   struct pointer_event motion;
-  while (pyxis_video.pointer_owned &&
+  while (pointer_ready && pyxis_video.pointer_owned &&
          pointer_read(pyxis_video.pointer, POINTER_READ_POLL, &motion) == CALL_OK) {
     handle_pointer(&motion);
   }

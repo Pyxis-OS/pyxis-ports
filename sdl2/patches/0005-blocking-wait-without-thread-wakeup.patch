@@ -1,0 +1,17 @@
+--- a/src/events/SDL_events.c
++++ b/src/events/SDL_events.c
+@@ -1120,7 +1120,13 @@
+         expiration = 0;
+     }
+ 
+-    if (_this && _this->WaitEventTimeout && _this->SendWakeupEvent) {
++    if (_this && _this->WaitEventTimeout &&
++        (_this->SendWakeupEvent
++#if defined(SDL_VIDEO_DRIVER_PYXIS) && defined(SDL_THREADS_DISABLED)
++         /* Pyxis has no asynchronous SDL event producers without threads. */
++         || SDL_strcmp(_this->name, "pyxis") == 0
++#endif
++        )) {
+         /* Look if a shown window is available to send the wakeup event. */
+         wakeup_window = SDL_find_active_window(_this);
+         if (wakeup_window) {

@@ -15,6 +15,7 @@ return {
     "patches/0002-register-the-pyxis-video-driver.patch",
     "patches/0003-steam-gamepad-info-without-modification-time.patch",
     "patches/0004-native-pyxis-pointer-authority.patch",
+    "patches/0005-blocking-wait-without-thread-wakeup.patch",
   },
   outputs = {
     library = "dev/lib/libSDL2.a",

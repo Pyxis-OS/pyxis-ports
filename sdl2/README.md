@@ -68,8 +68,15 @@ The files in `pyxis/` are the platform layer:
   - **Focus.** Focus changes and input resets release every held key and
     button, so a key held across them must be pressed again. Keyboard focus
     becomes the window's focus events.
-  - **Event pump.** Each pump polls display geometry and keyboard readiness in
-    one `wait_many` and polls the pointer.
+  - **Event pump.** Each pump polls display geometry, keyboard and the acquired
+    pointer subscription in one `wait_many`. `SDL_WaitEvent` and positive-timeout
+    `SDL_WaitEventTimeout` block on the same handles. Zero remains nonblocking;
+    negative means infinite. Finite deadlines are retained across the native
+    30-second wait bound, and infinite waits re-arm at that bound. Absent pointer
+    grants are omitted; no new input session is acquired by waiting. Unsupported
+    waits, ownership/backend errors, or missing window/input sessions fall back
+    to upstream polling. SDL's joystick enumeration poll interval remains when
+    that subsystem is initialized.
 - **Timer** (`SDL_systimer.c`): ticks and the performance counter come from
   `clock_now` in nanoseconds, and `SDL_Delay` from `clock_sleep_for`. Sleeps
   use HPET deadlines and never finish before the requested deadline. Interrupt
@@ -90,6 +97,9 @@ The files in `pyxis/` are the platform layer:
 4. `0004` makes native Pyxis position, warp and lock authoritative in SDL mouse
    core: no synthetic warp position or relative-mode fallback after lock refusal.
    Other video drivers retain upstream behavior.
+5. `0005` permits the threadless Pyxis wait hook without `SendWakeupEvent`.
+   There are no asynchronous SDL event producers in this configuration. A
+   threaded port needs a real wakeup sender before using this path.
 
 ## Not built
 
@@ -103,5 +113,5 @@ These facilities report themselves as unsupported, as upstream does:
 - **Joysticks.** They use SDL's dummy driver: `SDL_INIT_JOYSTICK` succeeds
   with zero devices.
 
-Named SDL system-cursor shapes, message boxes and the clipboard are unsupported. `SDL_WaitEvent` uses
-upstream's polling loop. `SDL_main` and `SDL_test` are not built.
+Named SDL system-cursor shapes, message boxes and the clipboard are unsupported.
+`SDL_main` and `SDL_test` are not built.

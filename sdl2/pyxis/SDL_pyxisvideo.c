@@ -23,6 +23,7 @@ struct pyxis_video pyxis_video = {
   .display = HANDLE_INVALID,
   .keyboard = HANDLE_INVALID,
   .pointer = HANDLE_INVALID,
+  .clock = HANDLE_INVALID,
 };
 
 static bool display_mode(const struct display_size_reply *size, SDL_DisplayMode *mode)
@@ -129,8 +130,9 @@ static int PYXIS_VideoInit(SDL_VideoDevice *device)
   pyxis_video.display = startup_resource("display");
   pyxis_video.keyboard = startup_resource("keyboard");
   pyxis_video.pointer = startup_resource("pointer");
+  pyxis_video.clock = startup_resource("clock");
   if (pyxis_video.display == HANDLE_INVALID || pyxis_video.keyboard == HANDLE_INVALID ||
-      startup_resource("clock") == HANDLE_INVALID) {
+      pyxis_video.clock == HANDLE_INVALID) {
     return SDL_SetError("Pyxis video needs the display, keyboard and clock grants");
   }
 
@@ -268,6 +270,7 @@ static SDL_VideoDevice *PYXIS_CreateDevice(void)
   device->VideoInit = PYXIS_VideoInit;
   device->VideoQuit = PYXIS_VideoQuit;
   device->PumpEvents = PYXIS_PumpEvents;
+  device->WaitEventTimeout = PYXIS_WaitEventTimeout;
   device->CreateSDLWindow = PYXIS_CreateWindow;
   device->DestroyWindow = PYXIS_DestroyWindow;
   device->CreateWindowFramebuffer = PYXIS_CreateWindowFramebuffer;
