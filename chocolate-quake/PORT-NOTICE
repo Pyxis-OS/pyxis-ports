@@ -1,0 +1,14 @@
+Chocolate Quake 2.1.0 for Pyxis
+Upstream: https://github.com/Henrique194/chocolate-quake.git
+Revision: 8ee22175e3a5613e94ad2f9776aadc428b948cf3 (tag chocolate-quake-2.1.0)
+Patches: 0001-pyxis-no-network-or-music-codecs.patch, 0002-pyxis-platform.patch,
+         0003-pyxis-frame-sleep.patch
+
+Chocolate Quake is distributed under the GNU General Public License, version
+3, in LICENSE; its source files carry GPL version 2 or later notices. The
+patched files remain under those terms. The program links the Pyxis SDL2 port
+statically; SDL2's zlib licence is SDL2-LICENSE.txt.
+
+The build leaves out SDL2_net, the UDP network driver and the Vorbis, MP3 and
+FLAC music codecs, so this program has no network play or music, and no sound
+on Pyxis.

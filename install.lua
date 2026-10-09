@@ -26,6 +26,8 @@ return function(inputs)
     { tree = root .. "/chocolate-doom/stage/share", at = "share" },
     { tree = root .. "/quake/stage/bin", at = "" },
     { tree = root .. "/quake/stage/share", at = "share" },
+    { tree = root .. "/chocolate-quake/stage/bin", at = "" },
+    { tree = root .. "/chocolate-quake/stage/share", at = "share" },
     { tree = root .. "/tcc/stage/bin", at = "" },
     { tree = root .. "/tcc/stage/lib/tcc", at = "sdk/lib/tcc" },
     { tree = root .. "/tcc/stage/share", at = "sdk/share" },

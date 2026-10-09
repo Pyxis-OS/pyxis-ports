@@ -1,0 +1,118 @@
+diff --git a/src/common/src/com_fs.c b/src/common/src/com_fs.c
+index 8828768..3bfda26 100644
+--- a/src/common/src/com_fs.c
++++ b/src/common/src/com_fs.c
+@@ -51,6 +51,7 @@
+ #include "net.h"
+ #include "sys.h"
+ #include "zone.h"
++#include <stdio.h>
+ #include <string.h>
+ 
+ 
+@@ -743,6 +744,40 @@ static void COM_UseCustomPaths(i32 arg_num) {
+     }
+ }
+ 
++//
++// -writedir <path>
++// Generated files (savegames, screenshots, demos, config files) go to
++// <path>/<game directory name> instead, which is searched before the game
++// data. On Pyxis the data is read-only, so the default is home://.
++//
++static void COM_AddWriteDir(void) {
++    const char* writedir = NULL;
++    i32 i = COM_CheckParm("-writedir");
++    if (i && i < com_argc - 1) {
++        writedir = com_argv[i + 1];
++    }
++#ifdef __pyxis__
++    if (!writedir) {
++        writedir = "home://chocolate-quake";
++    }
++#endif
++    if (!writedir) {
++        return;
++    }
++    const char* game = strrchr(com_gamedir, '/');
++    game = game ? game + 1 : com_gamedir;
++    char dir[MAX_OSPATH];
++    snprintf(dir, sizeof(dir), "%s/%s", writedir, game);
++    Sys_mkdir((char*) writedir);
++    Sys_mkdir(dir);
++    Q_strcpy(com_gamedir, dir);
++
++    searchpath_t* search = Hunk_Alloc(sizeof(*search));
++    Q_strcpy(search->filename, dir);
++    search->next = com_searchpaths;
++    com_searchpaths = search;
++}
++
+ /*
+ ================
+ COM_InitFilesystem
+@@ -750,6 +785,7 @@ COM_InitFilesystem
+ */
+ void COM_InitFilesystem(void) {
+     COM_AddGameDirs();
++    COM_AddWriteDir();
+     COM_SetCacheDir();
+ 
+     //
+diff --git a/src/host/src/host.c b/src/host/src/host.c
+index 122636c..ee13065 100644
+--- a/src/host/src/host.c
++++ b/src/host/src/host.c
+@@ -765,9 +765,13 @@ void Host_InitVCR(quakeparms_t* parms) {
+ }
+ 
+ void Host_InitTimer() {
++#ifndef __pyxis__
+     if (SDL_Init(SDL_INIT_TIMER) < 0) {
+         Sys_Error("Failed to initialize timer: %s\n", SDL_GetError());
+     }
++#endif
++    // Pyxis: SDL's timer subsystem runs callback timers on a thread, which the
++    // SDL2 port doesn't have. Quake only reads the performance counter.
+ }
+ 
+ /*
+diff --git a/src/sys/src/sys.c b/src/sys/src/sys.c
+index 62152a3..9d1b3bf 100644
+--- a/src/sys/src/sys.c
++++ b/src/sys/src/sys.c
+@@ -36,6 +36,10 @@
+ #include <stdarg.h>
+ #include <string.h>
+ 
++#ifdef __pyxis__
++#include <sys/stat.h>
++#endif
++
+ #ifdef HAVE_SIGNAL_H
+ #include <signal.h>
+ #endif
+@@ -142,6 +146,10 @@ i32 Sys_FileTime(char* path) {
+ }
+ 
+ void Sys_mkdir(char* path) {
++#ifdef __pyxis__
++    // An existing directory fails with EEXIST, which is fine here.
++    mkdir(path, 0777);
++#endif
+ }
+ 
+ 
+@@ -300,8 +308,11 @@ static void Sys_SigInit(void) {
+ #define DEFAULT_MEMORY (256 * 1024 * 1024)
+ 
+ static char* Sys_GetDefaultBaseDir(void) {
+-#ifdef _WIN32
++#if defined(_WIN32)
+     return ".";
++#elif defined(__pyxis__)
++    // The image stages Quake's data here for both Quake programs.
++    return "boot://share/quake";
+ #else
+     static char base_dir[MAX_OSPATH] = {0};
+     if (base_dir[0]) {

@@ -1,0 +1,217 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f1f645a..18c2b65 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -20,17 +20,8 @@ if(MATH)
+ endif()
+ 
+ find_package(SDL2 CONFIG REQUIRED)
+-find_package(SDL2_net CONFIG REQUIRED)
+-if(UNIX AND NOT APPLE)
+-	find_library(VORBIS_LIBRARY vorbis REQUIRED)
+-	find_library(VORBISFILE_LIBRARY vorbisfile REQUIRED)
+-	find_library(MAD_LIBRARY mad REQUIRED)
+-	find_library(FLAC_LIBRARY FLAC REQUIRED)
+-else()
+-	find_package(Vorbis CONFIG REQUIRED)
+-	find_package(mad CONFIG REQUIRED)
+-	find_package(FLAC CONFIG REQUIRED)
+-endif()
++# Pyxis: no network play and no music codecs, so neither SDL2_net nor the
++# Vorbis, MP3 and FLAC libraries.
+ 
+ configure_file(config.h.in config.h)
+ 
+diff --git a/src/net/CMakeLists.txt b/src/net/CMakeLists.txt
+index adee5c7..b693a13 100644
+--- a/src/net/CMakeLists.txt
++++ b/src/net/CMakeLists.txt
+@@ -1,8 +1,6 @@
+ set(LIB net)
+ 
+ add_library(${LIB} STATIC
+-    src/net_dgrm.c
+-    src/net_dgrm.h
+     src/net_drivers.c
+     src/net_loop.c
+     src/net_loop.h
+@@ -11,8 +9,6 @@ add_library(${LIB} STATIC
+     src/net_poll.h
+     src/net_socket.c
+     src/net_socket.h
+-    src/net_udp.c
+-    src/net_udp.h
+     src/net_vcr.c
+     src/net_vcr.h
+ )
+@@ -20,7 +16,6 @@ add_library(${LIB} STATIC
+ target_include_directories(${LIB} PRIVATE ${CMAKE_BINARY_DIR} "../")
+ target_include_directories(${LIB} PUBLIC "./include")
+ target_link_libraries(${LIB} PUBLIC
+-    $<IF:$<TARGET_EXISTS:SDL2_net::SDL2_net>,SDL2_net::SDL2_net,SDL2_net::SDL2_net-static>
+     common
+     console
+ )
+diff --git a/src/net/include/net.h b/src/net/include/net.h
+index 2149cb7..41d6a83 100644
+--- a/src/net/include/net.h
++++ b/src/net/include/net.h
+@@ -26,7 +26,6 @@
+ #include "quakedef.h"
+ #include "protocol.h"
+ #include "cvar.h"
+-#include <SDL_net.h>
+ 
+ 
+ #define NET_NAMELEN 64
+@@ -170,7 +169,6 @@ typedef struct {
+     i32 maxusers;
+     i32 driver;
+     i32 ldriver;
+-    IPaddress addr;
+ } hostcache_t;
+ 
+ extern i32 hostCacheCount;
+diff --git a/src/net/src/net_drivers.c b/src/net/src/net_drivers.c
+index f94482f..1adb4d6 100644
+--- a/src/net/src/net_drivers.c
++++ b/src/net/src/net_drivers.c
+@@ -19,9 +19,7 @@
+  */
+ 
+ 
+-#include "net_dgrm.h"
+ #include "net_loop.h"
+-#include "net_udp.h"
+ 
+ 
+ net_driver_t net_drivers[MAX_NET_DRIVERS] = {
+@@ -40,22 +38,6 @@ net_driver_t net_drivers[MAX_NET_DRIVERS] = {
+         Loop_CanSendUnreliableMessage,
+         Loop_Close,
+         Loop_Shutdown
+-    },
+-    {
+-        "Datagram",
+-        false,
+-        Datagram_Init,
+-        Datagram_Listen,
+-        Datagram_SearchForHosts,
+-        Datagram_Connect,
+-        Datagram_CheckNewConnections,
+-        Datagram_GetMessage,
+-        Datagram_SendMessage,
+-        Datagram_SendUnreliableMessage,
+-        Datagram_CanSendMessage,
+-        Datagram_CanSendUnreliableMessage,
+-        Datagram_Close,
+-        Datagram_Shutdown
+-    },
++    }
+ };
+-i32 net_numdrivers = 2;
++i32 net_numdrivers = 1;
+diff --git a/src/net/src/net_socket.c b/src/net/src/net_socket.c
+index 4c36446..9f77b53 100644
+--- a/src/net/src/net_socket.c
++++ b/src/net/src/net_socket.c
+@@ -87,7 +87,6 @@ qsocket_t* NET_NewQSocket(void) {
+     sock->canSend = true;
+     sock->connecttime = net_time;
+     sock->lastMessageTime = net_time;
+-    sock->socket = 0;
+     sock->ackSequence = 0;
+     sock->sendSequence = 0;
+     sock->unreliableSendSequence = 0;
+diff --git a/src/net/src/net_socket.h b/src/net/src/net_socket.h
+index 0be6723..c62b6c5 100644
+--- a/src/net/src/net_socket.h
++++ b/src/net/src/net_socket.h
+@@ -25,7 +25,6 @@
+ 
+ #include "quakedef.h"
+ #include "net.h"
+-#include <SDL_net.h>
+ 
+ typedef struct qsocket_s {
+     struct qsocket_s* next;
+@@ -38,7 +37,6 @@ typedef struct qsocket_s {
+     qboolean sendNext;
+ 
+     i32 driver;
+-    UDPsocket socket;
+     void* driverdata;
+ 
+     u32 ackSequence;
+@@ -52,7 +50,6 @@ typedef struct qsocket_s {
+     i32 receiveMessageLength;
+     byte receiveMessage[NET_MAXMESSAGE];
+ 
+-    IPaddress addr;
+     char address[NET_NAMELEN];
+ } qsocket_t;
+ 
+diff --git a/src/sound/CMakeLists.txt b/src/sound/CMakeLists.txt
+index 66bf11d..0398f34 100644
+--- a/src/sound/CMakeLists.txt
++++ b/src/sound/CMakeLists.txt
+@@ -5,35 +5,14 @@ add_library(${LIB} STATIC
+     src/snd_codec.c
+     src/snd_codec.h
+     src/snd_dma.c
+-    src/snd_flac.c
+-    src/snd_flac.h
+     src/snd_mem.c
+     src/snd_mix.c
+-    src/snd_mp3.c
+-    src/snd_mp3.h
+-    src/snd_mp3tag.c
+     src/snd_sdl.c
+-    src/snd_vorbis.c
+-    src/snd_vorbis.h
+     src/snd_wave.c
+     src/snd_wave.h
+ )
+ 
+ set(LIBS ${SDL2_LIBRARIES})
+-if(UNIX AND NOT APPLE)
+-    list(APPEND LIBS
+-        ${VORBIS_LIBRARY}
+-        ${VORBISFILE_LIBRARY}
+-        ${FLAC_LIBRARY}
+-        ${MAD_LIBRARY}
+-    )
+-else()
+-    list(APPEND LIBS
+-        Vorbis::vorbisfile
+-        mad::mad
+-        FLAC::FLAC
+-    )
+-endif()
+ 
+ target_include_directories(${LIB} PRIVATE ${CMAKE_BINARY_DIR} "../")
+ target_include_directories(${LIB} PUBLIC "./include")
+diff --git a/src/sound/src/snd_codec.c b/src/sound/src/snd_codec.c
+index 90beff6..589ba23 100644
+--- a/src/sound/src/snd_codec.c
++++ b/src/sound/src/snd_codec.c
+@@ -21,9 +21,6 @@
+ 
+ #include "snd_codec.h"
+ #include "console.h"
+-#include "snd_mp3.h"
+-#include "snd_vorbis.h"
+-#include "snd_flac.h"
+ #include "snd_wave.h"
+ #include "zone.h"
+ #include <stdio.h>
+@@ -51,9 +48,6 @@ void S_CodecInit() {
+     snd_codec_t* codec;
+     codecs = NULL;
+ 
+-    S_CodecRegister(&mp3_codec);
+-    S_CodecRegister(&vorbis_codec);
+-    S_CodecRegister(&flac_codec);
+     S_CodecRegister(&wav_codec);
+ 
+     codec = codecs;

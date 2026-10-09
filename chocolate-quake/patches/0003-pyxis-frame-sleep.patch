@@ -1,0 +1,22 @@
+diff --git a/src/host/src/host.c b/src/host/src/host.c
+index ee13065..ebed578 100644
+--- a/src/host/src/host.c
++++ b/src/host/src/host.c
+@@ -502,8 +502,16 @@ Returns false if the time is too short to run a frame
+ qboolean Host_FilterTime(float time) {
+     realtime += time;
+ 
+-    if (!cls.timedemo && realtime - oldrealtime < 1.0 / 72.0)
++    if (!cls.timedemo && realtime - oldrealtime < 1.0 / 72.0) {
++#ifdef __pyxis__
++        // Sleep through the rest of the frame instead of spinning on the
++        // clock. Whole milliseconds, rounded down, so the next frame is never
++        // late; the loop polls for the remainder.
++        double remaining = 1.0 / 72.0 - (realtime - oldrealtime);
++        SDL_Delay((Uint32) (remaining * 1000.0));
++#endif
+         return false; // framerate is too high
++    }
+ 
+     host_frametime = realtime - oldrealtime;
+     oldrealtime = realtime;
