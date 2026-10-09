@@ -14,6 +14,8 @@
 #include <abi/system_info.h>
 #include <abi/tcp.h>
 #include <abi/udp.h>
+#include <bundle.h>
+#include <bundle_launch.h>
 #include <clock.h>
 #include <directory.h>
 #include <file.h>
@@ -39,6 +41,8 @@ enum { RESOURCE_LIMIT = 14 };
 
 struct resources {
   handle_t object, child;
+  struct bundle_program *bundle;
+  struct bundle_launch *launch;
   char **argv;
   char *argument_bytes;
   struct launch_grant *grants;
@@ -117,6 +121,14 @@ static enum call_status release_resources(struct resources *owned)
       status = CALL_IO;
     }
     owned->hashing = false;
+  }
+  if (owned->launch) {
+    bundle_launch_close(owned->launch);
+    owned->launch = NULL;
+  }
+  if (owned->bundle) {
+    bundle_program_close(owned->bundle);
+    owned->bundle = NULL;
   }
   if (owned->object != HANDLE_INVALID) {
     if (handle_close(owned->object) != 0) {
@@ -226,15 +238,46 @@ static enum call_status open_path(const char *path, uint64_t kind, uint64_t righ
   return status;
 }
 
-static enum call_status open_program(const char *command, handle_t *image)
+static enum call_status open_bundle_command(const char *command, struct resources *owned)
+{
+  const char *catalog = startup_environment("PYXIS_BUNDLE_CATALOG");
+  if (!catalog) {
+    return CALL_NOT_FOUND;
+  }
+  struct path_context context = {
+    .directories = (handle_t *)startup_working_directories(),
+    .count = startup_working_directory_count(),
+  };
+  return bundle_command_open(&context, catalog, command, &owned->bundle);
+}
+
+static enum call_status open_program(const char *command, struct resources *owned)
 {
   if (!*command) {
     return CALL_BAD_REQUEST;
   }
-  if (strchr(command, '/')) {
-    return open_path(command, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, image);
-  }
   size_t length = strlen(command);
+  size_t end = length;
+  while (end && command[end - 1] == '/') {
+    --end;
+  }
+  if (end >= 4 && !memcmp(command + end - 4, ".pxb", 4)) {
+    struct path_context context = {
+      .directories = (handle_t *)startup_working_directories(),
+      .count = startup_working_directory_count(),
+    };
+    return bundle_open(&context, command, &owned->bundle);
+  }
+  if (strchr(command, '/')) {
+    enum call_status status = open_path(command, DIRECTORY_KIND_FILE,
+        FILE_RIGHT_READ, &owned->object);
+    if (status == CALL_NOT_FOUND && !strncmp(command, "bin://", 6) &&
+        command[6] && !strchr(command + 6, '/') &&
+        !(length >= 4 && !strcmp(command + length - 4, ".pxe"))) {
+      status = open_bundle_command(command + 6, owned);
+    }
+    return status;
+  }
   if (length > SIZE_MAX - sizeof("boot://.pxe")) {
     return CALL_LIMIT;
   }
@@ -245,12 +288,16 @@ static enum call_status open_program(const char *command, handle_t *image)
   memcpy(path, "bin://", 6);
   memcpy(path + 6, command, length);
   memcpy(path + 6 + length, ".pxe", sizeof(".pxe"));
-  enum call_status status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, image);
+  enum call_status status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ,
+      &owned->object);
+  if (status == CALL_NOT_FOUND) {
+    status = open_bundle_command(command, owned);
+  }
   if (status == CALL_NOT_FOUND) {
     memcpy(path, "boot://", 7);
     memcpy(path + 7, command, length);
     memcpy(path + 7 + length, ".pxe", sizeof(".pxe"));
-    status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, image);
+    status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &owned->object);
   }
   free(path);
   return status;
@@ -323,13 +370,15 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   request->grants = (uintptr_t)grants;
   request->resources = (uintptr_t)bindings;
   request->roots = (uintptr_t)roots;
-  request->root_count = root_count;
   request->working_directories = (uintptr_t)owned->directories;
   request->working_directory_count = depth;
   request->working_path = (uintptr_t)startup_working_path();
   request->environment = (uintptr_t)startup_environment_variables();
   request->environment_count = startup_environment_count();
   for (size_t i = 0; i < root_count + depth; ++i) {
+    if (i < root_count && !strcmp((const char *)startup_roots()[i].name, "app")) {
+      continue;
+    }
     handle_t source = i < root_count ? startup_roots()[i].handle :
         startup_working_directory(i - root_count);
     struct handle_info info;
@@ -341,7 +390,8 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
       return CALL_WRONG_TYPE;
     }
     if (i < root_count) {
-      roots[i] = (struct launch_binding){startup_roots()[i].name, request->grant_count};
+      roots[request->root_count++] =
+          (struct launch_binding){startup_roots()[i].name, request->grant_count};
     } else {
       owned->directories[i - root_count] = request->grant_count;
     }
@@ -433,6 +483,24 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   return CALL_OK;
 }
 
+static enum call_status prepare_bundle_launch(struct resources *owned,
+    const struct launch_request *request)
+{
+  static const char *names[] = {
+    "input", "output", "memory", "display", "clock", "system_info", "echo",
+    "udp", "tcp", "random", "profile", "launcher", "audio", "screen_capture",
+  };
+  struct bundle_authority inventory[sizeof(names) / sizeof(names[0])];
+  size_t count = 0;
+  for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
+    handle_t source = startup_resource(names[i]);
+    if (source != HANDLE_INVALID) {
+      inventory[count++] = (struct bundle_authority){names[i], source};
+    }
+  }
+  return bundle_launch_prepare(owned->bundle, request, inventory, count, &owned->launch);
+}
+
 static int run_program(lua_State *state)
 {
   luaL_checktype(state, 1, LUA_TTABLE);
@@ -488,18 +556,23 @@ static int run_program(lua_State *state)
   struct launch_request request = {.argv = (uintptr_t)owned->argv, .argc = count};
   struct launch_binding bindings[RESOURCE_LIMIT], roots[STARTUP_ROOT_LIMIT];
   if (status == CALL_OK) {
-    status = open_program(owned->argv[0], &owned->object);
+    status = open_program(owned->argv[0], owned);
   }
   if (status == CALL_OK) {
-    request.image = owned->object;
+    request.image = owned->bundle ? bundle_program_image(owned->bundle) : owned->object;
     status = prepare_grants(owned, &request, bindings, roots);
+  }
+  if (status == CALL_OK && owned->bundle) {
+    status = prepare_bundle_launch(owned, &request);
   }
   if (status == CALL_OK) {
     struct path_context interpreters = {
       .directories = (handle_t *)startup_working_directories(),
       .count = startup_working_directory_count(),
     };
-    status = program_launch(launcher, &request, &interpreters, &owned->child);
+    const struct launch_request *prepared = owned->launch ?
+        bundle_launch_request(owned->launch) : &request;
+    status = program_launch(launcher, prepared, &interpreters, &owned->child);
   }
   if (status != CALL_OK) {
     return native_error(state, owned, "run", status);
