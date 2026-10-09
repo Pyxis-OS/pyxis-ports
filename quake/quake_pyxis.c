@@ -24,6 +24,7 @@ struct pending_key {
 
 static handle_t display, keyboard, pointer, clock;
 static struct display_buffer buffer;
+static uint64_t slot; /* Held display slot the next frame is drawn into. */
 static bool display_owned, keyboard_owned, pointer_owned;
 static unsigned scale, left, top;
 static uint32_t palette_pixels[256];
@@ -330,7 +331,6 @@ void pyxis_quake_start(void)
   top = (buffer.height - QUAKEGENERIC_RES_Y * scale) / 2;
 
   started_at = now_ns();
-  require_ok(display_present(display), "display presentation");
   if (pointer_owned) {
     request_pointer_lock();
   }
@@ -372,8 +372,8 @@ void QG_DrawFrame(void *pixels)
   const unsigned char *frame = pixels;
   for (unsigned y = 0; y < QUAKEGENERIC_RES_Y; ++y) {
     for (unsigned repeat = 0; repeat < scale; ++repeat) {
-      volatile uint32_t *out = (volatile uint32_t *)(uintptr_t)
-          (buffer.address + (top + y * scale + repeat) * buffer.pitch);
+      uint32_t *out = (uint32_t *)(display_slot_address(&buffer, slot) +
+          (top + y * scale + repeat) * buffer.pitch);
       out += left;
       for (unsigned x = 0; x < QUAKEGENERIC_RES_X; ++x) {
         uint32_t pixel = palette_pixels[frame[y * QUAKEGENERIC_RES_X + x]];
@@ -383,6 +383,11 @@ void QG_DrawFrame(void *pixels)
       }
     }
   }
+  /* The letterbox is never drawn, so every slot keeps it black. The first
+   * submitted frame makes the graphics visible. */
+  struct display_submit_reply submitted;
+  require_ok(display_submit(display, slot, &submitted), "display submission");
+  slot = submitted.next;
 }
 
 int QG_GetKey(int *down, int *key)

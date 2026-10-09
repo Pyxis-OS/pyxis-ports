@@ -36,28 +36,31 @@ static bool display_mode(const struct display_size_reply *size, SDL_DisplayMode 
   return mode->format != SDL_PIXELFORMAT_UNKNOWN && mode->w > 0 && mode->h > 0;
 }
 
-/* Copy rows from SDL's surface into the mapping, clipped to both. */
-static void copy_to_display(const SDL_Surface *surface, SDL_Rect area)
+/* Copy SDL's whole surface into the held slot, clipped to both, and submit
+ * it. Slots rotate and each keeps an older frame, so dirty rectangles alone
+ * would leave stale areas behind. Pixels outside the surface stay zero. */
+static int submit_surface(const SDL_Surface *surface)
 {
   const struct display_buffer *buffer = &pyxis_video.buffer;
   int width = SDL_min(surface->w, (int)buffer->width);
   int height = SDL_min(surface->h, (int)buffer->height);
-  int right = SDL_min(area.x + area.w, width);
-  int bottom = SDL_min(area.y + area.h, height);
-  int left = SDL_max(area.x, 0);
-  int top = SDL_max(area.y, 0);
-  if (left >= right || top >= bottom) {
-    return;
-  }
-
-  size_t bytes = (size_t)(right - left) * PIXEL_BYTES;
-  for (int y = top; y < bottom; ++y) {
-    uint8_t *destination = (uint8_t *)(uintptr_t)buffer->address +
-        (size_t)y * buffer->pitch + (size_t)left * PIXEL_BYTES;
+  size_t bytes = (size_t)SDL_max(width, 0) * PIXEL_BYTES;
+  uintptr_t slot = display_slot_address(buffer, pyxis_video.slot);
+  for (int y = 0; y < height; ++y) {
+    uint8_t *destination = (uint8_t *)slot + (size_t)y * buffer->pitch;
     const uint8_t *source = (const uint8_t *)surface->pixels +
-        (size_t)y * (size_t)surface->pitch + (size_t)left * PIXEL_BYTES;
+        (size_t)y * (size_t)surface->pitch;
     SDL_memcpy(destination, source, bytes);
   }
+  struct display_submit_reply submitted;
+  enum call_status status = display_submit(pyxis_video.display, pyxis_video.slot,
+      &submitted);
+  if (status != CALL_OK) {
+    return SDL_SetError("Pyxis display submission failed (status %u)", (unsigned)status);
+  }
+  pyxis_video.slot = submitted.next;
+  pyxis_video.presented = true;
+  return 0;
 }
 
 static void release_display(void)
@@ -66,6 +69,7 @@ static void release_display(void)
     display_release(pyxis_video.display);
     pyxis_video.display_owned = false;
     pyxis_video.presented = false;
+    pyxis_video.slot = 0;
   }
 }
 
@@ -100,11 +104,13 @@ void PYXIS_FollowDisplaySize(SDL_VideoDevice *device)
       pyxis_video.generation = size.generation;
       return;
     }
-    /* The replacement is blank; show the last frame until the next one. */
+    /* Every new slot is held. Resubmit the last frame at the new geometry
+     * rather than wait for the program's next update. */
+    pyxis_video.slot = 0;
     SDL_Surface *surface = pyxis_video.window ?
         SDL_GetWindowData(pyxis_video.window, PYXIS_SURFACE) : NULL;
-    if (surface) {
-      copy_to_display(surface, (SDL_Rect){0, 0, surface->w, surface->h});
+    if (surface && pyxis_video.presented) {
+      submit_surface(surface);
     }
   }
   pyxis_video.generation = size.generation;
@@ -237,22 +243,14 @@ static int PYXIS_UpdateWindowFramebuffer(SDL_VideoDevice *device, SDL_Window *wi
     const SDL_Rect *rects, int numrects)
 {
   (void)device;
+  (void)rects;
+  (void)numrects;
   SDL_Surface *surface = SDL_GetWindowData(window, PYXIS_SURFACE);
   if (!surface || !pyxis_video.display_owned) {
     return SDL_SetError("Pyxis window has no framebuffer");
   }
-  for (int i = 0; i < numrects; ++i) {
-    copy_to_display(surface, rects[i]);
-  }
-  /* The first PRESENT shows graphics; later frames appear without one. */
-  if (!pyxis_video.presented) {
-    enum call_status status = display_present(pyxis_video.display);
-    if (status != CALL_OK) {
-      return SDL_SetError("Pyxis display presentation failed (status %u)", (unsigned)status);
-    }
-    pyxis_video.presented = true;
-  }
-  return 0;
+  /* The first submitted frame shows graphics. */
+  return submit_surface(surface);
 }
 
 static void PYXIS_DeleteDevice(SDL_VideoDevice *device)

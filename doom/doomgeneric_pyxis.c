@@ -87,6 +87,7 @@ enum doom_key {
 
 static handle_t display, keyboard, clock;
 static struct display_buffer buffer;
+static uint64_t slot; /* Held display slot the next frame is drawn into. */
 static bool display_owned, keyboard_owned, focused;
 static bool held[KEY_COUNT];
 static bool game_down[256];
@@ -182,7 +183,8 @@ static void adapt_display(void)
   }
   enum call_status status = display_replace(display, size.generation, &buffer);
   if (status == CALL_OK) {
-    update_layout(); /* New backing is zeroed, including the letterbox. */
+    update_layout(); /* New slots are zeroed, including the letterbox. */
+    slot = 0;
   } else {
     fprintf(stderr, "doom: display replacement failed (status %u); retaining frame\n",
         (unsigned)status);
@@ -227,7 +229,6 @@ void DG_Init(void)
     exit(EXIT_FAILURE);
   }
   started_at = now_ns();
-  require_ok(display_present(display), "display presentation");
 }
 
 void DG_DrawFrame(void)
@@ -235,8 +236,8 @@ void DG_DrawFrame(void)
   adapt_display();
   for (unsigned y = 0; y < DOOMGENERIC_RESY; ++y) {
     for (unsigned repeat = 0; repeat < scale; ++repeat) {
-      volatile uint32_t *out = (volatile uint32_t *)(uintptr_t)
-          (buffer.address + (top + y * scale + repeat) * buffer.pitch);
+      uint32_t *out = (uint32_t *)(display_slot_address(&buffer, slot) +
+          (top + y * scale + repeat) * buffer.pitch);
       out += left;
       for (unsigned x = 0; x < DOOMGENERIC_RESX; ++x) {
         uint32_t rgb = DG_ScreenBuffer[y * DOOMGENERIC_RESX + x];
@@ -249,6 +250,11 @@ void DG_DrawFrame(void)
       }
     }
   }
+  /* The letterbox is never drawn, so every slot keeps it black. The first
+   * submitted frame makes the graphics visible. */
+  struct display_submit_reply submitted;
+  require_ok(display_submit(display, slot, &submitted), "display submission");
+  slot = submitted.next;
 }
 
 void DG_SleepMs(uint32_t milliseconds)
