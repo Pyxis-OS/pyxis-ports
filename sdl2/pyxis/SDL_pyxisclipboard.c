@@ -5,6 +5,7 @@
 #ifdef SDL_VIDEO_DRIVER_PYXIS
 
 #include <clipboard.h>
+#include <keyboard.h>
 
 #include "SDL_pyxisvideo.h"
 
@@ -25,7 +26,7 @@ static void forget_action(void)
 void PYXIS_CancelClipboard(void)
 {
   if (action_id) {
-    clipboard_graphics_refuse(clipboard, action_id, operation);
+    keyboard_clipboard_refuse(pyxis_video.keyboard, action_id, operation);
   }
   forget_action();
 }
@@ -43,10 +44,15 @@ bool PYXIS_QueueClipboard(uint64_t id, uint64_t op, uint64_t layer)
 {
   if (action_id) {
     PYXIS_CancelClipboard();
-    clipboard_graphics_refuse(layer_grant(layer), id, op);
+    keyboard_clipboard_refuse(pyxis_video.keyboard, id, op);
     return false;
   }
   clipboard = layer_grant(layer);
+  if (clipboard == HANDLE_INVALID) {
+    keyboard_clipboard_refuse(pyxis_video.keyboard, id, op);
+    forget_action();
+    return false;
+  }
   action_id = id;
   operation = op;
   delivered = false;

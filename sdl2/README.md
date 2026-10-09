@@ -98,8 +98,11 @@ private cache reports a publication or supplies text. A fresh physical local
 Ctrl+C/V or Ctrl+Shift+C/V command supplies one operation-specific attempt;
 shared Super+Shift+C/V arrives as one Ctrl+C/V event with a private native
 identity and per-event Control snapshot. Global modifiers retain their real
-state. Held shared command repeats and releases remain consumed through their
-physical release, even after modifiers change.
+state. Unsupported shared commands, including absent grants and refused native
+identity, emit no SDL command. Shared press, repeats and releases remain consumed
+through physical release, even after modifiers change. Owner-scoped keyboard
+refusal consumes a cancelled action without requiring that layer's clipboard
+grant, so a refused shared action does not block a later local gesture.
 
 The private event queue node retains the native identity through single-event
 GET delivery; public SDL events, PEEK and synthetic pushes supply none. An

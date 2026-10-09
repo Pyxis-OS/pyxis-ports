@@ -161,16 +161,22 @@ static void handle_key(const struct keyboard_event *event)
   bool shared_command = (event->key == KEY_C || event->key == KEY_V) &&
       (event->modifiers & (KEY_MOD_CONTROL | KEY_MOD_ALT | KEY_MOD_SUPER | KEY_MOD_SHIFT)) ==
       (KEY_MOD_SUPER | KEY_MOD_SHIFT);
-  if (shared_command && event->action == KEY_PRESS) {
+  if (shared_command) {
+    if (event->action != KEY_PRESS) {
+      return;
+    }
     *shared_held = true;
-  }
-  if (shared_command && !event->clipboard_action_id) {
-    return;
+    if (!event->clipboard_action_id) {
+      return;
+    }
   }
   bool pressed = event->action != KEY_RELEASE;
   if (event->clipboard_action_id && event->action == KEY_PRESS) {
     bool armed = PYXIS_QueueClipboard(event->clipboard_action_id,
         event->clipboard_operation, event->clipboard_layer);
+    if (!armed && event->clipboard_layer == CLIPBOARD_LAYER_SHARED) {
+      return;
+    }
     int posted = SDL_SendKeyboardKeyWithClipboard(SDL_PRESSED, scancodes[event->key],
         armed ? event->clipboard_action_id : 0,
         event->clipboard_layer == CLIPBOARD_LAYER_SHARED);
