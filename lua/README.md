@@ -86,6 +86,15 @@ actual signed exit status), `dir` (array of name/kind entries) and `sha256`
 consumed SDK; missing authority and native failures raise Lua errors. The
 module is executable-only, leaving configuration embeddings restricted.
 
+`pyxis.run` also resolves native development bundles through the explicit
+`PYXIS_BUNDLE_CATALOG` URI after a bare command's `bin://name.pxe` lookup fails.
+`bin://name` retains an existing file lookup before catalog resolution; a
+`.pxb` path, including a trailing slash, selects that bundle's default entry.
+Invalid catalogs or manifests raise native errors. Bundles receive their
+manifest's requested resources from Lua's existing grants and read-only
+app/resource roots. Plain children omit an
+inherited `app` root. Bundled scripts and ZIP bundles are not supported.
+
 `pyxis.run` inherits live C stdin/stdout/stderr, omitting closed streams.
 `io.input`/`io.output` rebinding remains Lua-local. Standard files retain upstream Lua's protection against
 closing them through `io.close`; the native accessor also handles streams closed
