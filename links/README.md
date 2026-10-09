@@ -66,9 +66,10 @@ to empty units.
     tree. It loads through `file.c` with libc `stat`, `open` and
     `opendir`/`readdir`, including Links' directory listings.
   - **Providers.** Any other scheme is a namespace provider, read to its end
-    with `fopen`. A page that starts like HTML (`<!doctype html`, `<html`,
-    `<head`, `<body`, `<title` or `<!--`) is marked as HTML. Anything else is
-    typed by its extension, as for local files.
+    with `fopen`. Response metadata supplies Content-Type when present. Without
+    it, a page that starts like HTML (`<!doctype html`, `<html`, `<head`,
+    `<body`, `<title` or `<!--`) is marked as HTML. Anything else is typed by
+    its extension, as for local files.
 - **0004 Save configuration under `home://links/`.** Startup finds or makes
   that directory and loads `links.cfg`, `html.cfg` and `user.cfg` from it.
   Options, HTML options, bookmarks, cookies and the URL history are saved there.
@@ -79,6 +80,15 @@ to empty units.
   failure reports the error of the failing call. There is no directory sync
   (libc cannot open a directory), so after a crash the new name may be lost
   and the old file remains.
+- **0005 Adopt provider redirect snapshots.** Libc follows HTTP redirects before
+  returning the FILE. Links copies its response metadata before closing the
+  stream and uses the final URL for the document base, relative links, navigation
+  history and downloads. A final fragment selects the document position, taking
+  precedence over an initial fragment. The final body has its own cache entry;
+  requested URLs alias that snapshot without changing an inline cache key or
+  fetching it again. Aliases do not keep bodies alive indefinitely: after the
+  body is evicted, opening a requested URL fetches a new snapshot. Native files
+  and inherited streams have no response metadata and retain their behavior.
 - **Downloads.** Patch 0001 no longer defines an unsupported `O_EXCL`: libc
   now has exclusive creation, so Links' download path works. The save dialog
   takes any path the program's roots allow, relative to the inherited working
@@ -102,13 +112,13 @@ Links' internal threads talk through virtual pipes in one process, as on DOS.
 ## Limits
 
 - **Loading blocks.** Every load blocks the interface, network fetches
-  included. Only the HTTP provider's own deadlines bound them.
+  included. HTTP opens share a 30-second chain deadline.
 - **HTTP.**
-  - A redirect or any status other than 200/204 is an open error; a redirect
-    shows "Operation not supported".
+  - The shared userspace open bridge follows bounded redirects and accepts a final 200/204.
+    Other final statuses and rejected redirect chains remain open errors.
   - GET forms work as URLs with a query string. There is no POST, and no
     cookies or request headers.
-  - The provider reports no media type, so HTML is detected by sniffing.
+  - Response Content-Type takes precedence over HTML sniffing and URL extensions.
 - **Local paths.** Native paths are literal bytes, except that Links decodes
   `%XX` escapes in local URLs as it does for `file://`. Symlinks are listed but
   cannot be opened. Directories show size 0.

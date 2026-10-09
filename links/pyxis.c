@@ -6,6 +6,7 @@
  * (see COPYING in the Links source). */
 #include "links.h"
 #include "pyxis_console.h"
+#include <pyxis/stdio.h>
 
 #define VIRTUAL_PIPE_SIZE	512
 
@@ -268,20 +269,29 @@ static int looks_like_html(unsigned char *data, int len)
 	return 0;
 }
 
-/* Read a provider resource to its end. The provider gives no media type, so
- * a page that starts like HTML is marked as HTML; anything else is typed by
- * its URL's extension, as for a local file. */
+/* Read one provider snapshot to its end. Redirects have already been fetched
+ * by libc; the requested cache entry aliases the final snapshot. */
 static void provider_func(struct connection *c)
 {
 	struct cache_entry *e;
+	struct pyxis_response_info response;
 	FILE *f;
 	unsigned char *data;
 	int len = 0, capacity = 4096, r;
 	unsigned char *head;
+	unsigned char *url = NULL, *position;
+	int head_len = 0, redirected = 0;
 
 	f = fopen(cast_const_char c->url, "r");
 	if (!f) {
 		setcstate(c, get_error_from_errno(errno));
+		abort_connection(c);
+		return;
+	}
+	if (pyxis_stdio_response(f, &response)) {
+		int er = errno;
+		fclose(f);
+		setcstate(c, get_error_from_errno(er));
 		abort_connection(c);
 		return;
 	}
@@ -315,11 +325,24 @@ static void provider_func(struct connection *c)
 	}
 	fclose(f);
 
-	head = stracpy(cast_uchar(looks_like_html(data, len) ? "\r\nContent-Type: text/html\r\n" : ""));
+	head = init_str();
+	if ((response.flags & PYXIS_RESPONSE_MEDIA_TYPE) && *response.media_type) {
+		add_to_str(&head, &head_len, cast_uchar "\r\nContent-Type: ");
+		add_to_str(&head, &head_len, cast_uchar response.media_type);
+		add_to_str(&head, &head_len, cast_uchar "\r\n");
+	} else if (looks_like_html(data, len)) {
+		add_to_str(&head, &head_len, cast_uchar "\r\nContent-Type: text/html\r\n");
+	}
+	if (response.flags & PYXIS_RESPONSE_URL) {
+		url = stracpy(cast_uchar response.url);
+		if ((position = extract_position(url))) mem_free(position);
+		redirected = strcmp(cast_const_char url, cast_const_char c->url) != 0;
+	}
 	if (!c->cache) {
 		if (get_connection_cache_entry(c)) {
 			mem_free(data);
 			mem_free(head);
+			if (url) mem_free(url);
 			setcstate(c, S_OUT_OF_MEM);
 			abort_connection(c);
 			return;
@@ -327,19 +350,50 @@ static void provider_func(struct connection *c)
 		c->cache->refcount--;
 	}
 	e = c->cache;
+	if (redirected) {
+		if (find_in_cache(url, &e) && new_cache_entry(url, &e)) {
+			mem_free(data);
+			mem_free(head);
+			mem_free(url);
+			setcstate(c, S_OUT_OF_MEM);
+			abort_connection(c);
+			return;
+		}
+	}
+	if (url) mem_free(url);
+	if (e->redirect) mem_free(e->redirect), e->redirect = NULL;
+	if (e->pyxis_redirect) mem_free(e->pyxis_redirect), e->pyxis_redirect = NULL;
+	e->incomplete = 1;
+	e->http_code = response.flags & PYXIS_RESPONSE_HTTP ? (int)response.status : -1;
 	if (e->head) mem_free(e->head);
 	e->head = head;
 	if ((r = add_fragment(e, 0, data, len)) < 0) {
 		mem_free(data);
 		setcstate(c, r);
 		abort_connection(c);
+		if (redirected) e->refcount--;
 		return;
 	}
 	truncate_entry(e, len, 1);
 	mem_free(data);
-	c->cache->incomplete = 0;
+	e->incomplete = 0;
+	if (redirected) {
+		/* Never change the inline cache key. Keep the body pinned while the
+		 * completion callbacks adopt it, without pinning it for alias life. */
+		struct cache_entry *alias = c->cache;
+		delete_entry_content(alias);
+		if (alias->head) mem_free(alias->head);
+		alias->head = stracpy(cast_uchar "");
+		if (alias->redirect) mem_free(alias->redirect), alias->redirect = NULL;
+		if (alias->pyxis_redirect) mem_free(alias->pyxis_redirect);
+		alias->pyxis_redirect = stracpy(cast_uchar response.url);
+		alias->http_code = e->http_code;
+		alias->incomplete = 0;
+		finish_cache_entry(e);
+	}
 	setcstate(c, S__OK);
 	abort_connection(c);
+	if (redirected) e->refcount--;
 }
 
 /* http://, https:// and every scheme Links does not know. A startup root such
