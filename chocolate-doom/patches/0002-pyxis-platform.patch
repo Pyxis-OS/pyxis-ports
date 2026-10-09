@@ -86,34 +86,6 @@ index 376e1bb..8ef0225 100644
  extern const sound_module_t sound_sdl_module;
  extern const sound_module_t sound_pcsound_module;
  extern const music_module_t music_sdl_module;
-diff --git a/src/i_system.c b/src/i_system.c
-index dba3590..bb23500 100644
---- a/src/i_system.c
-+++ b/src/i_system.c
-@@ -27,6 +27,7 @@
- #define WIN32_LEAN_AND_MEAN
- #include <windows.h>
- #else
-+#include <sys/stat.h>
- #include <unistd.h>
- #endif
- 
-@@ -218,9 +219,14 @@ void I_PrintStartupBanner(const char *gamedescription)
- 
- boolean I_ConsoleStdout(void)
- {
--#ifdef _WIN32
-+#if defined(_WIN32)
-     // SDL "helpfully" always redirects stdout to a file.
-     return false;
-+#elif defined(__pyxis__)
-+    // Pyxis has no isatty; a terminal reports itself as a character device.
-+    struct stat st;
-+
-+    return fstat(fileno(stdout), &st) == 0 && S_ISCHR(st.st_mode);
- #else
-     return isatty(fileno(stdout));
- #endif
 diff --git a/src/i_video.c b/src/i_video.c
 index 6ff3b80..01b5cd5 100644
 --- a/src/i_video.c
@@ -243,51 +215,6 @@ index 08c0c8f..ca349f9 100644
  
  int TXT_CanSelectFiles(void)
  {
-diff --git a/textscreen/txt_spinctrl.c b/textscreen/txt_spinctrl.c
-index 2a93e96..c32c1ce 100644
---- a/textscreen/txt_spinctrl.c
-+++ b/textscreen/txt_spinctrl.c
-@@ -27,13 +27,30 @@
- #include "txt_utf8.h"
- #include "txt_window.h"
- 
-+// Decimal places needed to show a step: ceil(-log10(step)), counted without
-+// libm's logarithms, which Pyxis's libc doesn't provide.
-+
-+static int StepPrecision(float step)
-+{
-+    int precision = 0;
-+    float scale = 1;
-+
-+    while (step > 0 && step * scale < 1 && precision < 9)
-+    {
-+        scale *= 10;
-+        ++precision;
-+    }
-+
-+    return precision;
-+}
-+
- // Generate the format string to be used for displaying floats
- 
- static void FloatFormatString(float step, char *buf, size_t buf_len)
- {
-     int precision;
- 
--    precision = (int) ceil(-log(step) / log(10));
-+    precision = StepPrecision(step);
- 
-     if (precision > 0)
-     {
-@@ -67,7 +84,7 @@ static unsigned int FloatWidth(float val, float step)
- 
-     // Add a decimal part if the precision specifies it
- 
--    precision = (unsigned int) ceil(-log(step) / log(10));
-+    precision = (unsigned int) StepPrecision(step);
- 
-     if (precision > 0)
-     {
 diff --git a/textscreen/txt_window.c b/textscreen/txt_window.c
 index 141a441..ceda9e4 100644
 --- a/textscreen/txt_window.c

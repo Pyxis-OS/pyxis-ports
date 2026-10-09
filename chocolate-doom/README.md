@@ -25,20 +25,22 @@ offered to CMake, so screenshots are PCX.
 2. **Platform.**
    - **Textscreen:** there is no external file picker, so file selection
      reports itself unavailable, and no URL opener, so a help URL is printed.
-     The spin control counts decimal places without libm's `log`, which the
-     libc doesn't have.
-   - **Console test:** with no `isatty`, stdout is a console when `fstat`
-     reports a character device.
-   - **Missing libc pieces:** with no `EISDIR`, a name that fails to open as a
-     file still exists when `stat` reports a directory. With no `localeconv`,
-     configuration floats use the "C" locale's `.`.
-   - **Environment:** with no `putenv`, a configured video driver goes to SDL's
-     `SDL_HINT_VIDEODRIVER`; the X screensaver embedding is left out.
-     Upstream configures Timidity for SDL_mixer even when SDL_mixer is
-     disabled; that setup now sits under upstream's own `DISABLE_SDL2MIXER`
-     guard.
+   - **Timidity:** upstream configures Timidity for SDL_mixer even when
+     SDL_mixer is disabled; that setup now sits under upstream's own
+     `DISABLE_SDL2MIXER` guard.
    - **IWAD search:** `boot://share/doom` replaces the XDG and Steam
      directories.
+   - **Known libc gaps,** each worked around in the patch until libc provides
+     it:
+     - **`putenv`:** a configured video driver goes to SDL's
+       `SDL_HINT_VIDEODRIVER` instead of the environment, which only SDL reads
+       anyway. The X screensaver embedding, which also sets the environment,
+       is left out.
+     - **`localeconv`:** configuration floats always use the "C" locale's `.`.
+       This matches libc, which has only the "C" locale.
+     - **`EISDIR`:** when a name fails to open as a file, a `stat` reporting a
+       directory decides that it still exists. The answer is the same; it
+       costs one more lookup.
 3. **Software scaling.**
    - **Default:** `force_software_renderer` defaults to on: one
      nearest-neighbour stretch from 320x200 to the 4:3 area, because SDL's
