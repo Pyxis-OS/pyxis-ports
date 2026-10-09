@@ -106,7 +106,7 @@ local function main()
     print("Lua also requires --mbedtls PATH to its configured development prefix.")
     print("Libpng also requires --zlib PATH to its development prefix.")
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
-    print("Chocolate Doom and Chocolate Quake also require --sdl2 PATH to its development prefix.")
+    print("Chocolate Doom, Chocolate Quake and EDuke32 also require --sdl2 PATH to its development prefix.")
     return
   end
   local name, options = arg[1], {}
@@ -115,7 +115,7 @@ local function main()
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
-      name == "chocolate-quake" }
+      name == "chocolate-quake" or name == "eduke32" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -206,7 +206,8 @@ local function main()
     fmt = make_path(capture({ "realpath", "-e", "--", options["--fmt"] }))
     require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
   end
-  if name == "devilutionx" or name == "chocolate-doom" or name == "chocolate-quake" then
+  if name == "devilutionx" or name == "chocolate-doom" or name == "chocolate-quake" or
+      name == "eduke32" then
     assert(options["--sdl2"], name .. " needs --sdl2 PATH to its development prefix")
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")

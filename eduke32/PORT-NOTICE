@@ -1,0 +1,21 @@
+EDuke32 for Pyxis: personal use only
+Upstream: https://voidpoint.io/terminx/eduke32.git
+Revision: ec5824db81817866f70da326d3811bb0f52b3517 (master, 2026-08-07)
+Patches: 0001-pyxis-platform.patch, 0002-pyxis-single-thread.patch,
+         0003-pyxis-paths.patch, 0004-pyxis-frame-sleep.patch
+
+EDuke32's game code is under the GNU General Public License, version 2, in
+gpl-2.0.txt. Its Build engine is under Ken Silverman's Build licence, in
+buildlic.txt, which allows free use and distribution only and requires its
+credits. Many packagers treat the combination as not distributable. The
+bundled libraries (Dear ImGui, loguru, smmalloc, minicoro, LZ4, ENet's
+declarations and others) carry their licences in their source files. The
+patched files remain under their original licences. The program links the
+Pyxis SDL2 port statically; SDL2's zlib licence is SDL2-LICENSE.txt.
+
+An image containing EDuke32 is for the person who built it, with their own
+game data, and must not be shared. Ordinary images, CI and bundles never
+contain it.
+
+The build leaves out OpenGL, Polymer, audio codecs, network play, mimalloc
+and the startup window. SDL2 has no audio here, so the game is silent.

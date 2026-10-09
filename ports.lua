@@ -5,6 +5,7 @@ return {
   ["chocolate-quake"] = "chocolate-quake",
   devilutionx = "devilutionx",
   doom = "doom",
+  eduke32 = "eduke32",
   fastfetch = "fastfetch",
   fmt = "fmt",
   kilo = "kilo",

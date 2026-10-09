@@ -57,6 +57,11 @@ those recipes fetch, adapt or package.
   Use License. The program it builds also links GPL and LGPL libraries, so
   an image containing it is for the person who built it and must not be
   shared; see `devilutionx/PORT-NOTICE`. Pyxis builds it only on request.
+- `eduke32/patches/` modify EDuke32 and remain under the licence of each file
+  they change: the GPL-2.0 for game code and Ken Silverman's Build licence for
+  the engine. An image containing EDuke32 is for the person who built it and
+  must not be shared; see `eduke32/PORT-NOTICE`. Pyxis builds it only on
+  request.
 - Fastfetch's new native adapter/build files and project ASCII logo are original
   Pyxis material under MPL-2.0, as marked in the patch and `fastfetch/PORT-NOTICE`.
   Bundled yyjson remains MIT; its staged header preserves its notice.

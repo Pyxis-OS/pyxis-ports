@@ -1,0 +1,357 @@
+diff --git a/source/audiolib/include/multivoc.h b/source/audiolib/include/multivoc.h
+index f6886a5..190b963 100644
+--- a/source/audiolib/include/multivoc.h
++++ b/source/audiolib/include/multivoc.h
+@@ -68,7 +68,11 @@ enum MV_Errors
+ 
+ const char *MV_ErrorString(int ErrorNumber);
+ 
++#if defined(__pyxis__)
++extern int MV_Locked;
++#else
+ extern thread_local int MV_Locked;
++#endif
+ static FORCE_INLINE void MV_Lock(void)
+ {
+     extern void SoundDriver_PCM_Lock(void);
+diff --git a/source/audiolib/src/_multivc.h b/source/audiolib/src/_multivc.h
+index 8753b3c..05c279b 100644
+--- a/source/audiolib/src/_multivc.h
++++ b/source/audiolib/src/_multivc.h
+@@ -32,7 +32,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ #define MULTIVC_H_
+ 
+ #include "multivoc.h"
++#if !defined(__pyxis__)
++// Only the Vorbis and XMP decoders run tasks; Pyxis builds neither.
+ #include "libasync_config.h"
++#endif
+ 
+ #define VOC_8BIT            0x0
+ #define VOC_16BIT           0x4
+@@ -178,7 +181,9 @@ typedef struct VoiceNode
+     int handle;
+     int priority;
+ 
++#if !defined(__pyxis__)
+     async::task<int> task;
++#endif
+ } VoiceNode;
+ 
+ typedef struct
+diff --git a/source/audiolib/src/multivoc.cpp b/source/audiolib/src/multivoc.cpp
+index 3789ab5..43a3e7c 100644
+--- a/source/audiolib/src/multivoc.cpp
++++ b/source/audiolib/src/multivoc.cpp
+@@ -38,7 +38,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ #include "compat.h"
+ #include "drivers.h"
+ #include "fx_man.h"
++#if !defined(__pyxis__)
+ #include "libasync_config.h"
++#endif
+ #include "linklist.h"
+ #include "osd.h"
+ #include "pitch.h"
+@@ -101,7 +103,11 @@ int MV_ErrorCode = MV_NotInstalled;
+ fix16_t MV_GlobalVolume = fix16_one;
+ fix16_t MV_VolumeSmoothFactor = fix16_one;
+ 
++#if defined(__pyxis__)
++int MV_Locked;
++#else
+ thread_local int MV_Locked;
++#endif
+ char *MV_MusicBuffer;
+ static void (*MV_MusicCallback)(void);
+ 
+@@ -109,6 +115,7 @@ static VoiceNode **MV_Handles;
+ 
+ static bool MV_Mix(VoiceNode * const voice, int const buffer)
+ {
++#if !defined(__pyxis__)
+     if (voice->task.valid())
+     {
+         if (!voice->task.ready())
+@@ -122,6 +129,7 @@ static bool MV_Mix(VoiceNode * const voice, int const buffer)
+             return false;
+         }
+     }
++#endif
+ 
+     if (voice->length == 0 && voice->GetSound(voice) != KeepPlaying)
+         return false;
+@@ -363,8 +371,10 @@ VoiceNode *MV_BeginService(int handle)
+         return nullptr;
+     }
+ 
++#if !defined(__pyxis__)
+     if (voice->task.valid() && !voice->task.ready())
+         voice->task.wait();
++#endif
+ 
+     MV_Lock();
+ 
+diff --git a/source/build/include/minicoro.h b/source/build/include/minicoro.h
+index a93421d..98ece0a 100644
+--- a/source/build/include/minicoro.h
++++ b/source/build/include/minicoro.h
+@@ -379,6 +379,11 @@ extern "C" {
+   #endif
+ #endif
+ 
++#if defined(__pyxis__) && !defined(MCO_NO_MULTITHREAD)
++  /* Pyxis processes have one thread. */
++  #define MCO_NO_MULTITHREAD
++#endif
++
+ #ifndef MCO_THREAD_LOCAL
+   #ifdef MCO_NO_MULTITHREAD
+     #define MCO_THREAD_LOCAL
+diff --git a/source/build/src/baselayer.cpp b/source/build/src/baselayer.cpp
+index aade838..41044a7 100644
+--- a/source/build/src/baselayer.cpp
++++ b/source/build/src/baselayer.cpp
+@@ -18,7 +18,9 @@
+ //#include "minicoro.h"
+ 
+ #define LIBASYNC_IMPLEMENTATION
++#if !defined(__pyxis__)
+ #include "libasync_config.h"
++#endif
+ 
+ // video
+ #ifdef _WIN32
+diff --git a/source/build/src/loguru.cpp b/source/build/src/loguru.cpp
+index 21848d9..3aaebe3 100644
+--- a/source/build/src/loguru.cpp
++++ b/source/build/src/loguru.cpp
+@@ -36,6 +36,7 @@
+ #include <algorithm>
+ #include <atomic>
+ #include <cassert>
++#include <cctype>
+ #include <chrono>
+ #include <cstdarg>
+ #include <cstdio>
+@@ -43,10 +44,12 @@
+ #include <cstring>
+ #include <climits>
+ #include <mutex>
+-#include <regex>
+ #include <string>
+-#include <thread>
+ #include <vector>
++#if !defined(__pyxis__)
++#include <regex>
++#include <thread>
++#endif
+ 
+ #if LOGURU_SYSLOG
+ #include <syslog.h>
+@@ -54,7 +57,9 @@
+ #define LOG_USER 0
+ #endif
+ 
++#if !defined(__pyxis__)
+ #include <signal.h>
++#endif
+ 
+ #ifdef _WIN32
+ 	#include <direct.h>
+@@ -86,7 +91,12 @@
+ 	#define LOGURU_USE_LOCALE 0
+ #endif
+ 
+-#if defined(_WIN32) || defined(__CYGWIN__)
++#if defined(__pyxis__)
++	// Pyxis processes have one thread, no signals and no stack traces.
++	#define LOGURU_PTHREADS    0
++	#define LOGURU_WINTHREADS  0
++	#define LOGURU_STACKTRACES 0
++#elif defined(_WIN32) || defined(__CYGWIN__)
+ 	#define LOGURU_PTHREADS    0
+ 	#define LOGURU_WINTHREADS  1
+ 	#ifndef LOGURU_STACKTRACES
+@@ -206,7 +216,14 @@ namespace loguru
+ 	bool      g_preamble_verbose  = true;
+ 	bool      g_preamble_pipe     = true;
+ 
+-	static std::recursive_mutex  s_mutex;
++#if defined(__pyxis__)
++	// One thread per process: locking is a no-op.
++	struct single_thread_mutex { void lock() {} void unlock() {} };
++	using log_mutex = single_thread_mutex;
++#else
++	using log_mutex = std::recursive_mutex;
++#endif
++	static log_mutex             s_mutex;
+ 	static Verbosity             s_max_out_verbosity = Verbosity_OFF;
+ 	static std::string           s_argv0_filename;
+ 	static std::string           s_arguments;
+@@ -220,7 +237,9 @@ namespace loguru
+ 	static std::atomic<unsigned> s_stderr_indentation { 0 };
+ 
+ 	// For periodic flushing:
++#if !defined(__pyxis__)
+ 	static std::thread* s_flush_thread   = nullptr;
++#endif
+ 	static bool         s_needs_flushing = false;
+ 
+ 	static SignalOptions s_signal_options = SignalOptions::none();
+@@ -998,7 +1017,7 @@ namespace loguru
+ 		close_handler_t on_close,
+ 		flush_handler_t on_flush)
+ 	{
+-		std::lock_guard<std::recursive_mutex> lock(s_mutex);
++		std::lock_guard<log_mutex> lock(s_mutex);
+ 		s_callbacks.push_back(Callback{id, callback, user_data, verbosity, on_close, on_flush, 0});
+ 		on_callback_change();
+ 	}
+@@ -1056,7 +1075,7 @@ namespace loguru
+ 
+ 	bool remove_callback(const char* id)
+ 	{
+-		std::lock_guard<std::recursive_mutex> lock(s_mutex);
++		std::lock_guard<log_mutex> lock(s_mutex);
+ 		auto it = std::find_if(begin(s_callbacks), end(s_callbacks), [&](const Callback& c) { return c.id == id; });
+ 		if (it != s_callbacks.end()) {
+ 			if (it->close) { it->close(it->user_data); }
+@@ -1071,7 +1090,7 @@ namespace loguru
+ 
+ 	void remove_all_callbacks()
+ 	{
+-		std::lock_guard<std::recursive_mutex> lock(s_mutex);
++		std::lock_guard<log_mutex> lock(s_mutex);
+ 		for (auto& callback : s_callbacks) {
+ 			if (callback.close) {
+ 				callback.close(callback.user_data);
+@@ -1194,6 +1213,9 @@ namespace loguru
+ 				const auto thread_id = pthread_self_is_pointer
+ 				                           ? reinterpret_cast<uintptr_t>((void*)native_id)
+ 				                           : static_cast<uintptr_t>(native_id);
++			#elif defined(__pyxis__)
++				// The only thread.
++				const unsigned thread_id = 0;
+ 			#else
+ 				// This ID does not correllate to anything we can get from the OS,
+ 				// so this is the worst way to get the ID.
+@@ -1490,7 +1512,7 @@ namespace loguru
+ 	static void log_message(int stack_trace_skip, Message& message, bool with_indentation, bool abort_if_fatal)
+ 	{
+ 		const auto verbosity = message.verbosity;
+-		std::lock_guard<std::recursive_mutex> lock(s_mutex);
++		std::lock_guard<log_mutex> lock(s_mutex);
+ 
+ 		if (message.verbosity == Verbosity_FATAL) {
+ 			auto st = loguru::stacktrace(stack_trace_skip + 2);
+@@ -1556,6 +1578,7 @@ namespace loguru
+ 			}
+ 		}
+ 
++#if !defined(__pyxis__)
+ 		if (g_flush_interval_ms > 0 && !s_flush_thread) {
+ 			s_flush_thread = new std::thread([](){
+ 				for (;;) {
+@@ -1566,6 +1589,7 @@ namespace loguru
+ 				}
+ 			});
+ 		}
++#endif
+ 
+ 		if (message.verbosity == Verbosity_FATAL) {
+ 			flush();
+@@ -1576,7 +1600,7 @@ namespace loguru
+ 			}
+ 
+ 			if (abort_if_fatal) {
+-#if !defined(_WIN32)
++#if !defined(_WIN32) && !defined(__pyxis__)
+ 				if (s_signal_options.sigabrt) {
+ 					// Make sure we don't catch our own abort:
+ 					signal(SIGABRT, SIG_DFL);
+@@ -1639,7 +1663,7 @@ namespace loguru
+ 
+ 	void flush()
+ 	{
+-		std::lock_guard<std::recursive_mutex> lock(s_mutex);
++		std::lock_guard<log_mutex> lock(s_mutex);
+ 		fflush(stderr);
+ 		for (const auto& callback : s_callbacks)
+ 		{
+@@ -1668,7 +1692,7 @@ namespace loguru
+ 	LogScopeRAII::~LogScopeRAII()
+ 	{
+ 		if (_file) {
+-			std::lock_guard<std::recursive_mutex> lock(s_mutex);
++			std::lock_guard<log_mutex> lock(s_mutex);
+ 			if (_indent_stderr && s_stderr_indentation > 0) {
+ 				--s_stderr_indentation;
+ 			}
+@@ -1698,7 +1722,7 @@ namespace loguru
+ 	void LogScopeRAII::Init(const char* format, va_list vlist)
+ 	{
+ 		if (_verbosity <= current_verbosity_cutoff()) {
+-			std::lock_guard<std::recursive_mutex> lock(s_mutex);
++			std::lock_guard<log_mutex> lock(s_mutex);
+ 			_indent_stderr = (_verbosity <= g_stderr_verbosity);
+ 			_start_time_ns = now_ns();
+ 			vsnprintf(_name, sizeof(_name), format, vlist);
+@@ -1815,7 +1839,14 @@ namespace loguru
+ 
+ 	using ECPtr = EcEntryBase*;
+ 
+-#if defined(_WIN32) || (defined(__APPLE__) && !TARGET_OS_IPHONE)
++#if defined(__pyxis__)
++	static ECPtr thread_ec_ptr = nullptr;
++
++	ECPtr& get_thread_ec_head_ref()
++	{
++		return thread_ec_ptr;
++	}
++#elif defined(_WIN32) || (defined(__APPLE__) && !TARGET_OS_IPHONE)
+ 	#ifdef __APPLE__
+ 		#define LOGURU_THREAD_LOCAL __thread
+ 	#else
+@@ -2006,6 +2037,16 @@ namespace loguru
+ // 8bodP' 88  YboodP 88  Y8 dP""""Yb 88ood8 8bodP'
+ // ----------------------------------------------------------------------------
+ 
++#if defined(__pyxis__)
++namespace loguru
++{
++	// Pyxis has no signals; fatal messages still flush and abort.
++	void install_signal_handlers(const SignalOptions& signal_options)
++	{
++		s_signal_options = signal_options;
++	}
++} // namespace loguru
++#else // __pyxis__
+ namespace loguru
+ {
+ 	void write_to_stderr(const char* data, size_t size);
+@@ -2184,6 +2225,7 @@ namespace loguru
+ 	}
+ } // namespace loguru
+ #endif // _WIN32
++#endif // __pyxis__
+ 
+ #if defined(__GNUC__) || defined(__clang__)
+ #pragma GCC diagnostic pop
+diff --git a/source/build/src/smmalloc_tls.cpp b/source/build/src/smmalloc_tls.cpp
+index 5d6fb3b..7c8adf1 100644
+--- a/source/build/src/smmalloc_tls.cpp
++++ b/source/build/src/smmalloc_tls.cpp
+@@ -21,7 +21,12 @@
+ // 	THE SOFTWARE.
+ #include "smmalloc.h"
+ 
++#if defined(__pyxis__)
++// Pyxis processes have one thread, so the per-thread cache is a plain array.
++sm::internal::TlsPoolBucket tlsCacheBuckets[SMM_MAX_BUCKET_COUNT];
++#else
+ thread_local sm::internal::TlsPoolBucket tlsCacheBuckets[SMM_MAX_BUCKET_COUNT];
++#endif
+ // sm::internal::TlsPoolBucket tlsCacheBuckets[SMM_MAX_BUCKET_COUNT];
+ 
+ namespace sm

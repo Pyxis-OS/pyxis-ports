@@ -1,0 +1,30 @@
+diff --git a/source/build/src/baselayer.cpp b/source/build/src/baselayer.cpp
+index 2c956b0..0bfc02d 100644
+--- a/source/build/src/baselayer.cpp
++++ b/source/build/src/baselayer.cpp
+@@ -9,6 +9,10 @@
+ #include "polymost.h"
+ #include "renderlayer.h"
+ 
++#if defined __pyxis__
++#include <time.h> // nanosleep
++#endif
++
+ #define MINICORO_IMPL
+ #define MCO_LOG initprintf
+ #define MCO_ASSERT Bassert
+@@ -914,5 +918,14 @@ int engineFPSLimit(bool const throttle)
+         return true;
+     }
+ 
++#if defined __pyxis__
++    // Sleep through the rest of the frame instead of letting the game loop
++    // spin until the next one is due.
++    uint64_t const remaining = lastFrameTicks + g_frameDelay - frameTicks;
++    uint64_t const nanoseconds = remaining * 1000000000ULL / timerGetNanoTickRate();
++    struct timespec const duration = { (time_t)(nanoseconds / 1000000000ULL), (long)(nanoseconds % 1000000000ULL) };
++    nanosleep(&duration, nullptr);
++#endif
++
+     return false;
+ }
