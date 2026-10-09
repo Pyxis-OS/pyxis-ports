@@ -54,6 +54,9 @@ bool PYXIS_QueueClipboard(uint64_t id, uint64_t operation, uint64_t layer);
 void PYXIS_DeliverClipboard(uint64_t id, bool batch);
 void PYXIS_DiscardClipboard(uint64_t id);
 void PYXIS_CancelClipboard(void);
+/* Event filters/watchers run before application command handling. */
+void PYXIS_BeginClipboardCallback(void);
+void PYXIS_EndClipboardCallback(void);
 int PYXIS_SetClipboardText(SDL_VideoDevice *device, const char *text);
 char *PYXIS_GetClipboardText(SDL_VideoDevice *device);
 SDL_bool PYXIS_HasClipboardText(SDL_VideoDevice *device);

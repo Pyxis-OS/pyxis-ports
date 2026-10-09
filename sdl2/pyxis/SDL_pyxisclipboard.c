@@ -12,6 +12,7 @@ static uint64_t action_id;
 static uint64_t operation;
 static handle_t clipboard = HANDLE_INVALID;
 static bool delivered;
+static unsigned int clipboard_callbacks;
 
 static void forget_action(void)
 {
@@ -68,9 +69,19 @@ void PYXIS_DiscardClipboard(uint64_t id)
   }
 }
 
+void PYXIS_BeginClipboardCallback(void)
+{
+  ++clipboard_callbacks;
+}
+
+void PYXIS_EndClipboardCallback(void)
+{
+  --clipboard_callbacks;
+}
+
 static bool ready(uint64_t expected, bool consume_refusal)
 {
-  if (!action_id || !delivered || operation != expected ||
+  if (clipboard_callbacks || !action_id || !delivered || operation != expected ||
       clipboard == HANDLE_INVALID) {
     if (consume_refusal) {
       PYXIS_CancelClipboard();

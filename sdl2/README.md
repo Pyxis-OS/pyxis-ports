@@ -104,11 +104,14 @@ physical release, even after modifiers change.
 The private event queue node retains the native identity through single-event
 GET delivery; public SDL events, PEEK and synthetic pushes supply none. An
 unused delivered command is refused before the next real event delivery. Batch
-GET, overlapping commands, filtering, command discard, failed enqueue,
+GET, overlapping commands, filtering, command discard, any failed event enqueue,
 focus/input reset, display geometry change and ownership release refuse the
 pending action. Native ownership, epoch, identity and five-second expiry checks
 remain authoritative. Applications must make clipboard calls while handling
-the original command; Has-then-Get is supported.
+the original command; Has-then-Get is supported. Event filters/watchers cannot
+use a delivered command's activation: Has refuses without consuming it, while
+Set/Get refuse and consume the pending attempt. Nested callbacks keep the same
+restriction until all callback scopes return.
 
 Set accepts Unicode scalar UTF-8 through the first NUL, at most 64 KiB excluding
 the terminator, preserving bytes and line endings. Invalid or over-limit text
