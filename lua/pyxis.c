@@ -257,7 +257,11 @@ static enum call_status open_program(const char *command, struct resources *owne
     return CALL_BAD_REQUEST;
   }
   size_t length = strlen(command);
-  if (length >= 4 && !strcmp(command + length - 4, ".pxb")) {
+  size_t end = length;
+  while (end && command[end - 1] == '/') {
+    --end;
+  }
+  if (end >= 4 && !memcmp(command + end - 4, ".pxb", 4)) {
     struct path_context context = {
       .directories = (handle_t *)startup_working_directories(),
       .count = startup_working_directory_count(),
