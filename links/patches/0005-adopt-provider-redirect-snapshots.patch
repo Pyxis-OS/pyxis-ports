@@ -1,0 +1,193 @@
+diff --git a/cache.c b/cache.c
+--- a/cache.c
++++ b/cache.c
+@@ -156,6 +156,50 @@
+ 	}
+ 	return -1;
+ }
++
++#ifdef PYXIS
++int pyxis_get_cache_snapshot(struct cache_entry *alias, struct cache_entry **snapshot)
++{
++	unsigned char url[2049], *position;
++	struct cache_entry *e;
++	if (!alias->pyxis_redirect || strlen(cast_const_char alias->pyxis_redirect) >= sizeof url)
++		return -1;
++	strcpy(cast_char url, cast_const_char alias->pyxis_redirect);
++	if ((position = cast_uchar strchr(cast_const_char url, '#')))
++		*position = 0;
++	if (find_in_cache(url, &e))
++		return -1;
++	if (e->incomplete || e->redirect || e->pyxis_redirect) {
++		e->refcount--;
++		return -1;
++	}
++	*snapshot = e;
++	return 0;
++}
++
++int pyxis_adopt_cache_snapshot(struct status *stat, unsigned char **url, unsigned char **position)
++{
++	struct cache_entry *e;
++	unsigned char *u, *pos;
++	if (!stat->ce || !stat->ce->pyxis_redirect)
++		return 0;
++	if (pyxis_get_cache_snapshot(stat->ce, &e))
++		return -1;
++	/* Pin the body before allocations can invoke cache collection. */
++	u = stracpy(stat->ce->pyxis_redirect);
++	pos = extract_position(u);
++	if (pos) {
++		if (position) {
++			if (*position) mem_free(*position);
++			*position = pos;
++		} else mem_free(pos);
++	}
++	mem_free(*url);
++	*url = u;
++	stat->ce = e;
++	return 1;
++}
++#endif
+ 
+ static int get_cache_entry(unsigned char *url, struct cache_entry **f)
+ {
+@@ -467,6 +511,9 @@
+ 	del_from_list(e);
+ 	if (e->head) mem_free(e->head);
+ 	if (e->redirect) mem_free(e->redirect);
++#ifdef PYXIS
++	if (e->pyxis_redirect) mem_free(e->pyxis_redirect);
++#endif
+ 	if (e->ip_address) mem_free(e->ip_address);
+ #ifdef HAVE_SSL
+ 	if (e->ssl_info) mem_free(e->ssl_info);
+diff --git a/links.h b/links.h
+--- a/links.h
++++ b/links.h
+@@ -1255,6 +1255,9 @@
+ 	unsigned char *head;
+ 	int http_code;
+ 	unsigned char *redirect;
++#ifdef PYXIS
++	unsigned char *pyxis_redirect;	/* already fetched snapshot, including fragment */
++#endif
+ 	off_t length;
+ 	off_t max_length;
+ 	int incomplete;
+@@ -1517,6 +1520,11 @@
+ void load_url(unsigned char *, unsigned char *, struct status *, int, int, int, int, int, off_t);
+ void change_connection(struct status *, struct status *, int);
+ void detach_connection(struct status *, off_t, int, int);
++#ifdef PYXIS
++int pyxis_get_cache_snapshot(struct cache_entry *, struct cache_entry **);
++/* A successful adoption returns one cache reference to the caller. */
++int pyxis_adopt_cache_snapshot(struct status *, unsigned char **, unsigned char **);
++#endif
+ void abort_all_connections(void);
+ int abort_background_connections(void);
+ int is_entry_used(struct cache_entry *);
+@@ -2697,6 +2705,9 @@
+ 	unsigned char *url;
+ 	unsigned char *prev_url;	/* allocated string with referrer or NULL */
+ 	unsigned char *goto_position;
++#ifdef PYXIS
++	int pyxis_redirected;
++#endif
+ 	int pri;
+ 	int cache;
+ 	void (*upcall)(struct object_request *, void *);
+diff --git a/objreq.c b/objreq.c
+--- a/objreq.c
++++ b/objreq.c
+@@ -341,6 +341,19 @@
+ {
+ 	struct object_request *rq = (struct object_request *)data;
+ 
++#ifdef PYXIS
++	if (stat->state == S__OK && rq->state == O_WAITING) {
++		int adopted = pyxis_adopt_cache_snapshot(stat, &rq->url, &rq->goto_position);
++		if (adopted < 0) {
++			stat->state = S_INTERNAL;
++			stat->ce = NULL;
++		} else if (adopted) {
++			rq->pyxis_redirected = 1;
++			set_ce_internal(rq);
++			stat->ce->refcount--;
++		}
++	}
++#endif
+ 	set_ce_internal(rq);
+ 
+ 	if (stat->state < 0) {
+diff --git a/sched.c b/sched.c
+--- a/sched.c
++++ b/sched.c
+@@ -819,6 +819,16 @@
+ 		goto ret;
+ 	}
+ 	if (no_cache <= NC_CACHE && !find_in_cache(url, &e)) {
++#ifdef PYXIS
++		if (e->pyxis_redirect) {
++			struct cache_entry *snapshot;
++			if (pyxis_get_cache_snapshot(e, &snapshot)) {
++				e->refcount--;
++				goto skip_cache;
++			}
++			snapshot->refcount--;
++		}
++#endif
+ 		if (e->incomplete) {
+ 			e->refcount--;
+ 			goto skip_cache;
+diff --git a/session.c b/session.c
+--- a/session.c
++++ b/session.c
+@@ -800,7 +800,7 @@
+ 	return 0;
+ }
+ 
+-static void download_data(struct status *stat, void *down_)
++static void download_data_snapshot(struct status *stat, void *down_)
+ {
+ 	struct download *down = (struct download *)down_;
+ 	struct cache_entry *ce;
+@@ -931,6 +931,25 @@
+ 	}
+ 	if (down->win)
+ 		redraw_window(down->win);
++}
++
++static void download_data(struct status *stat, void *down_)
++{
++#ifdef PYXIS
++	struct download *down = (struct download *)down_;
++	struct cache_entry *snapshot = NULL;
++	if (stat->state == S__OK && !down->downloaded_something) {
++		int adopted = pyxis_adopt_cache_snapshot(stat, &down->url, NULL);
++		if (adopted < 0) {
++			stat->state = S_INTERNAL;
++			stat->ce = NULL;
++		} else if (adopted) snapshot = stat->ce;
++	}
++#endif
++	download_data_snapshot(stat, down_);
++#ifdef PYXIS
++	if (snapshot) snapshot->refcount--;
++#endif
+ }
+ 
+ unsigned char *translate_download_file(unsigned char *fi)
+@@ -2583,6 +2602,12 @@
+ 		case O_LOADING:
+ 		case O_INCOMPLETE:
+ 		case O_OK:
++#ifdef PYXIS
++			if (rq->pyxis_redirected && rq->goto_position) {
++				if (ses->goto_position) mem_free(ses->goto_position);
++				ses->goto_position = stracpy(rq->goto_position);
++			} else
++#endif
+ 			if (!ses->goto_position && rq->goto_position) ses->goto_position = stracpy(rq->goto_position);
+ 			ses->wtd(ses);
+ 			break;

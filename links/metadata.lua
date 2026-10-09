@@ -19,6 +19,7 @@ return {
     "patches/0002-narrow-file-metadata.patch",
     "patches/0003-load-pages-through-libc.patch",
     "patches/0004-save-configuration-under-home.patch",
+    "patches/0005-adopt-provider-redirect-snapshots.patch",
   },
   outputs = {
     executable = "bin/links.pxe",
