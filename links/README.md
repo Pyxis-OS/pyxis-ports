@@ -112,9 +112,9 @@ Links' internal threads talk through virtual pipes in one process, as on DOS.
 ## Limits
 
 - **Loading blocks.** Every load blocks the interface, network fetches
-  included. Only the HTTP provider's own deadlines bound them.
+  included. HTTP opens share a 30-second chain deadline.
 - **HTTP.**
-  - The HTTP provider follows bounded redirects and accepts a final 200/204.
+  - The shared userspace open bridge follows bounded redirects and accepts a final 200/204.
     Other final statuses and rejected redirect chains remain open errors.
   - GET forms work as URLs with a query string. There is no POST, and no
     cookies or request headers.
