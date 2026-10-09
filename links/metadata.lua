@@ -18,7 +18,7 @@ return {
     "patches/0001-pyxis-platform.patch",
     "patches/0002-narrow-file-metadata.patch",
     "patches/0003-load-pages-through-libc.patch",
-    "patches/0004-run-without-saved-configuration.patch",
+    "patches/0004-save-configuration-under-home.patch",
   },
   outputs = {
     executable = "bin/links.pxe",

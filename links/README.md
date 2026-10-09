@@ -69,10 +69,22 @@ to empty units.
     with `fopen`. A page that starts like HTML (`<!doctype html`, `<html`,
     `<head`, `<body`, `<title` or `<!--`) is marked as HTML. Anything else is
     typed by its extension, as for local files.
-- **0004 Run without saved configuration.** There is no configuration
-  directory, so options, bookmarks and history are not saved. Saving needs
-  exclusive creation and private file modes that Pyxis does not have. Saving
-  options reports that the home directory is inaccessible.
+- **0004 Save configuration under `home://links/`.** Startup finds or makes
+  that directory and loads `links.cfg`, `html.cfg` and `user.cfg` from it.
+  Options, HTML options, bookmarks, cookies and the URL history are saved there.
+  Links' own save (an exclusive temporary file, `fsync`, then `rename`) replaces
+  the old file atomically; the patch only creates the temporary with mode 0666,
+  the one mode Pyxis creation accepts. If the directory cannot be found or made,
+  nothing is loaded and saving reports "Home directory inaccessible"; any other
+  failure reports the error of the failing call. There is no directory sync
+  (libc cannot open a directory), so after a crash the new name may be lost
+  and the old file remains.
+- **Downloads.** Patch 0001 no longer defines an unsupported `O_EXCL`: libc
+  now has exclusive creation, so Links' download path works. The save dialog
+  takes any path the program's roots allow, relative to the inherited working
+  directory. An existing file offers Continue, Overwrite, Rename or Cancel.
+  Overwrite truncates in place and a download is written under its final
+  name, so neither is atomic.
 
 ## Event loop
 
@@ -102,7 +114,5 @@ Links' internal threads talk through virtual pipes in one process, as on DOS.
   cannot be opened. Directories show size 0.
 - **Other protocols.** `ftp://` and `finger://` need Links' own name lookup
   and sockets. `gethostbyname` always fails, so they report "Host not found".
-  Downloads to disk fail with "Invalid argument", because they need exclusive
-  creation.
 - **Display.** ASCII only: non-ASCII characters are approximated, and there
   are no images.
