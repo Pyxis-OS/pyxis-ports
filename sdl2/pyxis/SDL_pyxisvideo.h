@@ -21,7 +21,8 @@ struct pyxis_video {
   bool pointer_owned;
   /* The display session starts with the first window framebuffer. */
   bool display_owned;
-  bool presented;
+  bool presented; /* A frame has been submitted since acquisition. */
+  uint64_t slot; /* Held display slot the next frame is copied into. */
   struct display_buffer buffer; /* Valid while display_owned. */
   uint64_t generation; /* Display geometry the window currently follows. */
 };
