@@ -206,7 +206,7 @@ static void draw(SDL_Renderer *renderer)
   draw_text(renderer, 36, "1 ASCII  2 MULTIBYTE  3 EMPTY  4 64 KIB  5 INVALID  6 OVER LIMIT");
   draw_text(renderer, 60, "CTRL C V LOCAL - SUPER SHIFT C V SHARED");
   draw_text(renderer, 84, "G HAS THEN GET - D DIRECT GET - R REPEAT CALL - U UNARMED - F REFUSE");
-  draw_text(renderer, 108, "T DELAY 6 SECONDS - B BATCH QUEUE - L FLUSH BEFORE COMMAND CALL");
+  draw_text(renderer, 108, "T DELAY 0 2 6 SECONDS - B BATCH QUEUE - L FLUSH BEFORE COMMAND CALL");
   draw_text(renderer, 132, "Q PAUSE 2 SECONDS FOR OVERLAP - N SYNTHETIC CTRL V");
   char line[LINE_CAPACITY];
   snprintf(line, sizeof(line), "PAYLOAD %s - PASTE %s - REPEAT %u - DELAY %d - BATCH %u - DISCARD %u",
@@ -268,7 +268,7 @@ static bool handle(const SDL_Event *event)
   } else if (key == SDLK_r) {
     repeat_call = !repeat_call;
   } else if (key == SDLK_t) {
-    delay_seconds = delay_seconds ? 0 : 6;
+    delay_seconds = delay_seconds == 0 ? 2 : delay_seconds == 2 ? 6 : 0;
   } else if (key == SDLK_b) {
     batch = !batch;
   } else if (key == SDLK_l) {

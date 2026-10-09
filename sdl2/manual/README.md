@@ -26,9 +26,10 @@ byte count, FNV-1a 64-bit hash, sanitized preview and SDL error.
 - `U` makes unarmed Set, Has and Get calls. `N` pushes synthetic Ctrl+V through
   SDL; it cannot arm an action. `F` chooses refusal mode: the next physical Copy
   calls Get and the next Paste calls Set. `G`/`D` restore ordinary mode.
-- `T` toggles a six-second delay between delivered command and clipboard call
-  to inspect expiry. Focus/overlay or resize changes during the delay should
-  also refuse the call. The wait is only after a physical Copy/Paste command.
+- `T` cycles zero, two and six seconds between delivered command and clipboard
+  call. Use two seconds for focus/overlay or resize revocation before activation
+  expiry, and six seconds to inspect expiry itself. The wait is only after a
+  physical Copy/Paste command.
 - `Q` pauses for two seconds, allowing the operator to queue overlapping
   local/shared gestures. `B` toggles batch GET: queued events are removed in a
   multi-event call and clipboard commands must refuse. `L` flushes the key-down
