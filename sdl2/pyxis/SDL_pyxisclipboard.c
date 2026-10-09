@@ -29,17 +29,23 @@ void PYXIS_CancelClipboard(void)
   forget_action();
 }
 
+static handle_t layer_grant(uint64_t layer)
+{
+  switch (layer) {
+  case CLIPBOARD_LAYER_LOCAL: return pyxis_video.clipboard_local;
+  case CLIPBOARD_LAYER_SHARED: return pyxis_video.clipboard_shared;
+  default: return HANDLE_INVALID;
+  }
+}
+
 bool PYXIS_QueueClipboard(uint64_t id, uint64_t op, uint64_t layer)
 {
   if (action_id) {
     PYXIS_CancelClipboard();
-    handle_t grant = layer == CLIPBOARD_LAYER_LOCAL ?
-        pyxis_video.clipboard_local : pyxis_video.clipboard_shared;
-    clipboard_graphics_refuse(grant, id, op);
+    clipboard_graphics_refuse(layer_grant(layer), id, op);
     return false;
   }
-  clipboard = layer == CLIPBOARD_LAYER_LOCAL ?
-      pyxis_video.clipboard_local : pyxis_video.clipboard_shared;
+  clipboard = layer_grant(layer);
   action_id = id;
   operation = op;
   delivered = false;
@@ -62,11 +68,13 @@ void PYXIS_DiscardClipboard(uint64_t id)
   }
 }
 
-static bool ready(uint64_t expected)
+static bool ready(uint64_t expected, bool consume_refusal)
 {
   if (!action_id || !delivered || operation != expected ||
       clipboard == HANDLE_INVALID) {
-    PYXIS_CancelClipboard();
+    if (consume_refusal) {
+      PYXIS_CancelClipboard();
+    }
     SDL_SetError("Pyxis clipboard needs a delivered matching physical command");
     return false;
   }
@@ -125,7 +133,7 @@ static bool text_length(const char *text, size_t *length)
 int PYXIS_SetClipboardText(SDL_VideoDevice *device, const char *text)
 {
   (void)device;
-  if (!ready(CLIPBOARD_PUBLISH)) {
+  if (!ready(CLIPBOARD_PUBLISH, true)) {
     return -1;
   }
   size_t length;
@@ -144,7 +152,7 @@ int PYXIS_SetClipboardText(SDL_VideoDevice *device, const char *text)
 char *PYXIS_GetClipboardText(SDL_VideoDevice *device)
 {
   (void)device;
-  if (!ready(CLIPBOARD_PASTE)) {
+  if (!ready(CLIPBOARD_PASTE, true)) {
     char *empty = SDL_strdup("");
     if (!empty) {
       SDL_OutOfMemory();
@@ -173,13 +181,12 @@ char *PYXIS_GetClipboardText(SDL_VideoDevice *device)
 SDL_bool PYXIS_HasClipboardText(SDL_VideoDevice *device)
 {
   (void)device;
-  if (!ready(CLIPBOARD_PASTE)) {
+  if (!ready(CLIPBOARD_PASTE, false)) {
     return SDL_FALSE;
   }
   bool has_text;
   enum call_status status = clipboard_graphics_has(clipboard, action_id, &has_text);
   if (status != CALL_OK) {
-    PYXIS_CancelClipboard();
     SDL_SetError("Pyxis clipboard probe refused (status %u)", (unsigned)status);
     return SDL_FALSE;
   }

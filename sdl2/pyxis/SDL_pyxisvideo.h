@@ -5,8 +5,10 @@
  * has one display grant, so there is one window and one set of sessions. */
 
 #include <display.h>
+#include <stdbool.h>
 
 #include "SDL_internal.h"
+#include "SDL_events.h"
 #include "video/SDL_sysvideo.h"
 
 struct pyxis_video {
