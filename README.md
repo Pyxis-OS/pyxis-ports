@@ -22,7 +22,10 @@ Build paths must use letters, digits, `_`, `.`, `/`, `+` or `-`, matching the
 SDK's Make path restrictions. The SDK is consumed without modification.
 
 `ports.lua` lists recipes. Each recipe records source, license, host and Pyxis
-dependencies, ordered patches and staged outputs in `metadata.lua`.
+dependencies, ordered patches and staged outputs in `metadata.lua`. The outputs
+table lists every file the recipe stages: the runner fails if one is missing, and
+Pyxis derives each port's Make dependencies from it, so a new staged file belongs
+there and nowhere else.
 Its `build.lua` receives the SDK, sysroot, compiler prefix, recipe, source,
 build and stage paths, metadata and an argument-array command runner.
 Recipes for CMake projects configure them with the SDK's toolchain file,
