@@ -1,0 +1,182 @@
+diff --git a/source/common.c b/source/common.c
+index c4df319..571ef1c 100644
+--- a/source/common.c
++++ b/source/common.c
+@@ -1283,23 +1283,23 @@ COM_WriteFile
+ The filename will be prefixed by the current game directory
+ ============
+ */
+-void COM_WriteFile (char *filename, void *data, int len)
++qboolean COM_WriteFile (char *filename, void *data, int len)
+ {
+-	int             handle;
++	FILE    *f;
+ 	char    name[MAX_OSPATH];
+ 	
+ 	sprintf (name, "%s/%s", com_gamedir, filename);
+ 
+-	handle = Sys_FileOpenWrite (name);
+-	if (handle == -1)
+-	{
+-		Sys_Printf ("COM_WriteFile: failed on %s\n", name);
+-		return;
+-	}
++	f = Sys_AtomicOpen (name);
++	if (!f)
++		return false;
+ 	
++	fwrite (data, 1, len, f);
++	if (!Sys_AtomicClose (f))
++		return false;
++
+ 	Sys_Printf ("COM_WriteFile: %s\n", name);
+-	Sys_FileWrite (handle, data, len);
+-	Sys_FileClose (handle);
++	return true;
+ }
+ 
+ 
+diff --git a/source/common.h b/source/common.h
+index 3a31d95..c6f9768 100644
+--- a/source/common.h
++++ b/source/common.h
+@@ -167,7 +167,7 @@ struct cache_user_s;
+ 
+ extern	char	com_gamedir[MAX_OSPATH];
+ 
+-void COM_WriteFile (char *filename, void *data, int len);
++qboolean COM_WriteFile (char *filename, void *data, int len);
+ int COM_OpenFile (char *filename, int *hndl);
+ int COM_FOpenFile (char *filename, FILE **file);
+ void COM_CloseFile (int h);
+diff --git a/source/host.c b/source/host.c
+index 5c1e60a..c329280 100644
+--- a/source/host.c
++++ b/source/host.c
+@@ -247,17 +247,14 @@ void Host_WriteConfiguration (void)
+ // config.cfg cvars
+ 	if (host_initialized & !isDedicated)
+ 	{
+-		f = fopen (va("%s/config.cfg",com_gamedir), "w");
++		f = Sys_AtomicOpen (va("%s/config.cfg",com_gamedir));
+ 		if (!f)
+-		{
+-			Con_Printf ("Couldn't write config.cfg.\n");
+ 			return;
+-		}
+ 		
+ 		Key_WriteBindings (f);
+ 		Cvar_WriteVariables (f);
+ 
+-		fclose (f);
++		Sys_AtomicClose (f);
+ 	}
+ }
+ 
+diff --git a/source/host_cmd.c b/source/host_cmd.c
+index 53f3f11..3f09a6f 100644
+--- a/source/host_cmd.c
++++ b/source/host_cmd.c
+@@ -474,12 +474,9 @@ void Host_Savegame_f (void)
+ 	COM_DefaultExtension (name, ".sav");
+ 	
+ 	Con_Printf ("Saving game to %s...\n", name);
+-	f = fopen (name, "w");
++	f = Sys_AtomicOpen (name);
+ 	if (!f)
+-	{
+-		Con_Printf ("ERROR: couldn't open.\n");
+ 		return;
+-	}
+ 	
+ 	fprintf (f, "%i\n", SAVEGAME_VERSION);
+ 	Host_SavegameComment (comment);
+@@ -507,8 +504,8 @@ void Host_Savegame_f (void)
+ 		ED_Write (f, EDICT_NUM(i));
+ 		fflush (f);
+ 	}
+-	fclose (f);
+-	Con_Printf ("done.\n");
++	if (Sys_AtomicClose (f))
++		Con_Printf ("done.\n");
+ }
+ 
+ 
+diff --git a/source/screen.c b/source/screen.c
+index 3d82948..0d24efb 100644
+--- a/source/screen.c
++++ b/source/screen.c
+@@ -544,7 +544,7 @@ typedef struct
+ WritePCXfile 
+ ============== 
+ */ 
+-void WritePCXfile (char *filename, byte *data, int width, int height,
++qboolean WritePCXfile (char *filename, byte *data, int width, int height,
+ 	int rowbytes, byte *palette) 
+ {
+ 	int		i, j, length;
+@@ -555,7 +555,7 @@ void WritePCXfile (char *filename, byte *data, int width, int height,
+ 	if (pcx == NULL)
+ 	{
+ 		Con_Printf("SCR_ScreenShot_f: not enough memory\n");
+-		return;
++		return false;
+ 	} 
+  
+ 	pcx->manufacturer = 0x0a;	// PCX id
+@@ -600,7 +600,7 @@ void WritePCXfile (char *filename, byte *data, int width, int height,
+ 		
+ // write output file 
+ 	length = pack - (byte *)pcx;
+-	COM_WriteFile (filename, pcx, length);
++	return COM_WriteFile (filename, pcx, length);
+ } 
+  
+ 
+@@ -615,6 +615,7 @@ void SCR_ScreenShot_f (void)
+ 	int     i; 
+ 	char		pcxname[80]; 
+ 	char		checkname[MAX_OSPATH];
++	qboolean	written;
+ 
+ // 
+ // find a file name to save it to 
+@@ -641,13 +642,14 @@ void SCR_ScreenShot_f (void)
+ 	D_EnableBackBufferAccess ();	// enable direct drawing of console to back
+ 									//  buffer
+ 
+-	WritePCXfile (pcxname, vid.buffer, vid.width, vid.height, vid.rowbytes,
+-				  host_basepal);
++	written = WritePCXfile (pcxname, vid.buffer, vid.width, vid.height,
++				vid.rowbytes, host_basepal);
+ 
+ 	D_DisableBackBufferAccess ();	// for adapters that can't stay mapped in
+ 									//  for linear writes all the time
+ 
+-	Con_Printf ("Wrote %s\n", pcxname);
++	if (written)
++		Con_Printf ("Wrote %s\n", pcxname);
+ } 
+ 
+ 
+diff --git a/source/sys.h b/source/sys.h
+index c5d61a7..80705a3 100644
+--- a/source/sys.h
++++ b/source/sys.h
+@@ -36,6 +36,16 @@ int Sys_FileWrite (int handle, void *data, int count);
+ int	Sys_FileTime (char *path);
+ void Sys_mkdir (char *path);
+ 
++//
++// replace a file as a whole: the data goes to a temporary file in the same
++// directory, which is synced and renamed over the target on close, so a failed
++// or interrupted write leaves the old file intact
++//
++// Sys_AtomicOpen returns NULL on failure; Sys_AtomicClose returns false if the
++// file could not be replaced. Both report the reason on the console.
++FILE *Sys_AtomicOpen (char *path);
++qboolean Sys_AtomicClose (FILE *file);
++
+ //
+ // memory protection
+ //

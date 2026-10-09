@@ -22,6 +22,7 @@ See the GNU General Public License for more details.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "quakedef.h"
 #include "quake_pyxis.h"
@@ -33,10 +34,20 @@ See the GNU General Public License for more details.
  * avoids spinning through frames Host_Frame would skip. */
 #define QUAKE_FRAME_RATE 72.0
 #define MAX_HANDLES 10
+#define MAX_ATOMIC_FILES 2
+#define ATOMIC_SUFFIX ".XXXXXX"
 
 qboolean isDedicated;
 
 static FILE *sys_handles[MAX_HANDLES];
+
+struct atomic_file {
+  FILE *file;
+  char *target;
+  char *temporary;
+};
+
+static struct atomic_file atomic_files[MAX_ATOMIC_FILES];
 
 static int find_handle(void)
 {
@@ -111,6 +122,102 @@ int Sys_FileTime(char *path)
     return 1;
   }
   return -1;
+}
+
+/* Replace a file as a whole. The data goes to a uniquely named file beside the
+ * target and is renamed over it only after every write, the sync and the close
+ * succeeded, so any failure leaves the old file untouched.
+ *
+ * mkstemp reserves the name with native exclusive creation; the stream is then
+ * opened on that name because libc has no fdopen. The name is random, so only a
+ * writer with access to the same directory could interfere. The rename replaces
+ * the target atomically on the same volume, and the filesystem flushes the moved
+ * file first. Libc exposes no directory sync, so the new name itself may be lost
+ * in a crash; the old contents then remain. A crash before the rename leaves the
+ * temporary file behind. */
+FILE *Sys_AtomicOpen(char *path)
+{
+  struct atomic_file *slot = NULL;
+  for (int i = 0; i < MAX_ATOMIC_FILES; ++i) {
+    if (!atomic_files[i].file) {
+      slot = &atomic_files[i];
+      break;
+    }
+  }
+  if (!slot) {
+    Sys_Error("out of atomic files");
+  }
+
+  size_t length = strlen(path);
+  char *target = malloc(length + 1);
+  char *temporary = malloc(length + sizeof(ATOMIC_SUFFIX));
+  if (!target || !temporary) {
+    free(target);
+    free(temporary);
+    Con_Printf("Couldn't write %s: %s\n", path, strerror(ENOMEM));
+    return NULL;
+  }
+  memcpy(target, path, length + 1);
+  memcpy(temporary, path, length);
+  memcpy(temporary + length, ATOMIC_SUFFIX, sizeof(ATOMIC_SUFFIX));
+
+  FILE *file = NULL;
+  int descriptor = mkstemp(temporary);
+  if (descriptor >= 0) {
+    close(descriptor);
+    file = fopen(temporary, "wb");
+    if (!file) {
+      int error = errno;
+      remove(temporary);
+      errno = error;
+    }
+  }
+  if (!file) {
+    Con_Printf("Couldn't write %s: %s\n", path, strerror(errno));
+    free(target);
+    free(temporary);
+    return NULL;
+  }
+  slot->file = file;
+  slot->target = target;
+  slot->temporary = temporary;
+  return file;
+}
+
+qboolean Sys_AtomicClose(FILE *file)
+{
+  struct atomic_file *slot = NULL;
+  for (int i = 0; i < MAX_ATOMIC_FILES; ++i) {
+    if (atomic_files[i].file == file) {
+      slot = &atomic_files[i];
+      break;
+    }
+  }
+  if (!slot) {
+    Sys_Error("closing an unknown atomic file");
+  }
+
+  /* The stream is unbuffered, so a write failure is the error indicator. */
+  int error = 0;
+  if (ferror(file)) {
+    error = EIO;
+  } else if (fsync(fileno(file)) != 0) {
+    error = errno;
+  }
+  if (fclose(file) != 0 && !error) {
+    error = errno;
+  }
+  if (!error && rename(slot->temporary, slot->target) != 0) {
+    error = errno;
+  }
+  if (error) {
+    remove(slot->temporary);
+    Con_Printf("Couldn't write %s: %s\n", slot->target, strerror(error));
+  }
+  free(slot->target);
+  free(slot->temporary);
+  *slot = (struct atomic_file){0};
+  return error == 0;
 }
 
 void Sys_mkdir(char *path)

@@ -48,6 +48,18 @@ Ordered patches:
    as Quakespasm does.
 2. `0002-writable-game-directory.patch`: `-writedir PATH` sends generated files
    to `PATH/<game directory>` and searches it before the game data.
+3. `0003-atomic-file-replacement.patch`: `config.cfg`, `save` files (also F6
+   quicksave and the menus) and screenshots are written through
+   `Sys_AtomicOpen`/`Sys_AtomicClose` in `sys_pyxis.c`. `mkstemp` reserves a
+   random `NAME.XXXXXX` beside the target, which is reopened as a stream
+   (libc has no `fdopen`), written, `fsync`ed, closed and renamed over the
+   target. Any failure removes the temporary file, keeps the old file and
+   prints `Couldn't write NAME: reason`; a failed save no longer prints
+   `done.` and a failed screenshot no longer prints `Wrote`. Demos stay
+   streamed in place, as do the console log and VCR files. Rename replaces
+   atomically on one volume, but libc has no directory sync, so a crash can
+   lose the new name (the old contents remain) or leave a stray temporary file.
+   Saving needs CREATE and REMOVE on the directory, not only WRITE on the file.
 
 No sound, networking, CD audio, joystick or video-mode switching. Upstream
 compiler warnings remain visible; no broad cleanup or warning blanket is applied
