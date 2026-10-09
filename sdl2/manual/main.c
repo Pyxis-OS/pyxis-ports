@@ -108,6 +108,7 @@ static void record(const char *text)
   snprintf(results[0], LINE_CAPACITY, "%s", text);
   ++result_count;
   printf("%s\n", text);
+  fflush(stdout);
 }
 
 static uint64_t hash_bytes(const char *bytes, size_t length)
