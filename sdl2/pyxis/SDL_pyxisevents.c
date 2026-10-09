@@ -6,6 +6,7 @@
 
 #ifdef SDL_VIDEO_DRIVER_PYXIS
 
+#include <clock.h>
 #include <keyboard.h>
 #include <pointer.h>
 #include <pxe/key_layout.h>
@@ -17,10 +18,17 @@
 
 #define ASCII_FIRST_PRINTABLE ' '
 #define ASCII_LAST_PRINTABLE '~'
+#define NANOSECONDS_PER_MILLISECOND UINT64_C(1000000)
+#define INPUT_WAIT_CAPACITY 3
 
 static bool keyboard_focused;
 static bool pointer_focused;
+static bool pointer_inside;
 static uint32_t held_buttons; /* Pyxis POINTER_BUTTON_* bits SDL has pressed. */
+/* The threadless SDL loop pumps immediately after the wait hook. Consume its
+ * observation once, avoiding a second BSP handoff before draining input. */
+static bool waited;
+static uint64_t waited_events[INPUT_WAIT_CAPACITY];
 
 static const SDL_Scancode scancodes[KEY_COUNT] = {
   [KEY_ESCAPE] = SDL_SCANCODE_ESCAPE,
@@ -78,29 +86,6 @@ static const struct {
   {POINTER_BUTTON_MIDDLE, SDL_BUTTON_MIDDLE},
 };
 
-/* The only place pointer movement becomes an SDL position. Pyxis reports
- * relative counts, so SDL keeps the position, clamped to the window. When the
- * system pointer reports positions, this becomes an absolute update. */
-static void send_pointer_motion(int32_t dx, int32_t dy)
-{
-  if (dx || dy) {
-    SDL_SendMouseMotion(pyxis_video.window, 0, SDL_TRUE, dx, dy);
-  }
-}
-
-/* SDL owns the position, so warping only moves SDL's copy of it. */
-static void PYXIS_WarpMouse(SDL_Window *window, int x, int y)
-{
-  SDL_SendMouseMotion(window, 0, SDL_FALSE, x, y);
-}
-
-/* Every pointer event is already relative; SDL derives both modes from it. */
-static int PYXIS_SetRelativeMouseMode(SDL_bool enabled)
-{
-  (void)enabled;
-  return 0;
-}
-
 static void release_buttons(void)
 {
   for (size_t i = 0; i < SDL_arraysize(buttons); ++i) {
@@ -113,17 +98,24 @@ static void release_buttons(void)
 
 void PYXIS_ResetInput(void)
 {
+  waited = false;
   SDL_ResetKeyboard();
   release_buttons();
   keyboard_focused = false;
   pointer_focused = false;
+  pointer_inside = false;
+  SDL_Mouse *mouse = SDL_GetMouse();
+  mouse->relative_mode = SDL_FALSE;
+  mouse->relative_mode_warp = SDL_FALSE;
+  mouse->xdelta = mouse->ydelta = 0;
+  mouse->scale_accum_x = mouse->scale_accum_y = 0.0f;
+  mouse->has_position = SDL_FALSE;
+  SDL_FlushEvent(SDL_MOUSEMOTION);
 }
 
 void PYXIS_InitInput(void)
 {
-  SDL_Mouse *mouse = SDL_GetMouse();
-  mouse->WarpMouse = PYXIS_WarpMouse;
-  mouse->SetRelativeMouseMode = PYXIS_SetRelativeMouseMode;
+  PYXIS_InitMouse();
 }
 
 static void send_text(const struct keyboard_event *event)
@@ -158,18 +150,101 @@ static void handle_key(const struct keyboard_event *event)
   }
 }
 
-static void handle_pointer(const struct pointer_event *event)
+static void update_pointer_state(uint64_t flags, bool reset)
 {
-  if (event->type != POINTER_INPUT) {
+  SDL_Mouse *mouse = SDL_GetMouse();
+  bool locked = (flags & POINTER_EVENT_LOCKED) != 0;
+  if (reset || (!locked && mouse->relative_mode)) {
     release_buttons();
-    pointer_focused = (event->flags & POINTER_EVENT_FOCUSED) != 0;
-    SDL_SetMouseFocus(pointer_focused ? pyxis_video.window : NULL);
+    mouse->xdelta = mouse->ydelta = 0;
+    mouse->scale_accum_x = mouse->scale_accum_y = 0.0f;
+    mouse->has_position = SDL_FALSE;
+    SDL_FlushEvent(SDL_MOUSEMOTION);
+    SDL_FlushEvent(SDL_MOUSEWHEEL);
+  }
+  if (!locked && mouse->relative_mode) {
+    /* The kernel already revoked it. SDL's setter would warp on exit. */
+    mouse->relative_mode = SDL_FALSE;
+    mouse->relative_mode_warp = SDL_FALSE;
+    SDL_UpdateWindowGrab(pyxis_video.window);
+    SDL_SetCursor(NULL);
+  }
+  pointer_focused = (flags & POINTER_EVENT_FOCUSED) != 0;
+  SDL_SetMouseFocus(pointer_focused && (pointer_inside || locked) ? pyxis_video.window : NULL);
+}
+
+static bool ordinary_geometry(const struct pointer_event *event,
+    struct pointer_geometry *geometry)
+{
+  return pointer_geometry(pyxis_video.pointer, geometry) == CALL_OK &&
+      event->generation == geometry->generation &&
+      event->mapping_identity == geometry->mapping_identity &&
+      geometry->generation == pyxis_video.generation &&
+      geometry->mapping_width == pyxis_video.buffer.width &&
+      geometry->mapping_height == pyxis_video.buffer.height &&
+      event->x >= SDL_MIN_SINT32 && event->x <= SDL_MAX_SINT32 &&
+      event->y >= SDL_MIN_SINT32 && event->y <= SDL_MAX_SINT32;
+}
+
+static void send_ordinary_position(const struct pointer_event *event)
+{
+  SDL_SendMouseMotion(pointer_inside ? pyxis_video.window : NULL, 0, SDL_FALSE,
+      (int)event->x, (int)event->y);
+}
+
+static void restore_ordinary_position(const struct pointer_event *event)
+{
+  struct pointer_geometry geometry;
+  if (!pointer_focused || !ordinary_geometry(event, &geometry) ||
+      event->x < 0 || event->y < 0 ||
+      (uint64_t)event->x >= SDL_min(geometry.width, geometry.mapping_width) ||
+      (uint64_t)event->y >= SDL_min(geometry.height, geometry.mapping_height)) {
     return;
   }
+  /* State events carry the native parked position. Restore it even when no
+   * device movement follows; ENTER separately establishes ordinary hover. */
+  send_ordinary_position(event);
+}
+
+static void handle_pointer(const struct pointer_event *event)
+{
+  bool locked = (event->flags & POINTER_EVENT_LOCKED) != 0;
+  if (!locked && (event->type == POINTER_ENTER || event->type == POINTER_ACTIVATED)) {
+    pointer_inside = true;
+  } else if (event->type == POINTER_LEAVE || event->type == POINTER_FOCUS_LOST ||
+      (!locked && event->type == POINTER_LOCK_CHANGED)) {
+    pointer_inside = false;
+  }
+  if (event->type != POINTER_INPUT) {
+    bool keep_buttons = locked && event->type == POINTER_GEOMETRY_CHANGED;
+    update_pointer_state(event->flags, !keep_buttons);
+    if (!locked && (event->type == POINTER_ENTER ||
+        event->type == POINTER_GEOMETRY_CHANGED || event->type == POINTER_LOCK_CHANGED ||
+        event->type == POINTER_STATE_RESET || event->type == POINTER_ACTIVATED)) {
+      restore_ordinary_position(event);
+    }
+    return;
+  }
+  update_pointer_state(event->flags, false);
   if (!pointer_focused) {
     return;
   }
-  send_pointer_motion(event->dx, event->dy);
+  if (locked) {
+    if (!SDL_GetRelativeMouseMode()) {
+      return;
+    }
+    if (event->dx || event->dy) {
+      SDL_SendMouseMotion(pyxis_video.window, 0, SDL_TRUE, event->dx, event->dy);
+    }
+  } else {
+    struct pointer_geometry geometry;
+    if (!ordinary_geometry(event, &geometry)) {
+      return;
+    }
+    pointer_inside = true;
+    SDL_SetMouseFocus(pyxis_video.window);
+    send_ordinary_position(event);
+  }
   for (size_t i = 0; i < SDL_arraysize(buttons); ++i) {
     uint32_t button = buttons[i].pyxis;
     if ((event->buttons ^ held_buttons) & button) {
@@ -181,7 +256,7 @@ static void handle_pointer(const struct pointer_event *event)
   }
   /* Pyxis counts toward the user as positive; SDL counts away from the user. */
   if (event->wheel) {
-    SDL_SendMouseWheel(pyxis_video.window, 0, 0.0f, (float)-event->wheel,
+    SDL_SendMouseWheel(pyxis_video.window, 0, 0.0f, -(float)event->wheel,
         SDL_MOUSEWHEEL_NORMAL);
   }
 }
@@ -194,35 +269,128 @@ static void drain_keyboard(void)
   }
 }
 
+static size_t input_interests(struct wait_interest interests[INPUT_WAIT_CAPACITY])
+{
+  size_t count = 0;
+  interests[count++] = (struct wait_interest){
+    .handle = pyxis_video.display, .events = WAIT_RESIZED,
+    .observed_generation = pyxis_video.generation,
+  };
+  if (pyxis_video.keyboard_owned) {
+    interests[count++] = (struct wait_interest){
+      .handle = pyxis_video.keyboard, .events = WAIT_READABLE,
+    };
+  }
+  if (pyxis_video.pointer_owned) {
+    interests[count++] = (struct wait_interest){
+      .handle = pyxis_video.pointer, .events = WAIT_READABLE,
+    };
+  }
+  return count;
+}
+
+int PYXIS_WaitEventTimeout(SDL_VideoDevice *device, int timeout)
+{
+  (void)device;
+  if (!pyxis_video.window || !pyxis_video.keyboard_owned) {
+    return -1;
+  }
+
+  struct wait_interest interests[INPUT_WAIT_CAPACITY];
+  size_t count = input_interests(interests);
+  uint64_t end = 0;
+  if (timeout > 0) {
+    uint64_t now;
+    uint64_t duration = (uint64_t)timeout * NANOSECONDS_PER_MILLISECOND;
+    if (clock_now(pyxis_video.clock, &now) != CALL_OK || now > UINT64_MAX - duration) {
+      return -1;
+    }
+    end = now + duration;
+  }
+
+  for (;;) {
+    uint64_t deadline = 0;
+    if (timeout != 0) {
+      uint64_t now;
+      if (clock_now(pyxis_video.clock, &now) != CALL_OK ||
+          now > UINT64_MAX - WAIT_MAX_WAIT_NS) {
+        return -1;
+      }
+      deadline = now + WAIT_MAX_WAIT_NS;
+      if (timeout > 0 && end < deadline) {
+        deadline = end;
+      }
+    }
+
+    uint64_t events[INPUT_WAIT_CAPACITY] = {0};
+    enum call_status status = wait_many(interests, count, deadline, events);
+    if (status == CALL_OK) {
+      bool ready = false;
+      for (size_t i = 0; i < count; ++i) {
+        if (events[i] & WAIT_ERROR) {
+          return -1; /* Ownership/backend loss needs the polling fallback. */
+        }
+        ready |= (events[i] & interests[i].events) != 0;
+      }
+      if (ready) {
+        SDL_memcpy(waited_events, events, sizeof(waited_events));
+        waited = true;
+      }
+      /* SDL pumps again before taking an event from its queue. */
+      return ready ? 1 : (timeout == 0 ? 0 : -1);
+    }
+    if (status != CALL_TIMED_OUT) {
+      return -1;
+    }
+    if (timeout > 0 && deadline == end) {
+      return 0;
+    }
+    /* Native waits are bounded to 30 seconds. Re-arm long/infinite waits;
+     * each call checks readiness before interpreting an expired deadline. */
+  }
+}
+
 void PYXIS_PumpEvents(SDL_VideoDevice *device)
 {
   if (!pyxis_video.window) {
     return;
   }
 
-  /* One poll covers display geometry and keyboard readiness. The pointer
-   * cannot be waited on, so it is always polled. */
-  struct wait_interest interests[2] = {
-    {.handle = pyxis_video.display, .events = WAIT_RESIZED,
-     .observed_generation = pyxis_video.generation},
-    {.handle = pyxis_video.keyboard, .events = WAIT_READABLE},
-  };
-  uint64_t events[2] = {0};
-  if (wait_many(interests, SDL_arraysize(interests), 0, events) == CALL_OK) {
+  struct wait_interest interests[INPUT_WAIT_CAPACITY];
+  size_t count = input_interests(interests);
+  uint64_t events[INPUT_WAIT_CAPACITY] = {0};
+  bool pointer_ready = true;
+  enum call_status status;
+  if (waited) {
+    SDL_memcpy(events, waited_events, sizeof(events));
+    waited = false;
+    status = CALL_OK;
+  } else {
+    status = wait_many(interests, count, 0, events);
+  }
+  if (status == CALL_OK) {
     if (events[0] & WAIT_RESIZED) {
       PYXIS_FollowDisplaySize(device);
     }
-    if (events[1] & (WAIT_READABLE | WAIT_ERROR)) {
+    if (pyxis_video.keyboard_owned && (events[1] & (WAIT_READABLE | WAIT_ERROR))) {
       drain_keyboard();
     }
+    pointer_ready = pyxis_video.pointer_owned &&
+        (events[count - 1] & (WAIT_READABLE | WAIT_ERROR));
   } else {
-    drain_keyboard();
+    if (pyxis_video.keyboard_owned) {
+      drain_keyboard();
+    }
   }
 
   struct pointer_event motion;
-  while (pyxis_video.pointer_owned &&
+  while (pointer_ready && pyxis_video.pointer_owned &&
          pointer_read(pyxis_video.pointer, POINTER_READ_POLL, &motion) == CALL_OK) {
     handle_pointer(&motion);
+  }
+  uint64_t flags;
+  if (pyxis_video.pointer_owned && pointer_state(pyxis_video.pointer, &flags) == CALL_OK) {
+    update_pointer_state(flags, false);
   }
 }
 

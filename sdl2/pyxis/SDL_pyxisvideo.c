@@ -23,6 +23,7 @@ struct pyxis_video pyxis_video = {
   .display = HANDLE_INVALID,
   .keyboard = HANDLE_INVALID,
   .pointer = HANDLE_INVALID,
+  .clock = HANDLE_INVALID,
 };
 
 static bool display_mode(const struct display_size_reply *size, SDL_DisplayMode *mode)
@@ -129,8 +130,9 @@ static int PYXIS_VideoInit(SDL_VideoDevice *device)
   pyxis_video.display = startup_resource("display");
   pyxis_video.keyboard = startup_resource("keyboard");
   pyxis_video.pointer = startup_resource("pointer");
+  pyxis_video.clock = startup_resource("clock");
   if (pyxis_video.display == HANDLE_INVALID || pyxis_video.keyboard == HANDLE_INVALID ||
-      startup_resource("clock") == HANDLE_INVALID) {
+      pyxis_video.clock == HANDLE_INVALID) {
     return SDL_SetError("Pyxis video needs the display, keyboard and clock grants");
   }
 
@@ -171,17 +173,6 @@ static int PYXIS_CreateWindow(SDL_VideoDevice *device, SDL_Window *window)
     return SDL_SetError("Pyxis keyboard acquisition failed (status %u)", (unsigned)status);
   }
   pyxis_video.keyboard_owned = true;
-  /* Without a pointer grant or a mouse, the program runs from the keyboard. */
-  if (pyxis_video.pointer != HANDLE_INVALID) {
-    status = pointer_acquire(pyxis_video.pointer);
-    if (status == CALL_OK) {
-      pyxis_video.pointer_owned = true;
-    } else if (status != CALL_UNAVAILABLE) {
-      release_input();
-      return SDL_SetError("Pyxis pointer acquisition failed (status %u)", (unsigned)status);
-    }
-  }
-
   /* The window always covers the display; focus arrives as input events. */
   const SDL_DisplayMode *mode = &device->displays[0].desktop_mode;
   window->flags |= SDL_WINDOW_FULLSCREEN;
@@ -223,6 +214,10 @@ static int PYXIS_CreateWindowFramebuffer(SDL_VideoDevice *device, SDL_Window *wi
     }
     pyxis_video.display_owned = true;
     /* A change since VideoInit is followed on the next event pump. */
+  }
+
+  if (PYXIS_AcquirePointer() < 0) {
+    return -1;
   }
 
   int width, height;
@@ -275,6 +270,7 @@ static SDL_VideoDevice *PYXIS_CreateDevice(void)
   device->VideoInit = PYXIS_VideoInit;
   device->VideoQuit = PYXIS_VideoQuit;
   device->PumpEvents = PYXIS_PumpEvents;
+  device->WaitEventTimeout = PYXIS_WaitEventTimeout;
   device->CreateSDLWindow = PYXIS_CreateWindow;
   device->DestroyWindow = PYXIS_DestroyWindow;
   device->CreateWindowFramebuffer = PYXIS_CreateWindowFramebuffer;

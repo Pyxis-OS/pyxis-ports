@@ -31,8 +31,9 @@ The files in `pyxis/` are the platform layer:
 - **Video** (`SDL_pyxisvideo.c`):
   - **Window.** One window, always the size of the display content area and
     marked fullscreen. A second window is refused.
-  - **Sessions.** Creating the window acquires the keyboard and pointer;
-    destroying it releases them and the display.
+  - **Sessions.** Creating the window acquires the keyboard. Creating its
+    framebuffer acquires graphics and then the optional pointer subscription;
+    destroying the window releases these sessions.
   - **Drawing.** SDL draws into its own surface; `SDL_UpdateWindowSurface`
     and `SDL_RenderPresent` copy the updated rectangles into the display
     mapping. The presenter therefore never shows a cleared or half-drawn
@@ -45,16 +46,37 @@ The files in `pyxis/` are the platform layer:
     SDL's US defaults. Text input uses the SDK's shared US layout
     (`pxe/key_layout.h`), the same table the terminal uses. Control, Alt and
     Super suppress text.
-  - **Pointer.** Pyxis reports relative counts; one function turns them into
-    SDL motion, and SDL keeps the position clamped to the window. Warping
-    moves SDL's copy of it, and relative mode works from the same counts.
-    There is no acceleration; `SDL_HINT_MOUSE_NORMAL_SPEED_SCALE` scales
-    motion. The wheel follows SDL's sign: toward the user is negative.
+  - **Pointer.** Ordinary motion uses native surface-local positions with matching
+    destination and mapping identities, including anchored drags outside the
+    window. SDL does not integrate device counts or scale ordinary motion.
+    `SDL_WarpMouseInWindow` requests native bounded owner warp; refusal sets
+    SDL's error and preserves position. Success arrives through native input.
+    Relative mode requests native lock and returns an error when refused,
+    including before first presentation or while inactive. Super+Esc and
+    focus/device loss revoke it; the event pump clears SDL relative mode,
+    pending motion and held buttons without warping. Native ordinary state and
+    enter events restore the parked position without requiring device movement.
+    A fresh consumed surface
+    click permits a new explicit relative-mode request; the adapter does not
+    automatically relock. Locked resize keeps held buttons. The wheel follows
+    SDL's sign: toward the user is negative.
+  - **Cursor.** SDL bitmap and color cursors copy straight-alpha BGRA pixels to
+    the native surface cursor, with dimensions 1..64 and an in-image hotspot.
+    The default is the native arrow. `SDL_ShowCursor` controls native saved
+    visibility, so software-cursor applications can hide it. Lock independently
+    hides the cursor and restores the saved preference on unlock.
   - **Focus.** Focus changes and input resets release every held key and
     button, so a key held across them must be pressed again. Keyboard focus
     becomes the window's focus events.
-  - **Event pump.** Each pump polls display geometry and keyboard readiness in
-    one `wait_many` and polls the pointer.
+  - **Event pump.** Each pump polls display geometry, keyboard and the acquired
+    pointer subscription in one `wait_many`. `SDL_WaitEvent` and positive-timeout
+    `SDL_WaitEventTimeout` block on the same handles. Zero remains nonblocking;
+    negative means infinite. Finite deadlines are retained across the native
+    30-second wait bound, and infinite waits re-arm at that bound. Absent pointer
+    grants are omitted; no new input session is acquired by waiting. Unsupported
+    waits, ownership/backend errors, or missing window/input sessions fall back
+    to upstream polling. SDL's joystick enumeration poll interval remains when
+    that subsystem is initialized.
 - **Timer** (`SDL_systimer.c`): ticks and the performance counter come from
   `clock_now` in nanoseconds, and `SDL_Delay` from `clock_sleep_for`. Sleeps
   use HPET deadlines and never finish before the requested deadline. Interrupt
@@ -72,6 +94,12 @@ The files in `pyxis/` are the platform layer:
 2. `0002` registers the Pyxis video driver in SDL's bootstrap list.
 3. `0003` skips the Steam virtual gamepad file, because Pyxis `stat` has no
    modification time.
+4. `0004` makes native Pyxis position, warp and lock authoritative in SDL mouse
+   core: no synthetic warp position or relative-mode fallback after lock refusal.
+   Other video drivers retain upstream behavior.
+5. `0005` permits the threadless Pyxis wait hook without `SendWakeupEvent`.
+   There are no asynchronous SDL event producers in this configuration. A
+   threaded port needs a real wakeup sender before using this path.
 
 ## Not built
 
@@ -85,5 +113,5 @@ These facilities report themselves as unsupported, as upstream does:
 - **Joysticks.** They use SDL's dummy driver: `SDL_INIT_JOYSTICK` succeeds
   with zero devices.
 
-There is no system cursor, message box or clipboard. `SDL_WaitEvent` uses
-upstream's polling loop. `SDL_main` and `SDL_test` are not built.
+Named SDL system-cursor shapes, message boxes and the clipboard are unsupported.
+`SDL_main` and `SDL_test` are not built.

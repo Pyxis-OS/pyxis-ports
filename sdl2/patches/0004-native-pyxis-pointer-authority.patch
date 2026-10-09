@@ -1,0 +1,87 @@
+diff --git a/src/events/SDL_mouse.c b/src/events/SDL_mouse.c
+--- a/src/events/SDL_mouse.c
++++ b/src/events/SDL_mouse.c
+@@ -46,6 +46,14 @@
+ 
+ static int SDL_PrivateSendMouseMotion(SDL_Window *window, SDL_MouseID mouseID, int relative, int x, int y);
+ 
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++static SDL_bool SDL_UsesPyxisPointer(void)
++{
++    const char *driver = SDL_GetCurrentVideoDriver();
++    return driver && SDL_strcmp(driver, "pyxis") == 0;
++}
++#endif
++
+ static void SDLCALL SDL_MouseDoubleClickTimeChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
+ {
+     SDL_Mouse *mouse = (SDL_Mouse *)userdata;
+@@ -377,6 +385,13 @@
+     SDL_Mouse *mouse = SDL_GetMouse();
+     SDL_bool inWindow = SDL_TRUE;
+ 
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    if (SDL_UsesPyxisPointer()) {
++        /* Native ENTER/LEAVE and drag routing decide mouse focus. */
++        return SDL_TRUE;
++    }
++#endif
++
+     if (window && !(window->flags & SDL_WINDOW_MOUSE_CAPTURE)) {
+         int w, h;
+         SDL_GetWindowSize(window, &w, &h);
+@@ -617,7 +632,11 @@
+ 
+     /* make sure that the pointers find themselves inside the windows,
+        unless we have the mouse captured. */
+-    if (window && !(window->flags & SDL_WINDOW_MOUSE_CAPTURE)) {
++    if (window && !(window->flags & SDL_WINDOW_MOUSE_CAPTURE)
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++        && !SDL_UsesPyxisPointer()
++#endif
++    ) {
+         int x_min = 0, x_max = 0;
+         int y_min = 0, y_max = 0;
+         const SDL_Rect *confine = SDL_GetWindowMouseRect(window);
+@@ -1074,6 +1093,14 @@
+         return;
+     }
+ 
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    if (SDL_UsesPyxisPointer()) {
++        /* Native warp delivers its own position event, or preserves position on refusal. */
++        mouse->WarpMouse(window, x, y);
++        return;
++    }
++#endif
++
+     /* Ignore the previous position when we warp */
+     mouse->last_x = x;
+     mouse->last_y = y;
+@@ -1138,6 +1165,26 @@
+         return 0;
+     }
+ 
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    if (SDL_UsesPyxisPointer()) {
++        /* Native lock refusal must not become a successful warp-mode fallback. */
++        if (mouse->SetRelativeMouseMode(enabled) < 0) {
++            return -1;
++        }
++        mouse->relative_mode = enabled;
++        mouse->relative_mode_warp = SDL_FALSE;
++        mouse->xdelta = mouse->ydelta = 0;
++        mouse->scale_accum_x = mouse->scale_accum_y = 0.0f;
++        SDL_SetCursor(NULL);
++        if (focusWindow) {
++            SDL_UpdateWindowGrab(focusWindow);
++            SDL_UpdateMouseCapture(SDL_FALSE);
++        }
++        SDL_FlushEvent(SDL_MOUSEMOTION);
++        return 0;
++    }
++#endif
++
+     /* Set the relative mode */
+     if (!enabled && mouse->relative_mode_warp) {
+         mouse->relative_mode_warp = SDL_FALSE;

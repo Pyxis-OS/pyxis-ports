@@ -2,17 +2,7 @@ diff --git a/Source/options.cpp b/Source/options.cpp
 index 8995874..dfc6cb8 100644
 --- a/Source/options.cpp
 +++ b/Source/options.cpp
-@@ -340,7 +340,8 @@ Options sgOptions;
- #if SDL_VERSION_ATLEAST(2, 0, 0)
- bool HardwareCursorSupported()
- {
--#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1)
-+// Pyxis has no system cursor yet, so the game draws its own.
-+#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1) || defined(__pyxis__)
- 	return false;
- #else
- 	SDL_version v;
-@@ -982,7 +983,8 @@ GraphicsOptions::GraphicsOptions()
+@@ -982,7 +982,8 @@ GraphicsOptions::GraphicsOptions()
            ,
            N_("Frame Rate Control"),
            N_("Manages frame rate to balance performance, reduce tearing, or save power."),
