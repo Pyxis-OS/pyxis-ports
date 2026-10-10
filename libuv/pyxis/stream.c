@@ -419,9 +419,15 @@ void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
       if (tty->resize_cb && (events & (WAIT_RESIZED | WAIT_ERROR))) {
         struct pyxis_descriptor_binding binding;
         struct console_size_reply size;
-        int error = pyxis_descriptor_borrow(tty->fd, &binding) ?
-            uv_translate_sys_error(errno) :
-            uv__pyxis_status(console_size(binding.handle, &size));
+        int error = 0;
+        if (events & WAIT_ERROR) {
+          /* SIZE can still succeed after hangup. */
+          error = UV_EIO;
+        } else if (pyxis_descriptor_borrow(tty->fd, &binding)) {
+          error = uv_translate_sys_error(errno);
+        } else {
+          error = uv__pyxis_status(console_size(binding.handle, &size));
+        }
         if (!error && (size.columns > INT_MAX || size.rows > INT_MAX)) {
           error = UV_EOVERFLOW;
         }
@@ -429,6 +435,7 @@ void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
           uv_pyxis_tty_resize_cb callback = tty->resize_cb;
           if (error) {
             tty->resize_cb = NULL;
+            update_activity(stream);
           } else {
             tty->resize_generation = size.generation;
           }

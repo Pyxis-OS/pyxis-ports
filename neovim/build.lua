@@ -87,7 +87,13 @@ return function(ctx)
     elseif path == "src/nvim/fuzzy.c" or path == "src/nvim/marktree.c" then
       notice = text:match("^(.-)#include")
     else
-      notice = text:match("/%*.-%*/")
+      local blocks = {}
+      for block in text:gmatch("/%*.-%*/") do
+        if block:lower():find("copyright", 1, true) then
+          table.insert(blocks, block)
+        end
+      end
+      notice = next(blocks) and table.concat(blocks, "\n")
     end
     assert(notices:write(path, "\n", assert(notice), "\n\n"))
   end

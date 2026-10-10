@@ -192,7 +192,7 @@ index 77b65bc..86a8bea 100644
  # include <unistd.h>  // IWYU pragma: keep
  #else
 diff --git a/src/nvim/tui/tui.c b/src/nvim/tui/tui.c
-index ed23034..451014f 100644
+index ed23034..454fc93 100644
 --- a/src/nvim/tui/tui.c
 +++ b/src/nvim/tui/tui.c
 @@ -2,7 +2,12 @@
@@ -484,9 +484,13 @@ index ed23034..451014f 100644
    if (uv_loop_close(&tui->write_loop)) {
      abort();
    }
-@@ -621,6 +733,16 @@ static void tui_terminal_start(TUIData *tui)
+@@ -619,8 +731,22 @@ static void tui_terminal_start(TUIData *tui)
+   if (tui->input.loop == NULL) {
+     tinput_init(&tui->input, &main_loop, &tui->ti);
    }
++#ifndef __pyxis__
    tui_guess_size(tui);
++#endif
    tinput_start(&tui->input);
 +#ifdef __pyxis__
 +  int error = uv_pyxis_tty_resize_start(&tui->input.read_stream.s.uv.tty,
@@ -495,13 +499,15 @@ index ed23034..451014f 100644
 +    ELOG("Cannot watch native terminal resize: %s", uv_strerror(error));
 +    abort();
 +  }
++  // Register before querying, so a resize cannot hide behind the initial snapshot.
++  tui_guess_size(tui);
 +  // Publish alternate-screen output only after input and geometry are usable.
 +  flush_buf(tui);
 +#endif
  }
  
  static void after_startup_cb(uv_timer_t *handle)
-@@ -648,6 +770,10 @@ void tui_stop(TUIData *tui)
+@@ -648,6 +774,10 @@ void tui_stop(TUIData *tui)
      return;
    }
  
@@ -512,7 +518,7 @@ index ed23034..451014f 100644
    tui->input.callbacks.primary_device_attr = tui_stop_cb;
    terminfo_disable(tui);
  
-@@ -657,13 +783,18 @@ void tui_stop(TUIData *tui)
+@@ -657,13 +787,18 @@ void tui_stop(TUIData *tui)
    if (!tui->stopped && !tui->input.read_stream.did_eof) {
      WLOG("TUI: timed out waiting for DA1 response");
    }
@@ -531,7 +537,7 @@ index ed23034..451014f 100644
    uv_close((uv_handle_t *)&tui->startup_delay_timer, NULL);
  }
  
-@@ -710,6 +841,23 @@ void tui_free_all_mem(TUIData *tui)
+@@ -710,6 +845,23 @@ void tui_free_all_mem(TUIData *tui)
  }
  #endif
  
@@ -555,7 +561,7 @@ index ed23034..451014f 100644
  static void sigwinch_cb(SignalWatcher *watcher, int signum, void *cbdata)
  {
    TUIData *tui = cbdata;
-@@ -719,6 +867,7 @@ static void sigwinch_cb(SignalWatcher *watcher, int signum, void *cbdata)
+@@ -719,6 +871,7 @@ static void sigwinch_cb(SignalWatcher *watcher, int signum, void *cbdata)
  
    tui_guess_size(tui);
  }
@@ -563,7 +569,7 @@ index ed23034..451014f 100644
  
  static bool attrs_differ(TUIData *tui, int id1, int id2, bool rgb)
  {
-@@ -843,9 +992,11 @@ static void update_attrs(TUIData *tui, int attr_id)
+@@ -843,9 +996,11 @@ static void update_attrs(TUIData *tui, int attr_id)
    if (conceal) {
      terminfo_out(tui, kTerm_enter_secure_mode);
    }
@@ -575,7 +581,7 @@ index ed23034..451014f 100644
    if (tui->ti.defs[kTerm_set_underline_style]) {
      if (undercurl) {
        terminfo_print_num1(tui, kTerm_set_underline_style, 3);
-@@ -885,6 +1036,11 @@ static void update_attrs(TUIData *tui, int attr_id)
+@@ -885,6 +1040,11 @@ static void update_attrs(TUIData *tui, int attr_id)
    } else {
      fg = (attrs.cterm_fg_color
            ? attrs.cterm_fg_color - 1 : (tui->clear_attrs.cterm_fg_color - 1));
@@ -587,7 +593,7 @@ index ed23034..451014f 100644
      if (fg != -1) {
        terminfo_print_num1(tui, kTerm_set_a_foreground, fg);
      }
-@@ -902,11 +1058,17 @@ static void update_attrs(TUIData *tui, int attr_id)
+@@ -902,11 +1062,17 @@ static void update_attrs(TUIData *tui, int attr_id)
    } else {
      bg = (attrs.cterm_bg_color
            ? attrs.cterm_bg_color - 1 : (tui->clear_attrs.cterm_bg_color - 1));
@@ -605,7 +611,7 @@ index ed23034..451014f 100644
    if (tui->url != attrs.url) {
      if (attrs.url >= 0) {
        const char *url = urls.keys[attrs.url];
-@@ -925,6 +1087,8 @@ static void update_attrs(TUIData *tui, int attr_id)
+@@ -925,6 +1091,8 @@ static void update_attrs(TUIData *tui, int attr_id)
      tui->url = attrs.url;
    }
  
@@ -614,7 +620,7 @@ index ed23034..451014f 100644
    tui->default_attr = fg == -1 && bg == -1
                        && !bold && !dim && !blink && !conceal && !overline && !italic
                        && !has_any_underline && !reverse && !standout && !strikethrough;
-@@ -1353,6 +1517,9 @@ void tui_busy_stop(TUIData *tui)
+@@ -1353,6 +1521,9 @@ void tui_busy_stop(TUIData *tui)
  
  void tui_mouse_on(TUIData *tui)
  {
@@ -624,7 +630,7 @@ index ed23034..451014f 100644
    if (!tui->mouse_enabled) {
      tui_set_term_mode(tui, kTermModeMouseButtonEvent, true);
      tui_set_term_mode(tui, kTermModeMouseSGRExt, true);
-@@ -1365,6 +1532,9 @@ void tui_mouse_on(TUIData *tui)
+@@ -1365,6 +1536,9 @@ void tui_mouse_on(TUIData *tui)
  
  void tui_mouse_off(TUIData *tui)
  {
@@ -634,7 +640,7 @@ index ed23034..451014f 100644
    if (tui->mouse_enabled) {
      if (tui->mouse_move_enabled) {
        tui_set_term_mode(tui, kTermModeMouseAnyEvent, false);
-@@ -1426,7 +1596,7 @@ static void tui_set_mode(TUIData *tui, ModeShape mode)
+@@ -1426,7 +1600,7 @@ static void tui_set_mode(TUIData *tui, ModeShape mode)
  /// @param mode editor mode
  void tui_mode_change(TUIData *tui, String mode, Integer mode_idx)
  {
@@ -643,7 +649,7 @@ index ed23034..451014f 100644
    // If stdin is not a TTY, the LHS of pipe may change the state of the TTY
    // after calling uv_tty_set_mode. So, set the mode of the TTY again here.
    // #13073
-@@ -1545,6 +1715,9 @@ void tui_bell(TUIData *tui)
+@@ -1545,6 +1719,9 @@ void tui_bell(TUIData *tui)
  
  void tui_visual_bell(TUIData *tui)
  {
@@ -653,7 +659,7 @@ index ed23034..451014f 100644
    if (tui->screen_or_tmux) {
      out(tui, S_LEN("\x1bg"));
    } else {
-@@ -1576,13 +1749,17 @@ void tui_default_colors_set(TUIData *tui, Integer rgb_fg, Integer rgb_bg, Intege
+@@ -1576,13 +1753,17 @@ void tui_default_colors_set(TUIData *tui, Integer rgb_fg, Integer rgb_bg, Intege
  void tui_ui_send(TUIData *tui, String content)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -672,7 +678,7 @@ index ed23034..451014f 100644
  }
  
  /// Flushes TUI grid state to a buffer (which is later flushed to the TTY by `flush_buf`).
-@@ -1663,8 +1840,20 @@ static void show_verbose_terminfo(TUIData *tui)
+@@ -1663,8 +1844,20 @@ static void show_verbose_terminfo(TUIData *tui)
  
  void tui_suspend(TUIData *tui)
  {
@@ -694,7 +700,7 @@ index ed23034..451014f 100644
    ui_client_detach();
    tui->mouse_enabled_save = tui->mouse_enabled;
    tui->input.callbacks.primary_device_attr = tui_suspend_cb;
-@@ -1672,7 +1861,7 @@ void tui_suspend(TUIData *tui)
+@@ -1672,7 +1865,7 @@ void tui_suspend(TUIData *tui)
  #endif
  }
  
@@ -703,7 +709,7 @@ index ed23034..451014f 100644
  static void tui_suspend_cb(TUIData *tui)
    FUNC_ATTR_NONNULL_ALL
  {
-@@ -1771,6 +1960,9 @@ void tui_option_set(TUIData *tui, String name, Object value)
+@@ -1771,6 +1964,9 @@ void tui_option_set(TUIData *tui, String name, Object value)
        }
      }
    } else if (strequal(name.data, "termguicolors")) {
@@ -713,7 +719,7 @@ index ed23034..451014f 100644
      tui->rgb = value.data.boolean;
      tui->print_attr_id = -1;
      invalidate(tui, 0, tui->grid.height, 0, tui->grid.width);
-@@ -1880,6 +2072,18 @@ void tui_set_size(TUIData *tui, int width, int height)
+@@ -1880,6 +2076,18 @@ void tui_set_size(TUIData *tui, int width, int height)
  /// application (i.e., the host terminal).
  void tui_guess_size(TUIData *tui)
  {
@@ -732,7 +738,7 @@ index ed23034..451014f 100644
    int width = 0;
    int height = 0;
    char *lines = NULL;
-@@ -2511,7 +2715,9 @@ static size_t flush_buf_end(TUIData *tui, char *buf, size_t len)
+@@ -2511,7 +2719,9 @@ static size_t flush_buf_end(TUIData *tui, char *buf, size_t len)
  /// @see tui_flush
  static void flush_buf(TUIData *tui)
  {
@@ -742,7 +748,7 @@ index ed23034..451014f 100644
    uv_buf_t bufs[3];
    char pre[32];
    char post[32];
-@@ -2534,12 +2740,16 @@ static void flush_buf(TUIData *tui)
+@@ -2534,12 +2744,16 @@ static void flush_buf(TUIData *tui)
        fwrite(bufs[i].base, bufs[i].len, 1, tui->screenshot);
      }
    } else {
