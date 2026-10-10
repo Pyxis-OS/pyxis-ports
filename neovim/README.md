@@ -71,7 +71,7 @@ reaching any uv call. QEMU
 qualification covers local editing, highlighting, save and `:cd` with the
 16-colour profile; it does not establish physical-host qualification.
 
-The six ordered patches adapt platform/process APIs, native paths and file
+The seven ordered patches adapt platform/process APIs, native paths and file
 comparison, the console TUI, core/runtime assumptions, persistent undo, static parser registration and the swapfile prompt, which no
 longer indexes the passwd record Pyxis refuses to supply. Undo
 files are created with libc's 0666 creation mode instead of the edited
