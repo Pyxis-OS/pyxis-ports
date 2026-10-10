@@ -33,7 +33,7 @@ stdin requiring fd 3 rejects before launch.
 
 `nvim_runtime://sysinit.vim` loads before optional user configuration at
 `home://.config/nvim/init.lua` or `home://.config/nvim/init.vim`. It selects the
-Pyxis 16-colour scheme, Vimscript syntax highlighting, `notermguicolors` and
+Pyxis 16-colour scheme, `notermguicolors` and
 disabled swap/backup/writebackup. Startup sets `NVIM_NOTTYFAST`, clears
 `COLORTERM` and selects the explicit runtime. Terminal input owns a native RAW
 passthrough reference; resize uses native geometry generations. Capability
@@ -49,15 +49,22 @@ contents, and equal timestamps do not prove equal bytes.
 External jobs, `system()`, `:terminal`, PTYs, socket listeners, Unix signals,
 numeric PID operations, workers, asynchronous filesystem calls and watches are
 outside this profile. Swap/backup recovery and patchmode are unavailable.
-Dynamic Lua modules, tree-sitter grammar loading, LSP and true-colour output
-are excluded; the packaged syntax highlighting uses Vimscript. Arbitrary
+Dynamic Lua modules, dynamic grammar loading, LSP and true-colour output
+are excluded. Seven upstream-bundled grammars are statically linked: `c`, `lua`,
+`vim`, `vimdoc`, `query`, `markdown` and `markdown_inline`. Language registration
+checks their actual Tree-sitter ABI and never uses `dlopen`. Lua, Markdown, help
+and query use upstream Tree-sitter defaults; C and Vim retain legacy syntax,
+with parsers available to explicit `vim.treesitter.start()`. A start request for
+a language without a built-in parser quietly leaves/restores legacy syntax;
+`language.add()` still returns no parser and its reason. Explicit dynamic paths
+remain unsupported. Arbitrary
 configuration can invoke unsupported operations and receive errors. QEMU
 qualification covers local editing, highlighting, save and `:cd` with the
 16-colour profile; it does not establish physical-host qualification.
 
-The five ordered patches adapt platform/process APIs, native paths and file
-comparison, the console TUI, core/runtime assumptions, and persistent undo,
-whose files are created with libc's 0666 creation mode instead of the edited
+The six ordered patches adapt platform/process APIs, native paths and file
+comparison, the console TUI, core/runtime assumptions, persistent undo and static parser registration. Undo
+files are created with libc's 0666 creation mode instead of the edited
 file's permission bits. Exact pins,
 checksums and patch order are in `metadata.lua` and staged
 `share/neovim/source.txt`. See [PORT-NOTICE.md](PORT-NOTICE.md) for licences

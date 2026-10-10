@@ -1,0 +1,258 @@
+diff --git a/runtime/lua/vim/treesitter.lua b/runtime/lua/vim/treesitter.lua
+index e2f0563..6fa8192 100644
+--- a/runtime/lua/vim/treesitter.lua
++++ b/runtime/lua/vim/treesitter.lua
+@@ -457,6 +457,16 @@ function M.start(buf, lang)
+       vim.fn.bufload(buf)
+     end
+   end
++  if vim._ts_add_language_from_static then
++    local parser_lang = valid_lang(lang) and lang or M.language.get_lang(vim.bo[buf].filetype)
++    if not valid_lang(parser_lang) or not M.language.add(parser_lang) then
++      M.stop(buf)
++      if vim.g.syntax_on == 1 and vim.g.syntax_manual ~= 1 and vim.bo[buf].syntax == '' then
++        vim.bo[buf].syntax = vim.bo[buf].filetype
++      end
++      return
++    end
++  end
+   local parser = assert(M.get_parser(buf, lang))
+   M.highlighter.new(parser)
+ end
+diff --git a/runtime/lua/vim/treesitter/health.lua b/runtime/lua/vim/treesitter/health.lua
+index 881d6e4..e2545c7 100644
+--- a/runtime/lua/vim/treesitter/health.lua
++++ b/runtime/lua/vim/treesitter/health.lua
+@@ -32,6 +32,12 @@ function M.check()
+     table.insert(sorted_parsers, { name = parsername, path = parser, index = i })
+   end
+ 
++  if vim._ts_get_builtin_languages then
++    for _, lang in ipairs(vim._ts_get_builtin_languages()) do
++      table.insert(sorted_parsers, { name = lang, path = 'built-in', index = 0 })
++    end
++  end
++
+   table.sort(sorted_parsers, function(a, b)
+     if a.name == b.name then
+       return a.index < b.index -- if names are the same sort by rtpath index (unique)
+@@ -41,15 +47,15 @@ function M.check()
+   end)
+ 
+   for i, parser in ipairs(sorted_parsers) do
+-    local is_loadable, err_or_nil = pcall(ts.language.add, parser.name)
++    local ok, loaded, err = pcall(ts.language.add, parser.name)
+ 
+-    if not is_loadable then
++    if not ok or not loaded then
+       health.error(
+         string.format(
+           'Parser "%s" failed to load (path: %s): %s',
+           parser.name,
+           parser.path,
+-          err_or_nil or '?'
++          (not ok and loaded or err) or '?'
+         )
+       )
+     elseif i > 1 and sorted_parsers[i - 1].name == parser.name then
+diff --git a/runtime/lua/vim/treesitter/language.lua b/runtime/lua/vim/treesitter/language.lua
+index 2bf4d10..37b6207 100644
+--- a/runtime/lua/vim/treesitter/language.lua
++++ b/runtime/lua/vim/treesitter/language.lua
+@@ -59,8 +59,8 @@ function M.require_language(lang, path, silent, symbol_name)
+   }
+ 
+   if silent then
+-    local installed = pcall(M.add, lang, opts)
+-    return installed
++    local ok, installed = pcall(M.add, lang, opts)
++    return ok and installed == true
+   end
+ 
+   return M.add(lang, opts)
+@@ -126,6 +126,11 @@ function M.add(lang, opts)
+       return nil, string.format('Invalid language name "%s"', lang)
+     end
+ 
++    if vim._ts_add_language_from_static then
++      local loaded = vim._ts_add_language_from_static(lang, symbol_name)
++      return loaded, not loaded and string.format('No built-in parser for language "%s"', lang) or nil
++    end
++
+     local fname = 'parser/' .. lang .. '.*'
+     local paths = api.nvim_get_runtime_file(fname, false)
+     if #paths == 0 then
+@@ -194,6 +199,11 @@ function M._complete()
+     local parser_name = vim.fn.fnamemodify(parser, ':t:r')
+     parser_names_set[parser_name] = true
+   end
++  if vim._ts_get_builtin_languages then
++    for _, lang in ipairs(vim._ts_get_builtin_languages()) do
++      parser_names_set[lang] = true
++    end
++  end
+   return vim.tbl_keys(parser_names_set)
+ end
+ 
+diff --git a/runtime/lua/vim/treesitter/languagetree.lua b/runtime/lua/vim/treesitter/languagetree.lua
+index 3341982..7b9e185 100644
+--- a/runtime/lua/vim/treesitter/languagetree.lua
++++ b/runtime/lua/vim/treesitter/languagetree.lua
+@@ -480,12 +480,12 @@ function LanguageTree:_add_injections(injections_by_lang)
+   local seen_langs = {} ---@type table<string,boolean>
+ 
+   for lang, injection_regions in pairs(injections_by_lang) do
+-    local has_lang = pcall(language.add, lang)
++    local ok, has_lang = pcall(language.add, lang)
+ 
+     -- Child language trees should just be ignored if not found, since
+     -- they can depend on the text of a node. Intermediate strings
+     -- would cause errors for unknown parsers.
+-    if has_lang then
++    if ok and has_lang then
+       local child = self._children[lang]
+ 
+       if not child then
+@@ -1013,6 +1013,9 @@ end
+ --- @param lang string parser name
+ --- @return boolean # true if parser for {lang} exists on rtp
+ local has_parser = vim.func._memoize(1, function(lang)
++  if vim._ts_add_language_from_static then
++    return language.add(lang) == true
++  end
+   return vim._ts_has_language(lang)
+     or #vim.api.nvim_get_runtime_file('parser/' .. lang .. '.*', false) > 0
+ end)
+diff --git a/src/nvim/CMakeLists.txt b/src/nvim/CMakeLists.txt
+index df7ec9f..a3ab89f 100644
+--- a/src/nvim/CMakeLists.txt
++++ b/src/nvim/CMakeLists.txt
+@@ -10,6 +10,25 @@ set_target_properties(nvim_bin
+   ENABLE_EXPORTS TRUE
+   OUTPUT_NAME nvim)
+ 
++if(CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
++  foreach(lang c lua vim vimdoc query markdown markdown_inline)
++    string(TOUPPER "${lang}" upper_lang)
++    if(lang STREQUAL "markdown")
++      set(grammar_src "${PYXIS_TREESITTER_MARKDOWN_SOURCE_DIR}/tree-sitter-markdown/src")
++    elseif(lang STREQUAL "markdown_inline")
++      set(grammar_src "${PYXIS_TREESITTER_MARKDOWN_SOURCE_DIR}/tree-sitter-markdown-inline/src")
++    else()
++      set(grammar_src "${PYXIS_TREESITTER_${upper_lang}_SOURCE_DIR}/src")
++    endif()
++    add_library(pyxis_parser_${lang} STATIC "${grammar_src}/parser.c")
++    if(EXISTS "${grammar_src}/scanner.c")
++      target_sources(pyxis_parser_${lang} PRIVATE "${grammar_src}/scanner.c")
++    endif()
++    target_include_directories(pyxis_parser_${lang} PRIVATE "${grammar_src}")
++    target_link_libraries(nvim_bin PRIVATE pyxis_parser_${lang})
++  endforeach()
++endif()
++
+ #-------------------------------------------------------------------------------
+ # Dependencies
+ #-------------------------------------------------------------------------------
+diff --git a/src/nvim/lua/treesitter.c b/src/nvim/lua/treesitter.c
+index 310f3c4..0a1dc06 100644
+--- a/src/nvim/lua/treesitter.c
++++ b/src/nvim/lua/treesitter.c
+@@ -63,6 +63,29 @@ typedef struct {
+ #include "lua/treesitter.c.generated.h"
+ 
+ static PMap(cstr_t) langs = MAP_INIT;
++#ifdef __pyxis__
++extern const TSLanguage *tree_sitter_c(void);
++extern const TSLanguage *tree_sitter_lua(void);
++extern const TSLanguage *tree_sitter_vim(void);
++extern const TSLanguage *tree_sitter_vimdoc(void);
++extern const TSLanguage *tree_sitter_query(void);
++extern const TSLanguage *tree_sitter_markdown(void);
++extern const TSLanguage *tree_sitter_markdown_inline(void);
++
++static const struct {
++  const char *name;
++  const TSLanguage *(*language)(void);
++} builtin_languages[] = {
++  { "c", tree_sitter_c },
++  { "lua", tree_sitter_lua },
++  { "vim", tree_sitter_vim },
++  { "vimdoc", tree_sitter_vimdoc },
++  { "query", tree_sitter_query },
++  { "markdown", tree_sitter_markdown },
++  { "markdown_inline", tree_sitter_markdown_inline },
++};
++#endif
++
+ 
+ #ifdef HAVE_WASMTIME
+ static wasm_engine_t *wasmengine;
+@@ -226,12 +249,17 @@ static int add_language(lua_State *L, bool is_wasm)
+                            ? load_language_from_wasm(L, path, lang_name)
+                            : load_language_from_object(L, path, lang_name, symbol_name);
+ 
++  return register_language(L, lang_name, lang);
++}
++
++static int register_language(lua_State *L, const char *lang_name, const TSLanguage *lang)
++{
+   uint32_t lang_version = ts_language_abi_version(lang);
+   if (lang_version < TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION
+       || lang_version > TREE_SITTER_LANGUAGE_VERSION) {
+     return luaL_error(L,
+                       "ABI version mismatch for %s: supported between %d and %d, found %d",
+-                      path,
++                      lang_name,
+                       TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION,
+                       TREE_SITTER_LANGUAGE_VERSION, lang_version);
+   }
+@@ -242,6 +270,35 @@ static int add_language(lua_State *L, bool is_wasm)
+   return 1;
+ }
+ 
++#ifdef __pyxis__
++static int tslua_add_language_from_static(lua_State *L)
++{
++  const char *lang_name = luaL_checkstring(L, 1);
++  const char *symbol = luaL_optstring(L, 2, lang_name);
++  if (map_has(cstr_t, &langs, lang_name)) {
++    lua_pushboolean(L, true);
++    return 1;
++  }
++  for (size_t i = 0; i < ARRAY_SIZE(builtin_languages); i++) {
++    if (strcmp(symbol, builtin_languages[i].name) == 0) {
++      return register_language(L, lang_name, builtin_languages[i].language());
++    }
++  }
++  lua_pushnil(L);
++  return 1;
++}
++
++static int tslua_get_builtin_languages(lua_State *L)
++{
++  lua_createtable(L, ARRAY_SIZE(builtin_languages), 0);
++  for (size_t i = 0; i < ARRAY_SIZE(builtin_languages); i++) {
++    lua_pushstring(L, builtin_languages[i].name);
++    lua_rawseti(L, -2, (int)i + 1);
++  }
++  return 1;
++}
++#endif
++
+ static int tslua_remove_lang(lua_State *L)
+ {
+   const char *lang_name = luaL_checkstring(L, 1);
+@@ -1826,6 +1883,13 @@ void nlua_treesitter_init(lua_State *const lstate) FUNC_ATTR_NONNULL_ALL
+   lua_pushcfunction(lstate, tslua_push_querycursor);
+   lua_setfield(lstate, -2, "_create_ts_querycursor");
+ 
++#ifdef __pyxis__
++  lua_pushcfunction(lstate, tslua_add_language_from_static);
++  lua_setfield(lstate, -2, "_ts_add_language_from_static");
++  lua_pushcfunction(lstate, tslua_get_builtin_languages);
++  lua_setfield(lstate, -2, "_ts_get_builtin_languages");
++#endif
++
+   lua_pushcfunction(lstate, tslua_add_language_from_object);
+   lua_setfield(lstate, -2, "_ts_add_language_from_object");
+ 

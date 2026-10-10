@@ -30,7 +30,7 @@ licence and SHA-256 are recorded in `share/neovim/source.txt`. Generated C
 parsers and scanners are compiled directly, without fetching or regenerating
 grammars during the target build.
 
-Local changes are recorded as five ordered upstream-derived patches, retaining
+Local changes are recorded as six ordered upstream-derived patches, retaining
 the licences of the files they modify:
 
 1. `0001-pyxis-platform.patch`: native process observation/termination, explicit
@@ -47,6 +47,9 @@ the licences of the files they modify:
    automatic listeners and PID metadata.
 5. `0005-pyxis-undo-mode.patch`: persistent undo files are created with mode
    0666 instead of the edited file's permission bits.
+
+6. `0006-pyxis-static-parsers.patch`: built-in language registration, static grammar
+   linking, and quiet legacy-syntax fallback when a parser is unavailable.
 
 Original recipe, host wrapper, configuration, colourscheme and documentation
 are MPL-2.0 under the ports repository `LICENSE`. The host help-tag wrapper
