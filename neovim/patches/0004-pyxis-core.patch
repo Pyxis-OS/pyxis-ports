@@ -13,6 +13,29 @@ index bc0a9f4..7f7241e 100644
    check_c_source_compiles("
  #include <termios.h>
  int
+diff --git a/runtime/lua/vim/_init_packages.lua b/runtime/lua/vim/_init_packages.lua
+index b5c0a0f..1ee2f56 100644
+--- a/runtime/lua/vim/_init_packages.lua
++++ b/runtime/lua/vim/_init_packages.lua
+@@ -1,6 +1,6 @@
+ local pathtrails = {} --- @type table<string,true> ta
+ vim._so_trails = {} --- @type string[]
+-for s in (package.cpath .. ';'):gmatch('[^;]*;') do
++for s in ((package.cpath or '') .. ';'):gmatch('[^;]*;') do
+   s = s:sub(1, -2) -- Strip trailing semicolon
+   -- Find out path patterns. pathtrail should contain something like
+   -- /?.so, \?.dll. This allows not to bother determining what correct
+@@ -22,6 +22,10 @@ function vim._load_package(name)
+     return f or error(err)
+   end
+ 
++  if type(package.loadlib) ~= 'function' then
++    return nil
++  end
++
+   local so_paths = {}
+   for _, trail in ipairs(vim._so_trails) do
+     local path = 'lua' .. trail:gsub('?', basename) -- so_trails contains a leading slash
 diff --git a/src/nvim/CMakeLists.txt b/src/nvim/CMakeLists.txt
 index c87ceb2..df7ec9f 100644
 --- a/src/nvim/CMakeLists.txt
@@ -165,7 +188,7 @@ index 66d2284..3312fd2 100644
        error = (int)written;
        goto write_blob_error;
 diff --git a/src/nvim/eval/funcs.c b/src/nvim/eval/funcs.c
-index a28aeb0..614f096 100644
+index a28aeb0..b10fd43 100644
 --- a/src/nvim/eval/funcs.c
 +++ b/src/nvim/eval/funcs.c
 @@ -3,7 +3,9 @@
@@ -218,6 +241,19 @@ index a28aeb0..614f096 100644
  }
  
  static inline uint32_t splitmix32(uint32_t *const x)
+@@ -6360,6 +6370,12 @@ cleanup:
+ /// "serverstart()" function
+ static void f_serverstart(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+ {
++#ifdef __pyxis__
++  rettv->v_type = VAR_STRING;
++  rettv->vval.v_string = NULL;
++  emsg("Socket listeners are unavailable on Pyxis");
++  return;
++#endif
+   rettv->v_type = VAR_STRING;
+   rettv->vval.v_string = NULL;  // Address of the new server
+ 
 diff --git a/src/nvim/event/signal.h b/src/nvim/event/signal.h
 index aa3b0c0..91afa9d 100644
 --- a/src/nvim/event/signal.h
@@ -424,6 +460,73 @@ index 6e9a63a..6f30288 100644
    return true;
 +#endif
  }
+diff --git a/src/nvim/msgpack_rpc/server.c b/src/nvim/msgpack_rpc/server.c
+index 2cd7207..13a0946 100644
+--- a/src/nvim/msgpack_rpc/server.c
++++ b/src/nvim/msgpack_rpc/server.c
+@@ -34,6 +34,15 @@ static garray_T watchers = GA_EMPTY_INIT_VALUE;
+ /// @returns true on success, false on fatal error (message stored in IObuff)
+ bool server_init(const char *listen_addr)
+ {
++#ifdef __pyxis__
++  ga_init(&watchers, sizeof(SocketWatcher *), 1);
++  if ((listen_addr && *listen_addr) || os_env_exists(ENV_LISTEN, true)) {
++    snprintf(IObuff, IOSIZE, "Socket listeners are unavailable on Pyxis");
++    os_unsetenv(ENV_LISTEN);
++    return false;
++  }
++  return true;  // The internal UI uses delegated stdio pipes, without a listener.
++#else
+   bool ok = true;
+   bool must_free = false;
+   TriState user_arg = kTrue;  // User-provided --listen arg.
+@@ -84,6 +93,7 @@ end:
+   }
+ 
+   return ok;
++#endif
+ }
+ 
+ /// Teardown a single server
+@@ -114,8 +124,11 @@ void server_teardown(void)
+ /// - Windows: "\\.\pipe\<name>.<pid>.<counter>"
+ /// - Other: "/tmp/nvim.user/xxx/<name>.<pid>.<counter>"
+ char *server_address_new(const char *name)
+-  FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_RET
++  FUNC_ATTR_WARN_UNUSED_RESULT
+ {
++#ifdef __pyxis__
++  return NULL;
++#else
+   static uint32_t count = 0;
+   char fmt[ADDRESS_MAX_SIZE];
+ #ifdef MSWIN
+@@ -133,6 +146,7 @@ char *server_address_new(const char *name)
+     ELOG("truncated server address: %.40s...", fmt);
+   }
+   return xstrdup(fmt);
++#endif
+ }
+ 
+ /// Check if this instance owns a pipe address (loopback).
+@@ -165,6 +179,9 @@ bool server_owns_pipe_address(const char *address)
+ /// @returns 0: success, 1: validation error, 2: already listening, -errno: failed to bind/listen.
+ int server_start(const char *addr)
+ {
++#ifdef __pyxis__
++  return UV_ENOSYS;
++#else
+   if (addr == NULL || addr[0] == NUL) {
+     WLOG("Empty or NULL address");
+     return 1;
+@@ -209,6 +226,7 @@ int server_start(const char *addr)
+   }
+ 
+   return 0;
++#endif
+ }
+ 
+ /// Stops listening on the address specified by `endpoint`.
 diff --git a/src/nvim/os/fileio.c b/src/nvim/os/fileio.c
 index 801483b..3cfe47e 100644
 --- a/src/nvim/os/fileio.c
