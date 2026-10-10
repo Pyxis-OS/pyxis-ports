@@ -39,6 +39,9 @@ those recipes fetch, adapt or package.
   are the platform layer and configuration linked into Links. Like Links,
   whose sources say "released under GPL" and whose `COPYING` is GPL version 2,
   they are distributed under the GPL.
+- `lua51/patches/` retain the licenses of the upstream files they modify: MIT
+  for Lua 5.1 and lua-compat-5.3, Apache-2.0 for luv. The `src/pyxis.c` the luv
+  patch adds copies luv's connect callback and is Apache-2.0 like luv.
 - `lua/main.c` retains Lua's MIT terms for its upstream-derived CLI flow and
   local adaptation, as documented in [lua/README.md](lua/README.md). The staged
   upstream `lua.h` contains the complete license notice.

@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "id": "org.pyxis.lua51",
+  "entry": "bin/lua5.1.pxe",
+  "commands": {"lua5.1": "bin/lua5.1.pxe"},
+  "resource_dirs": {},
+  "grants": [
+    {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
+    {"name": "clock", "resource": "clock", "rights": ["read", "sleep"], "required": true},
+    {"name": "launcher", "resource": "launcher", "rights": ["launch"], "required": true},
+    {"name": "pipe", "resource": "pipe", "rights": ["create"], "required": true},
+    {"name": "random", "resource": "random", "rights": ["read"], "required": false}
+  ]
+}

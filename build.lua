@@ -107,6 +107,7 @@ local function main()
     print("Libpng also requires --zlib PATH to its development prefix.")
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
     print("Chocolate Doom, Chocolate Quake and EDuke32 also require --sdl2 PATH to its development prefix.")
+    print("Lua 5.1 also requires --libuv PATH to its development prefix.")
     return
   end
   local name, options = arg[1], {}
@@ -115,7 +116,7 @@ local function main()
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
-      name == "chocolate-quake" or name == "eduke32" }
+      name == "chocolate-quake" or name == "eduke32", ["--libuv"] = name == "lua51" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -153,8 +154,8 @@ local function main()
   if download then
     check_download(download, "source")
   end
-  -- Extra sources are pinned like the main one and left unpatched; the recipe
-  -- finds each at ctx.extra[name].
+  -- Extra sources are pinned like the main one and may list their own patches;
+  -- the recipe finds each at ctx.extra[name].
   local extra = metadata.source.extra or {}
   local extra_names = {}
   for _, entry in ipairs(extra) do
@@ -170,6 +171,9 @@ local function main()
       check_download(entry.archive, "extra source " .. entry.name)
     else
       check_mirror(entry.mirror, "extra source " .. entry.name)
+    end
+    for _, patch in ipairs(entry.patches or {}) do
+      relative(patch)
     end
   end
   assert(metadata.license and metadata.outputs.license, "record and stage the upstream license")
@@ -212,6 +216,13 @@ local function main()
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
   end
+  local libuv
+  if name == "lua51" then
+    assert(options["--libuv"], "Lua 5.1 needs --libuv PATH to its development prefix")
+    libuv = make_path(capture({ "realpath", "-e", "--", options["--libuv"] }))
+    require_file(libuv .. "/include/uv.h")
+    require_file(libuv .. "/lib/libuv.a")
+  end
   for _, library in ipairs(metadata.dependencies.pyxis) do
     require_file(sdk .. "/sysroot/usr/lib/" .. library .. ".a")
   end
@@ -251,6 +262,9 @@ local function main()
     else
       fetch_commit(entry.mirror, entry.commit, directory)
     end
+    for _, patch in ipairs(entry.patches or {}) do
+      run({ "git", "-C", directory, "apply", "--whitespace=error-all", "--", recipe .. "/" .. patch })
+    end
     extra_sources[entry.name] = directory
   end
   for _, patch in ipairs(metadata.patches) do
@@ -261,7 +275,7 @@ local function main()
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
     metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib,
-    libpng = libpng, fmt = fmt, sdl2 = sdl2, extra = extra_sources })
+    libpng = libpng, fmt = fmt, sdl2 = sdl2, libuv = libuv, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))
   end

@@ -1,0 +1,989 @@
+diff --git a/src/lauxlib.c b/src/lauxlib.c
+index 10f14e2..cbbdb38 100644
+--- a/src/lauxlib.c
++++ b/src/lauxlib.c
+@@ -561,7 +561,7 @@ LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
+   }
+   else {
+     lua_pushfstring(L, "@%s", filename);
+-    lf.f = fopen(filename, "r");
++    lf.f = fopen(filename, "rb");  /* Pyxis: text and binary are alike */
+     if (lf.f == NULL) return errfile(L, "open", fnameindex);
+   }
+   c = getc(lf.f);
+@@ -571,10 +571,6 @@ LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
+     if (c == '\n') c = getc(lf.f);
+   }
+   if (c == LUA_SIGNATURE[0] && filename) {  /* binary file? */
+-    lf.f = freopen(filename, "rb", lf.f);  /* reopen in binary mode */
+-    if (lf.f == NULL) return errfile(L, "reopen", fnameindex);
+-    /* skip eventual `#!...' */
+-   while ((c = getc(lf.f)) != EOF && c != LUA_SIGNATURE[0]) ;
+     lf.extraline = 0;
+   }
+   ungetc(c, lf.f);
+diff --git a/src/liolib.c b/src/liolib.c
+index 649f9a5..bb394ab 100644
+--- a/src/liolib.c
++++ b/src/liolib.c
+@@ -102,17 +102,6 @@ static int io_noclose (lua_State *L) {
+ }
+ 
+ 
+-/*
+-** function to close 'popen' files
+-*/
+-static int io_pclose (lua_State *L) {
+-  FILE **p = tofilep(L);
+-  int ok = lua_pclose(L, *p);
+-  *p = NULL;
+-  return pushresult(L, ok, NULL);
+-}
+-
+-
+ /*
+ ** function to close regular files
+ */
+@@ -167,19 +156,6 @@ static int io_open (lua_State *L) {
+ }
+ 
+ 
+-/*
+-** this function has a separated environment, which defines the
+-** correct __close for 'popen' files
+-*/
+-static int io_popen (lua_State *L) {
+-  const char *filename = luaL_checkstring(L, 1);
+-  const char *mode = luaL_optstring(L, 2, "r");
+-  FILE **pf = newfile(L);
+-  *pf = lua_popen(L, filename, mode);
+-  return (*pf == NULL) ? pushresult(L, 0, filename) : 1;
+-}
+-
+-
+ static int io_tmpfile (lua_State *L) {
+   FILE **pf = newfile(L);
+   *pf = tmpfile();
+@@ -455,17 +431,6 @@ static int f_seek (lua_State *L) {
+ }
+ 
+ 
+-static int f_setvbuf (lua_State *L) {
+-  static const int mode[] = {_IONBF, _IOFBF, _IOLBF};
+-  static const char *const modenames[] = {"no", "full", "line", NULL};
+-  FILE *f = tofile(L);
+-  int op = luaL_checkoption(L, 2, NULL, modenames);
+-  lua_Integer sz = luaL_optinteger(L, 3, LUAL_BUFFERSIZE);
+-  int res = setvbuf(f, NULL, mode[op], sz);
+-  return pushresult(L, res == 0, NULL);
+-}
+-
+-
+ 
+ static int io_flush (lua_State *L) {
+   return pushresult(L, fflush(getiofile(L, IO_OUTPUT)) == 0, NULL);
+@@ -484,7 +449,6 @@ static const luaL_Reg iolib[] = {
+   {"lines", io_lines},
+   {"open", io_open},
+   {"output", io_output},
+-  {"popen", io_popen},
+   {"read", io_read},
+   {"tmpfile", io_tmpfile},
+   {"type", io_type},
+@@ -499,7 +463,6 @@ static const luaL_Reg flib[] = {
+   {"lines", f_lines},
+   {"read", f_read},
+   {"seek", f_seek},
+-  {"setvbuf", f_setvbuf},
+   {"write", f_write},
+   {"__gc", io_gc},
+   {"__tostring", io_tostring},
+@@ -547,10 +510,6 @@ LUALIB_API int luaopen_io (lua_State *L) {
+   createstdfile(L, stdout, IO_OUTPUT, "stdout");
+   createstdfile(L, stderr, 0, "stderr");
+   lua_pop(L, 1);  /* pop environment for default files */
+-  lua_getfield(L, -1, "popen");
+-  newfenv(L, io_pclose);  /* create environment for 'popen' */
+-  lua_setfenv(L, -2);  /* set fenv for 'popen' */
+-  lua_pop(L, 1);  /* pop 'popen' */
+-  return 1;
++  return 1;  /* Pyxis: no popen; libc has no process pipes */
+ }
+ 
+diff --git a/src/llex.c b/src/llex.c
+index 88c6790..005f62d 100644
+--- a/src/llex.c
++++ b/src/llex.c
+@@ -6,7 +6,6 @@
+ 
+ 
+ #include <ctype.h>
+-#include <locale.h>
+ #include <string.h>
+ 
+ #define llex_c
+@@ -177,16 +176,9 @@ static void buffreplace (LexState *ls, char from, char to) {
+ 
+ 
+ static void trydecpoint (LexState *ls, SemInfo *seminfo) {
+-  /* format error: try to update decimal point separator */
+-  struct lconv *cv = localeconv();
+-  char old = ls->decpoint;
+-  ls->decpoint = (cv ? cv->decimal_point[0] : '.');
+-  buffreplace(ls, old, ls->decpoint);  /* try updated decimal separator */
+-  if (!luaO_str2d(luaZ_buffer(ls->buff), &seminfo->r)) {
+-    /* format error with correct decimal point: no more options */
+-    buffreplace(ls, ls->decpoint, '.');  /* undo change (for error message) */
+-    luaX_lexerror(ls, "malformed number", TK_NUMBER);
+-  }
++  /* Pyxis: the C locale's '.' is the only decimal point */
++  (void)seminfo;
++  luaX_lexerror(ls, "malformed number", TK_NUMBER);
+ }
+ 
+ 
+diff --git a/src/loadlib.c b/src/loadlib.c
+index 6158c53..d22a8c5 100644
+--- a/src/loadlib.c
++++ b/src/loadlib.c
+@@ -22,305 +22,12 @@
+ #include "lualib.h"
+ 
+ 
+-/* prefix for open functions in C libraries */
+-#define LUA_POF		"luaopen_"
+-
+-/* separator for open functions in C libraries */
+-#define LUA_OFSEP	"_"
+-
+-
+-#define LIBPREFIX	"LOADLIB: "
+-
+-#define POF		LUA_POF
+-#define LIB_FAIL	"open"
+-
+-
+-/* error codes for ll_loadfunc */
+-#define ERRLIB		1
+-#define ERRFUNC		2
++/* Pyxis: there is no dynamic loading, so only preloaded C modules and Lua
++** files are found. */
+ 
+ #define setprogdir(L)		((void)0)
+ 
+ 
+-static void ll_unloadlib (void *lib);
+-static void *ll_load (lua_State *L, const char *path);
+-static lua_CFunction ll_sym (lua_State *L, void *lib, const char *sym);
+-
+-
+-
+-#if defined(LUA_DL_DLOPEN)
+-/*
+-** {========================================================================
+-** This is an implementation of loadlib based on the dlfcn interface.
+-** The dlfcn interface is available in Linux, SunOS, Solaris, IRIX, FreeBSD,
+-** NetBSD, AIX 4.2, HPUX 11, and  probably most other Unix flavors, at least
+-** as an emulation layer on top of native functions.
+-** =========================================================================
+-*/
+-
+-#include <dlfcn.h>
+-
+-static void ll_unloadlib (void *lib) {
+-  dlclose(lib);
+-}
+-
+-
+-static void *ll_load (lua_State *L, const char *path) {
+-  void *lib = dlopen(path, RTLD_NOW);
+-  if (lib == NULL) lua_pushstring(L, dlerror());
+-  return lib;
+-}
+-
+-
+-static lua_CFunction ll_sym (lua_State *L, void *lib, const char *sym) {
+-  lua_CFunction f = (lua_CFunction)dlsym(lib, sym);
+-  if (f == NULL) lua_pushstring(L, dlerror());
+-  return f;
+-}
+-
+-/* }====================================================== */
+-
+-
+-
+-#elif defined(LUA_DL_DLL)
+-/*
+-** {======================================================================
+-** This is an implementation of loadlib for Windows using native functions.
+-** =======================================================================
+-*/
+-
+-#include <windows.h>
+-
+-
+-#undef setprogdir
+-
+-static void setprogdir (lua_State *L) {
+-  char buff[MAX_PATH + 1];
+-  char *lb;
+-  DWORD nsize = sizeof(buff)/sizeof(char);
+-  DWORD n = GetModuleFileNameA(NULL, buff, nsize);
+-  if (n == 0 || n == nsize || (lb = strrchr(buff, '\\')) == NULL)
+-    luaL_error(L, "unable to get ModuleFileName");
+-  else {
+-    *lb = '\0';
+-    luaL_gsub(L, lua_tostring(L, -1), LUA_EXECDIR, buff);
+-    lua_remove(L, -2);  /* remove original string */
+-  }
+-}
+-
+-
+-static void pusherror (lua_State *L) {
+-  int error = GetLastError();
+-  char buffer[128];
+-  if (FormatMessageA(FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_SYSTEM,
+-      NULL, error, 0, buffer, sizeof(buffer), NULL))
+-    lua_pushstring(L, buffer);
+-  else
+-    lua_pushfstring(L, "system error %d\n", error);
+-}
+-
+-static void ll_unloadlib (void *lib) {
+-  FreeLibrary((HINSTANCE)lib);
+-}
+-
+-
+-static void *ll_load (lua_State *L, const char *path) {
+-  HINSTANCE lib = LoadLibraryA(path);
+-  if (lib == NULL) pusherror(L);
+-  return lib;
+-}
+-
+-
+-static lua_CFunction ll_sym (lua_State *L, void *lib, const char *sym) {
+-  lua_CFunction f = (lua_CFunction)GetProcAddress((HINSTANCE)lib, sym);
+-  if (f == NULL) pusherror(L);
+-  return f;
+-}
+-
+-/* }====================================================== */
+-
+-
+-
+-#elif defined(LUA_DL_DYLD)
+-/*
+-** {======================================================================
+-** Native Mac OS X / Darwin Implementation
+-** =======================================================================
+-*/
+-
+-#include <mach-o/dyld.h>
+-
+-
+-/* Mac appends a `_' before C function names */
+-#undef POF
+-#define POF	"_" LUA_POF
+-
+-
+-static void pusherror (lua_State *L) {
+-  const char *err_str;
+-  const char *err_file;
+-  NSLinkEditErrors err;
+-  int err_num;
+-  NSLinkEditError(&err, &err_num, &err_file, &err_str);
+-  lua_pushstring(L, err_str);
+-}
+-
+-
+-static const char *errorfromcode (NSObjectFileImageReturnCode ret) {
+-  switch (ret) {
+-    case NSObjectFileImageInappropriateFile:
+-      return "file is not a bundle";
+-    case NSObjectFileImageArch:
+-      return "library is for wrong CPU type";
+-    case NSObjectFileImageFormat:
+-      return "bad format";
+-    case NSObjectFileImageAccess:
+-      return "cannot access file";
+-    case NSObjectFileImageFailure:
+-    default:
+-      return "unable to load library";
+-  }
+-}
+-
+-
+-static void ll_unloadlib (void *lib) {
+-  NSUnLinkModule((NSModule)lib, NSUNLINKMODULE_OPTION_RESET_LAZY_REFERENCES);
+-}
+-
+-
+-static void *ll_load (lua_State *L, const char *path) {
+-  NSObjectFileImage img;
+-  NSObjectFileImageReturnCode ret;
+-  /* this would be a rare case, but prevents crashing if it happens */
+-  if(!_dyld_present()) {
+-    lua_pushliteral(L, "dyld not present");
+-    return NULL;
+-  }
+-  ret = NSCreateObjectFileImageFromFile(path, &img);
+-  if (ret == NSObjectFileImageSuccess) {
+-    NSModule mod = NSLinkModule(img, path, NSLINKMODULE_OPTION_PRIVATE |
+-                       NSLINKMODULE_OPTION_RETURN_ON_ERROR);
+-    NSDestroyObjectFileImage(img);
+-    if (mod == NULL) pusherror(L);
+-    return mod;
+-  }
+-  lua_pushstring(L, errorfromcode(ret));
+-  return NULL;
+-}
+-
+-
+-static lua_CFunction ll_sym (lua_State *L, void *lib, const char *sym) {
+-  NSSymbol nss = NSLookupSymbolInModule((NSModule)lib, sym);
+-  if (nss == NULL) {
+-    lua_pushfstring(L, "symbol " LUA_QS " not found", sym);
+-    return NULL;
+-  }
+-  return (lua_CFunction)NSAddressOfSymbol(nss);
+-}
+-
+-/* }====================================================== */
+-
+-
+-
+-#else
+-/*
+-** {======================================================
+-** Fallback for other systems
+-** =======================================================
+-*/
+-
+-#undef LIB_FAIL
+-#define LIB_FAIL	"absent"
+-
+-
+-#define DLMSG	"dynamic libraries not enabled; check your Lua installation"
+-
+-
+-static void ll_unloadlib (void *lib) {
+-  (void)lib;  /* to avoid warnings */
+-}
+-
+-
+-static void *ll_load (lua_State *L, const char *path) {
+-  (void)path;  /* to avoid warnings */
+-  lua_pushliteral(L, DLMSG);
+-  return NULL;
+-}
+-
+-
+-static lua_CFunction ll_sym (lua_State *L, void *lib, const char *sym) {
+-  (void)lib; (void)sym;  /* to avoid warnings */
+-  lua_pushliteral(L, DLMSG);
+-  return NULL;
+-}
+-
+-/* }====================================================== */
+-#endif
+-
+-
+-
+-static void **ll_register (lua_State *L, const char *path) {
+-  void **plib;
+-  lua_pushfstring(L, "%s%s", LIBPREFIX, path);
+-  lua_gettable(L, LUA_REGISTRYINDEX);  /* check library in registry? */
+-  if (!lua_isnil(L, -1))  /* is there an entry? */
+-    plib = (void **)lua_touserdata(L, -1);
+-  else {  /* no entry yet; create one */
+-    lua_pop(L, 1);
+-    plib = (void **)lua_newuserdata(L, sizeof(const void *));
+-    *plib = NULL;
+-    luaL_getmetatable(L, "_LOADLIB");
+-    lua_setmetatable(L, -2);
+-    lua_pushfstring(L, "%s%s", LIBPREFIX, path);
+-    lua_pushvalue(L, -2);
+-    lua_settable(L, LUA_REGISTRYINDEX);
+-  }
+-  return plib;
+-}
+-
+-
+-/*
+-** __gc tag method: calls library's `ll_unloadlib' function with the lib
+-** handle
+-*/
+-static int gctm (lua_State *L) {
+-  void **lib = (void **)luaL_checkudata(L, 1, "_LOADLIB");
+-  if (*lib) ll_unloadlib(*lib);
+-  *lib = NULL;  /* mark library as closed */
+-  return 0;
+-}
+-
+-
+-static int ll_loadfunc (lua_State *L, const char *path, const char *sym) {
+-  void **reg = ll_register(L, path);
+-  if (*reg == NULL) *reg = ll_load(L, path);
+-  if (*reg == NULL)
+-    return ERRLIB;  /* unable to load library */
+-  else {
+-    lua_CFunction f = ll_sym(L, *reg, sym);
+-    if (f == NULL)
+-      return ERRFUNC;  /* unable to find function */
+-    lua_pushcfunction(L, f);
+-    return 0;  /* return function */
+-  }
+-}
+-
+-
+-static int ll_loadlib (lua_State *L) {
+-  const char *path = luaL_checkstring(L, 1);
+-  const char *init = luaL_checkstring(L, 2);
+-  int stat = ll_loadfunc(L, path, init);
+-  if (stat == 0)  /* no errors? */
+-    return 1;  /* return the loaded function */
+-  else {  /* error; error message is on stack top */
+-    lua_pushnil(L);
+-    lua_insert(L, -2);
+-    lua_pushstring(L, (stat == ERRLIB) ?  LIB_FAIL : "init");
+-    return 3;  /* return nil, error message, and where */
+-  }
+-}
+-
+-
+ 
+ /*
+ ** {======================================================
+@@ -388,50 +95,6 @@ static int loader_Lua (lua_State *L) {
+ }
+ 
+ 
+-static const char *mkfuncname (lua_State *L, const char *modname) {
+-  const char *funcname;
+-  const char *mark = strchr(modname, *LUA_IGMARK);
+-  if (mark) modname = mark + 1;
+-  funcname = luaL_gsub(L, modname, ".", LUA_OFSEP);
+-  funcname = lua_pushfstring(L, POF"%s", funcname);
+-  lua_remove(L, -2);  /* remove 'gsub' result */
+-  return funcname;
+-}
+-
+-
+-static int loader_C (lua_State *L) {
+-  const char *funcname;
+-  const char *name = luaL_checkstring(L, 1);
+-  const char *filename = findfile(L, name, "cpath");
+-  if (filename == NULL) return 1;  /* library not found in this path */
+-  funcname = mkfuncname(L, name);
+-  if (ll_loadfunc(L, filename, funcname) != 0)
+-    loaderror(L, filename);
+-  return 1;  /* library loaded successfully */
+-}
+-
+-
+-static int loader_Croot (lua_State *L) {
+-  const char *funcname;
+-  const char *filename;
+-  const char *name = luaL_checkstring(L, 1);
+-  const char *p = strchr(name, '.');
+-  int stat;
+-  if (p == NULL) return 0;  /* is root */
+-  lua_pushlstring(L, name, p - name);
+-  filename = findfile(L, lua_tostring(L, -1), "cpath");
+-  if (filename == NULL) return 1;  /* root not found */
+-  funcname = mkfuncname(L, name);
+-  if ((stat = ll_loadfunc(L, filename, funcname)) != 0) {
+-    if (stat != ERRFUNC) loaderror(L, filename);  /* real error */
+-    lua_pushfstring(L, "\n\tno module " LUA_QS " in file " LUA_QS,
+-                       name, filename);
+-    return 1;  /* function not found */
+-  }
+-  return 1;
+-}
+-
+-
+ static int loader_preload (lua_State *L) {
+   const char *name = luaL_checkstring(L, 1);
+   lua_getfield(L, LUA_ENVIRONINDEX, "preload");
+@@ -607,7 +270,6 @@ static void setpath (lua_State *L, const char *fieldname, const char *envname,
+ 
+ 
+ static const luaL_Reg pk_funcs[] = {
+-  {"loadlib", ll_loadlib},
+   {"seeall", ll_seeall},
+   {NULL, NULL}
+ };
+@@ -621,21 +283,13 @@ static const luaL_Reg ll_funcs[] = {
+ 
+ 
+ static const lua_CFunction loaders[] =
+-  {loader_preload, loader_Lua, loader_C, loader_Croot, NULL};
++  {loader_preload, loader_Lua, NULL};
+ 
+ 
+ LUALIB_API int luaopen_package (lua_State *L) {
+   int i;
+-  /* create new type _LOADLIB */
+-  luaL_newmetatable(L, "_LOADLIB");
+-  lua_pushcfunction(L, gctm);
+-  lua_setfield(L, -2, "__gc");
+   /* create `package' table */
+   luaL_register(L, LUA_LOADLIBNAME, pk_funcs);
+-#if defined(LUA_COMPAT_LOADLIB) 
+-  lua_getfield(L, -1, "loadlib");
+-  lua_setfield(L, LUA_GLOBALSINDEX, "loadlib");
+-#endif
+   lua_pushvalue(L, -1);
+   lua_replace(L, LUA_ENVIRONINDEX);
+   /* create `loaders' table */
+@@ -647,7 +301,6 @@ LUALIB_API int luaopen_package (lua_State *L) {
+   }
+   lua_setfield(L, -2, "loaders");  /* put it in field `loaders' */
+   setpath(L, "path", LUA_PATH, LUA_PATH_DEFAULT);  /* set field `path' */
+-  setpath(L, "cpath", LUA_CPATH, LUA_CPATH_DEFAULT); /* set field `cpath' */
+   /* store config information */
+   lua_pushliteral(L, LUA_DIRSEP "\n" LUA_PATHSEP "\n" LUA_PATH_MARK "\n"
+                      LUA_EXECDIR "\n" LUA_IGMARK);
+diff --git a/src/loslib.c b/src/loslib.c
+index da06a57..a905e59 100644
+--- a/src/loslib.c
++++ b/src/loslib.c
+@@ -6,7 +6,6 @@
+ 
+ 
+ #include <errno.h>
+-#include <locale.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <time.h>
+@@ -35,12 +34,6 @@ static int os_pushresult (lua_State *L, int i, const char *filename) {
+ }
+ 
+ 
+-static int os_execute (lua_State *L) {
+-  lua_pushinteger(L, system(luaL_optstring(L, 1, NULL)));
+-  return 1;
+-}
+-
+-
+ static int os_remove (lua_State *L) {
+   const char *filename = luaL_checkstring(L, 1);
+   return os_pushresult(L, remove(filename) == 0, filename);
+@@ -71,12 +64,6 @@ static int os_getenv (lua_State *L) {
+ }
+ 
+ 
+-static int os_clock (lua_State *L) {
+-  lua_pushnumber(L, ((lua_Number)clock())/(lua_Number)CLOCKS_PER_SEC);
+-  return 1;
+-}
+-
+-
+ /*
+ ** {======================================================
+ ** Time/Date operations
+@@ -97,30 +84,6 @@ static void setboolfield (lua_State *L, const char *key, int value) {
+   lua_setfield(L, -2, key);
+ }
+ 
+-static int getboolfield (lua_State *L, const char *key) {
+-  int res;
+-  lua_getfield(L, -1, key);
+-  res = lua_isnil(L, -1) ? -1 : lua_toboolean(L, -1);
+-  lua_pop(L, 1);
+-  return res;
+-}
+-
+-
+-static int getfield (lua_State *L, const char *key, int d) {
+-  int res;
+-  lua_getfield(L, -1, key);
+-  if (lua_isnumber(L, -1))
+-    res = (int)lua_tointeger(L, -1);
+-  else {
+-    if (d < 0)
+-      return luaL_error(L, "field " LUA_QS " missing in date table", key);
+-    res = d;
+-  }
+-  lua_pop(L, 1);
+-  return res;
+-}
+-
+-
+ static int os_date (lua_State *L) {
+   const char *s = luaL_optstring(L, 1, "%c");
+   time_t t = luaL_opt(L, (time_t)luaL_checknumber, 2, time(NULL));
+@@ -172,17 +135,9 @@ static int os_time (lua_State *L) {
+   if (lua_isnoneornil(L, 1))  /* called without args? */
+     t = time(NULL);  /* get current time */
+   else {
+-    struct tm ts;
++    /* Pyxis: libc has no mktime to convert a calendar table */
+     luaL_checktype(L, 1, LUA_TTABLE);
+-    lua_settop(L, 1);  /* make sure table is at the top */
+-    ts.tm_sec = getfield(L, "sec", 0);
+-    ts.tm_min = getfield(L, "min", 0);
+-    ts.tm_hour = getfield(L, "hour", 12);
+-    ts.tm_mday = getfield(L, "day", -1);
+-    ts.tm_mon = getfield(L, "month", -1) - 1;
+-    ts.tm_year = getfield(L, "year", -1) - 1900;
+-    ts.tm_isdst = getboolfield(L, "isdst");
+-    t = mktime(&ts);
++    return luaL_error(L, "calendar tables are not supported");
+   }
+   if (t == (time_t)(-1))
+     lua_pushnil(L);
+@@ -201,32 +156,17 @@ static int os_difftime (lua_State *L) {
+ /* }====================================================== */
+ 
+ 
+-static int os_setlocale (lua_State *L) {
+-  static const int cat[] = {LC_ALL, LC_COLLATE, LC_CTYPE, LC_MONETARY,
+-                      LC_NUMERIC, LC_TIME};
+-  static const char *const catnames[] = {"all", "collate", "ctype", "monetary",
+-     "numeric", "time", NULL};
+-  const char *l = luaL_optstring(L, 1, NULL);
+-  int op = luaL_checkoption(L, 2, "all", catnames);
+-  lua_pushstring(L, setlocale(cat[op], l));
+-  return 1;
+-}
+-
+-
+ static int os_exit (lua_State *L) {
+   exit(luaL_optint(L, 1, EXIT_SUCCESS));
+ }
+ 
+ static const luaL_Reg syslib[] = {
+-  {"clock",     os_clock},
+   {"date",      os_date},
+   {"difftime",  os_difftime},
+-  {"execute",   os_execute},
+   {"exit",      os_exit},
+   {"getenv",    os_getenv},
+   {"remove",    os_remove},
+   {"rename",    os_rename},
+-  {"setlocale", os_setlocale},
+   {"time",      os_time},
+   {"tmpname",   os_tmpname},
+   {NULL, NULL}
+diff --git a/src/lua.c b/src/lua.c
+index 3a46609..b4dcce7 100644
+--- a/src/lua.c
++++ b/src/lua.c
+@@ -5,7 +5,6 @@
+ */
+ 
+ 
+-#include <signal.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -19,33 +18,16 @@
+ 
+ 
+ 
+-static lua_State *globalL = NULL;
+-
+ static const char *progname = LUA_PROGNAME;
+ 
+ 
+ 
+-static void lstop (lua_State *L, lua_Debug *ar) {
+-  (void)ar;  /* unused arg. */
+-  lua_sethook(L, NULL, 0, 0);
+-  luaL_error(L, "interrupted!");
+-}
+-
+-
+-static void laction (int i) {
+-  signal(i, SIG_DFL); /* if another SIGINT happens before lstop,
+-                              terminate process (default action) */
+-  lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
+-}
+-
+-
+ static void print_usage (void) {
+   fprintf(stderr,
+   "usage: %s [options] [script [args]].\n"
+   "Available options are:\n"
+   "  -e stat  execute string " LUA_QL("stat") "\n"
+   "  -l name  require library " LUA_QL("name") "\n"
+-  "  -i       enter interactive mode after executing " LUA_QL("script") "\n"
+   "  -v       show version information\n"
+   "  --       stop handling options\n"
+   "  -        execute stdin and stop handling options\n"
+@@ -98,9 +80,7 @@ static int docall (lua_State *L, int narg, int clear) {
+   int base = lua_gettop(L) - narg;  /* function index */
+   lua_pushcfunction(L, traceback);  /* push traceback function */
+   lua_insert(L, base);  /* put it under chunk and args */
+-  signal(SIGINT, laction);
+   status = lua_pcall(L, narg, (clear ? 0 : LUA_MULTRET), base);
+-  signal(SIGINT, SIG_DFL);
+   lua_remove(L, base);  /* remove traceback function */
+   /* force a complete garbage collection in case of errors */
+   if (status != 0) lua_gc(L, LUA_GCCOLLECT, 0);
+@@ -150,92 +130,6 @@ static int dolibrary (lua_State *L, const char *name) {
+ }
+ 
+ 
+-static const char *get_prompt (lua_State *L, int firstline) {
+-  const char *p;
+-  lua_getfield(L, LUA_GLOBALSINDEX, firstline ? "_PROMPT" : "_PROMPT2");
+-  p = lua_tostring(L, -1);
+-  if (p == NULL) p = (firstline ? LUA_PROMPT : LUA_PROMPT2);
+-  lua_pop(L, 1);  /* remove global */
+-  return p;
+-}
+-
+-
+-static int incomplete (lua_State *L, int status) {
+-  if (status == LUA_ERRSYNTAX) {
+-    size_t lmsg;
+-    const char *msg = lua_tolstring(L, -1, &lmsg);
+-    const char *tp = msg + lmsg - (sizeof(LUA_QL("<eof>")) - 1);
+-    if (strstr(msg, LUA_QL("<eof>")) == tp) {
+-      lua_pop(L, 1);
+-      return 1;
+-    }
+-  }
+-  return 0;  /* else... */
+-}
+-
+-
+-static int pushline (lua_State *L, int firstline) {
+-  char buffer[LUA_MAXINPUT];
+-  char *b = buffer;
+-  size_t l;
+-  const char *prmt = get_prompt(L, firstline);
+-  if (lua_readline(L, b, prmt) == 0)
+-    return 0;  /* no input */
+-  l = strlen(b);
+-  if (l > 0 && b[l-1] == '\n')  /* line ends with newline? */
+-    b[l-1] = '\0';  /* remove it */
+-  if (firstline && b[0] == '=')  /* first line starts with `=' ? */
+-    lua_pushfstring(L, "return %s", b+1);  /* change it to `return' */
+-  else
+-    lua_pushstring(L, b);
+-  lua_freeline(L, b);
+-  return 1;
+-}
+-
+-
+-static int loadline (lua_State *L) {
+-  int status;
+-  lua_settop(L, 0);
+-  if (!pushline(L, 1))
+-    return -1;  /* no input */
+-  for (;;) {  /* repeat until gets a complete line */
+-    status = luaL_loadbuffer(L, lua_tostring(L, 1), lua_strlen(L, 1), "=stdin");
+-    if (!incomplete(L, status)) break;  /* cannot try to add lines? */
+-    if (!pushline(L, 0))  /* no more input? */
+-      return -1;
+-    lua_pushliteral(L, "\n");  /* add a new line... */
+-    lua_insert(L, -2);  /* ...between the two lines */
+-    lua_concat(L, 3);  /* join them */
+-  }
+-  lua_saveline(L, 1);
+-  lua_remove(L, 1);  /* remove line */
+-  return status;
+-}
+-
+-
+-static void dotty (lua_State *L) {
+-  int status;
+-  const char *oldprogname = progname;
+-  progname = NULL;
+-  while ((status = loadline(L)) != -1) {
+-    if (status == 0) status = docall(L, 0, 0);
+-    report(L, status);
+-    if (status == 0 && lua_gettop(L) > 0) {  /* any result to print? */
+-      lua_getglobal(L, "print");
+-      lua_insert(L, 1);
+-      if (lua_pcall(L, lua_gettop(L)-1, 0, 0) != 0)
+-        l_message(progname, lua_pushfstring(L,
+-                               "error calling " LUA_QL("print") " (%s)",
+-                               lua_tostring(L, -1)));
+-    }
+-  }
+-  lua_settop(L, 0);  /* clear stack */
+-  fputs("\n", stdout);
+-  fflush(stdout);
+-  progname = oldprogname;
+-}
+-
+-
+ static int handle_script (lua_State *L, char **argv, int n) {
+   int status;
+   const char *fname;
+@@ -258,7 +152,7 @@ static int handle_script (lua_State *L, char **argv, int n) {
+ #define notail(x)	{if ((x)[2] != '\0') return -1;}
+ 
+ 
+-static int collectargs (char **argv, int *pi, int *pv, int *pe) {
++static int collectargs (char **argv, int *pv, int *pe) {
+   int i;
+   for (i = 1; argv[i] != NULL; i++) {
+     if (argv[i][0] != '-')  /* not an option? */
+@@ -269,9 +163,6 @@ static int collectargs (char **argv, int *pi, int *pv, int *pe) {
+         return (argv[i+1] != NULL ? i+1 : 0);
+       case '\0':
+         return i;
+-      case 'i':
+-        notail(argv[i]);
+-        *pi = 1;  /* go through */
+       case 'v':
+         notail(argv[i]);
+         *pv = 1;
+@@ -330,6 +221,21 @@ static int handle_luainit (lua_State *L) {
+ }
+ 
+ 
++/* Pyxis: modules are linked in; require finds them through package.preload. */
++int luaopen_lpeg (lua_State *L);
++int luaopen_luv (lua_State *L);
++
++static void preload (lua_State *L) {
++  lua_getfield(L, LUA_GLOBALSINDEX, "package");
++  lua_getfield(L, -1, "preload");
++  lua_pushcfunction(L, luaopen_lpeg);
++  lua_setfield(L, -2, "lpeg");
++  lua_pushcfunction(L, luaopen_luv);
++  lua_setfield(L, -2, "luv");
++  lua_pop(L, 2);
++}
++
++
+ struct Smain {
+   int argc;
+   char **argv;
+@@ -341,15 +247,15 @@ static int pmain (lua_State *L) {
+   struct Smain *s = (struct Smain *)lua_touserdata(L, 1);
+   char **argv = s->argv;
+   int script;
+-  int has_i = 0, has_v = 0, has_e = 0;
+-  globalL = L;
++  int has_v = 0, has_e = 0;
+   if (argv[0] && argv[0][0]) progname = argv[0];
+   lua_gc(L, LUA_GCSTOP, 0);  /* stop collector during initialization */
+   luaL_openlibs(L);  /* open libraries */
++  preload(L);
+   lua_gc(L, LUA_GCRESTART, 0);
+   s->status = handle_luainit(L);
+   if (s->status != 0) return 0;
+-  script = collectargs(argv, &has_i, &has_v, &has_e);
++  script = collectargs(argv, &has_v, &has_e);
+   if (script < 0) {  /* invalid args? */
+     print_usage();
+     s->status = 1;
+@@ -361,14 +267,10 @@ static int pmain (lua_State *L) {
+   if (script)
+     s->status = handle_script(L, argv, script);
+   if (s->status != 0) return 0;
+-  if (has_i)
+-    dotty(L);
+-  else if (script == 0 && !has_e && !has_v) {
+-    if (lua_stdin_is_tty()) {
+-      print_version();
+-      dotty(L);
+-    }
+-    else dofile(L, NULL);  /* executes stdin as a file */
++  if (script == 0 && !has_e && !has_v) {
++    /* Pyxis: there is no interactive mode; name a script, or - for stdin. */
++    print_usage();
++    s->status = 1;
+   }
+   return 0;
+ }
+diff --git a/src/luaconf.h b/src/luaconf.h
+index e2cb261..de21551 100644
+--- a/src/luaconf.h
++++ b/src/luaconf.h
+@@ -94,14 +94,9 @@
+ 	".\\?.dll;"  LUA_CDIR"?.dll;" LUA_CDIR"loadall.dll"
+ 
+ #else
+-#define LUA_ROOT	"/usr/local/"
+-#define LUA_LDIR	LUA_ROOT "share/lua/5.1/"
+-#define LUA_CDIR	LUA_ROOT "lib/lua/5.1/"
+-#define LUA_PATH_DEFAULT  \
+-		"./?.lua;"  LUA_LDIR"?.lua;"  LUA_LDIR"?/init.lua;" \
+-		            LUA_CDIR"?.lua;"  LUA_CDIR"?/init.lua"
+-#define LUA_CPATH_DEFAULT \
+-	"./?.so;"  LUA_CDIR"?.so;" LUA_CDIR"loadall.so"
++/* Pyxis: Lua modules relative to the working directory; there are no C
++** modules to search for. */
++#define LUA_PATH_DEFAULT	"?.lua;?/init.lua"
+ #endif
+ 
+ 
+@@ -251,7 +246,7 @@
+ ** CHANGE it if your stand-alone interpreter has a different name and
+ ** your system is not able to detect that name automatically.
+ */
+-#define LUA_PROGNAME		"lua"
++#define LUA_PROGNAME		"lua5.1"
+ 
+ 
+ /*
+@@ -643,46 +638,18 @@ union luai_Cast { double l_d; long l_l; };
+ */
+ #if defined(loslib_c) || defined(luaall_c)
+ 
+-#if defined(LUA_USE_MKSTEMP)
++/* Pyxis: libc's mkstemp reserves an empty, exclusive tmp:// file. */
+ #include <unistd.h>
+ #define LUA_TMPNAMBUFSIZE	32
+ #define lua_tmpnam(b,e)	{ \
+-	strcpy(b, "/tmp/lua_XXXXXX"); \
++	strcpy(b, "tmp://lua_XXXXXX"); \
+ 	e = mkstemp(b); \
+ 	if (e != -1) close(e); \
+ 	e = (e == -1); }
+ 
+-#else
+-#define LUA_TMPNAMBUFSIZE	L_tmpnam
+-#define lua_tmpnam(b,e)		{ e = (tmpnam(b) == NULL); }
+-#endif
+-
+ #endif
+ 
+ 
+-/*
+-@@ lua_popen spawns a new process connected to the current one through
+-@* the file streams.
+-** CHANGE it if you have a way to implement it in your system.
+-*/
+-#if defined(LUA_USE_POPEN)
+-
+-#define lua_popen(L,c,m)	((void)L, fflush(NULL), popen(c,m))
+-#define lua_pclose(L,file)	((void)L, (pclose(file) != -1))
+-
+-#elif defined(LUA_WIN)
+-
+-#define lua_popen(L,c,m)	((void)L, _popen(c,m))
+-#define lua_pclose(L,file)	((void)L, (_pclose(file) != -1))
+-
+-#else
+-
+-#define lua_popen(L,c,m)	((void)((void)c, m),  \
+-		luaL_error(L, LUA_QL("popen") " not supported"), (FILE*)0)
+-#define lua_pclose(L,file)		((void)((void)L, file), 0)
+-
+-#endif
+-
+ /*
+ @@ LUA_DL_* define which dynamic-library system Lua should use.
+ ** CHANGE here if Lua has problems choosing the appropriate
+diff --git a/src/lvm.c b/src/lvm.c
+index e0a0cd8..e477aa9 100644
+--- a/src/lvm.c
++++ b/src/lvm.c
+@@ -206,7 +206,7 @@ static int l_strcmp (const TString *ls, const TString *rs) {
+   const char *r = getstr(rs);
+   size_t lr = rs->tsv.len;
+   for (;;) {
+-    int temp = strcoll(l, r);
++    int temp = strcmp(l, r);  /* Pyxis: bytewise; libc has no locales */
+     if (temp != 0) return temp;
+     else {  /* strings are equal up to a `\0' */
+       size_t len = strlen(l);  /* index of first `\0' in both strings */

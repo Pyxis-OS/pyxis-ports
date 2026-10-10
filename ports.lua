@@ -13,6 +13,7 @@ return {
   libpng = "libpng",
   libuv = "libuv",
   lua = "lua",
+  lua51 = "lua51",
   mbedtls = "mbedtls",
   pciids = "pciids",
   picohttpparser = "picohttpparser",

@@ -21,6 +21,7 @@ return function(inputs)
     { tree = root .. "/zlib/stage/share", at = "share" },
     { tree = root .. "/libpng/stage/share", at = "share" },
     { tree = root .. "/libuv/stage/share", at = "share" },
+    { tree = root .. "/lua51/stage/share", at = "share" },
     { tree = root .. "/doom/stage/bin", at = "" },
     { tree = root .. "/doom/stage/share", at = "share" },
     { tree = root .. "/chocolate-doom/stage/bin", at = "" },

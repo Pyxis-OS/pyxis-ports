@@ -1,0 +1,23 @@
+diff --git a/c-api/compat-5.3.c b/c-api/compat-5.3.c
+index 1901a82..27eed4d 100644
+--- a/c-api/compat-5.3.c
++++ b/c-api/compat-5.3.c
+@@ -575,6 +575,10 @@ COMPAT53_API int luaL_loadfilex (lua_State *L, const char *filename, const char
+   if (compat53_skipcomment(&lf, &c))  /* read initial portion */
+     lf.buff[lf.n++] = '\n';  /* add line to correct line numbers */
+   if (c == LUA_SIGNATURE[0] && filename) {  /* binary file? */
++#if defined(__pyxis__)
++    /* Pyxis streams do not translate text, so the open stream already reads
++     * the binary chunk; there is nothing to reopen. */
++#else
+ #if defined(_MSC_VER)
+     if (freopen_s(&lf.f, filename, "rb", lf.f) != 0)
+       return compat53_errfile(L, "reopen", fnameindex);
+@@ -583,6 +587,7 @@ COMPAT53_API int luaL_loadfilex (lua_State *L, const char *filename, const char
+     if (lf.f == NULL) return compat53_errfile(L, "reopen", fnameindex);
+ #endif
+     compat53_skipcomment(&lf, &c);  /* re-read initial portion */
++#endif
+   }
+   if (c != EOF)
+     lf.buff[lf.n++] = (char)c;  /* 'c' is the first character of the stream */

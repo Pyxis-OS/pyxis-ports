@@ -68,9 +68,10 @@ extra = {
 Each entry is pinned and verified like the main source: either an exact commit
 from a Git mirror or an archive with its SHA-256. The runner places it in
 `extra/NAME` in the work directory and gives the recipe its path as
-`ctx.extra.NAME`. Patches apply only to the main source; a recipe that would
-need to change a dependency packages it as a port of its own instead. The
-recipe must keep the build offline, for example with CMake's
+`ctx.extra.NAME`. An entry may list `patches`, kept in the recipe directory and
+applied to that source like the main source's; use them only for sources built
+solely as part of this recipe, such as luv in `lua51`, and package a shared
+dependency as a port of its own. The recipe must keep the build offline, for example with CMake's
 `FETCHCONTENT_FULLY_DISCONNECTED`, and record each dependency's pin and license.
 
 Boot-archive inclusion is handled by Pyxis; this repository only stages files.
@@ -78,6 +79,8 @@ Boot-archive inclusion is handled by Pyxis; this repository only stages files.
 [Native libuv](libuv/README.md) exports a static development library and an
 explicit child-output relay bundle. It needs a current SDK and declared native
 clock/pipe authority; its first profile runs without worker threads.
+[Lua 5.1 with LPeg and luv](lua51/README.md) builds over it, staging an
+interpreter bundle and the development libraries Neovim links.
 
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's
 manifest runner. It includes executables, notices and TCC target support, while

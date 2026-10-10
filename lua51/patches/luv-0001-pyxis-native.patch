@@ -1,0 +1,786 @@
+diff --git a/src/constants.c b/src/constants.c
+index fb15cf9..afc9ee6 100644
+--- a/src/constants.c
++++ b/src/constants.c
+@@ -388,6 +388,8 @@ static int luv_constants(lua_State* L) {
+   return 1;
+ }
+ 
++#ifndef __pyxis__
++/* Pyxis: address families and socket types belong to the missing sockets. */
+ static int luv_af_string_to_num(const char* string) {
+   if (!string) return AF_UNSPEC;
+ #ifdef AF_UNIX
+@@ -501,6 +503,8 @@ static const char* luv_sock_num_to_string(const int num) {
+   return NULL;
+ }
+ 
++#endif
++
+ static int luv_sig_string_to_num(const char* string) {
+   if (!string) return 0;
+ #ifdef SIGHUP
+@@ -728,6 +732,7 @@ static const char* luv_sig_num_to_string(const int num) {
+   return NULL;
+ }
+ 
++#ifndef __pyxis__
+ static int luv_proto_string_to_num(const char* string) {
+   struct protoent* proto;
+   if (!string) return -1;
+@@ -741,3 +746,4 @@ static const char* luv_proto_num_to_string(int num) {
+   if (!proto) return NULL;
+   return proto->p_name;
+ }
++#endif
+diff --git a/src/fs.c b/src/fs.c
+index a218087..6979b30 100644
+--- a/src/fs.c
++++ b/src/fs.c
+@@ -95,9 +95,11 @@ static void luv_push_stats_table(lua_State* L, const uv_stat_t* s) {
+   else if (S_ISDIR(s->st_mode)) {
+     type = "directory";
+   }
++#ifdef S_ISLNK
+   else if (S_ISLNK(s->st_mode)) {
+     type = "link";
+   }
++#endif
+   else if (S_ISFIFO(s->st_mode)) {
+     type = "fifo";
+   }
+@@ -109,9 +111,11 @@ static void luv_push_stats_table(lua_State* L, const uv_stat_t* s) {
+   else if (S_ISCHR(s->st_mode)) {
+     type = "char";
+   }
++#ifdef S_ISBLK
+   else if (S_ISBLK(s->st_mode)) {
+     type = "block";
+   }
++#endif
+   if (type) {
+     lua_pushstring(L, type);
+     lua_setfield(L, -2, "type");
+diff --git a/src/luv.c b/src/luv.c
+index 7ea1dcb..2c0bf43 100644
+--- a/src/luv.c
++++ b/src/luv.c
+@@ -24,10 +24,14 @@
+ #include "async.c"
+ #include "check.c"
+ #include "constants.c"
++#ifndef __pyxis__
+ #include "dns.c"
++#endif
+ #include "fs.c"
++#ifndef __pyxis__
+ #include "fs_event.c"
+ #include "fs_poll.c"
++#endif
+ #include "handle.c"
+ #include "idle.c"
+ #include "lhandle.c"
+@@ -42,12 +46,18 @@
+ #include "req.c"
+ #include "signal.c"
+ #include "stream.c"
++#ifndef __pyxis__
+ #include "tcp.c"
++#endif
+ #include "synch.c"
+ #include "thread.c"
+ #include "timer.c"
+ #include "tty.c"
++#ifndef __pyxis__
+ #include "udp.c"
++#else
++#include "pyxis.c"
++#endif
+ #include "util.c"
+ #include "work.c"
+ 
+diff --git a/src/metrics.c b/src/metrics.c
+index 4825374..dd640b0 100644
+--- a/src/metrics.c
++++ b/src/metrics.c
+@@ -20,9 +20,14 @@
+ 
+ #if LUV_UV_VERSION_GEQ(1, 39, 0)
+ static int luv_metrics_idle_time(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits loop metrics. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   uint64_t idle_time = uv_metrics_idle_time(luv_loop(L));
+   lua_pushinteger(L, idle_time);
+   return 1;
++#endif
+ }
+ #endif
+ 
+diff --git a/src/misc.c b/src/misc.c
+index 5b648e1..930ac45 100644
+--- a/src/misc.c
++++ b/src/misc.c
+@@ -259,12 +259,21 @@ static int luv_getrusage_thread(lua_State *L) {
+ 
+ #if LUV_UV_VERSION_GEQ(1, 44, 0)
+ static int luv_available_parallelism(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this value-only introspection. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   lua_pushinteger(L, uv_available_parallelism());
+   return 1;
++#endif
+ }
+ #endif
+ 
+ static int luv_cpu_info(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this value-only introspection. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   uv_cpu_info_t* cpu_infos = NULL;
+   int count = 0, i;
+   int ret = uv_cpu_info(&cpu_infos, &count);
+@@ -298,9 +307,14 @@ static int luv_cpu_info(lua_State* L) {
+ 
+   uv_free_cpu_info(cpu_infos, count);
+   return 1;
++#endif
+ }
+ 
+ static int luv_interface_addresses(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: no socket addresses; libuv reports ENOSYS as well. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   uv_interface_address_t* interfaces;
+   int count, i;
+   char ip[INET6_ADDRSTRLEN];
+@@ -348,15 +362,21 @@ static int luv_interface_addresses(lua_State* L) {
+   }
+   uv_free_interface_addresses(interfaces, count);
+   return 1;
++#endif
+ }
+ 
+ static int luv_loadavg(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this value-only introspection. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   double avg[3];
+   uv_loadavg(avg);
+   lua_pushnumber(L, avg[0]);
+   lua_pushnumber(L, avg[1]);
+   lua_pushnumber(L, avg[2]);
+   return 3;
++#endif
+ }
+ 
+ static int luv_exepath(lua_State* L) {
+@@ -402,6 +422,10 @@ static int luv_os_homedir(lua_State* L) {
+ }
+ 
+ static int luv_os_get_passwd(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv reports this as unsupported and omits the free. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   uv_passwd_t pwd;
+   int ret = uv_os_get_passwd(&pwd);
+   if (ret < 0) return luv_error(L, ret);
+@@ -429,24 +453,40 @@ static int luv_os_get_passwd(lua_State* L) {
+   }
+   uv_os_free_passwd(&pwd);
+   return 1;
++#endif
+ }
+ #endif
+ 
+ #if LUV_UV_VERSION_GEQ(1, 29, 0)
+ static int luv_get_constrained_memory(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this value-only introspection. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   lua_pushnumber(L, uv_get_constrained_memory());
+   return 1;
++#endif
+ }
+ #endif
+ 
+ static int luv_get_total_memory(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this value-only introspection. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   lua_pushnumber(L, uv_get_total_memory());
+   return 1;
++#endif
+ }
+ 
+ static int luv_get_free_memory(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this value-only introspection. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   lua_pushnumber(L, uv_get_free_memory());
+   return 1;
++#endif
+ }
+ 
+ static int luv_hrtime(lua_State* L) {
+@@ -454,13 +494,36 @@ static int luv_hrtime(lua_State* L) {
+   return 1;
+ }
+ 
++#ifdef __pyxis__
++/* Pyxis has no process or user IDs. */
++static int luv_getpid(lua_State* L){
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_getuid(lua_State* L){
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_getgid(lua_State* L){
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_setuid(lua_State* L){
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_setgid(lua_State* L){
++  return luv_error(L, UV_ENOSYS);
++}
++#else
+ static int luv_getpid(lua_State* L){
+   int pid = getpid();
+   lua_pushinteger(L, pid);
+   return 1;
+ }
++#endif
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+ static int luv_getuid(lua_State* L){
+   int uid = getuid();
+   lua_pushinteger(L, uid);
+@@ -490,18 +553,31 @@ static int luv_setgid(lua_State* L){
+   }
+   return 0;
+ }
++#endif
++
++#ifndef _WIN32
+ 
+ #if LUV_UV_VERSION_GEQ(1, 8, 0)
+ static int luv_print_all_handles(lua_State* L){
++#ifdef __pyxis__
++  /* Pyxis: libuv omits handle printing. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   luv_ctx_t* ctx = luv_context(L);
+   uv_print_all_handles(ctx->loop, stderr);
+   return 0;
++#endif
+ }
+ 
+ static int luv_print_active_handles(lua_State* L){
++#ifdef __pyxis__
++  /* Pyxis: libuv omits handle printing. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   luv_ctx_t* ctx = luv_context(L);
+   uv_print_active_handles(ctx->loop, stderr);
+   return 0;
++#endif
+ }
+ #endif
+ #endif
+@@ -600,14 +676,24 @@ static int luv_if_indextoiid(lua_State* L) {
+ }
+ 
+ static int luv_os_getppid(lua_State* L) {
+-  lua_pushnumber(L, uv_os_getppid());
++  uv_pid_t pid = uv_os_getppid();
++#ifdef __pyxis__
++  /* Pyxis has no process IDs; libuv returns a negative error instead. */
++  if (pid < 0) return luv_error(L, pid);
++#endif
++  lua_pushnumber(L, pid);
+   return 1;
+ }
+ #endif
+ 
+ #if LUV_UV_VERSION_GEQ(1, 18, 0)
+ static int luv_os_getpid(lua_State* L) {
+-  lua_pushnumber(L, uv_os_getpid());
++  uv_pid_t pid = uv_os_getpid();
++#ifdef __pyxis__
++  /* Pyxis has no process IDs; libuv returns a negative error instead. */
++  if (pid < 0) return luv_error(L, pid);
++#endif
++  lua_pushnumber(L, pid);
+   return 1;
+ }
+ #endif
+@@ -807,8 +893,13 @@ static int luv_cpumask_size(lua_State* L) {
+ }
+ 
+ static int luv_get_available_memory(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this value-only introspection. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   lua_pushnumber(L, uv_get_available_memory());
+   return 1;
++#endif
+ }
+ 
+ // These are the same order as uv_clock_id which also starts at 0
+@@ -833,15 +924,24 @@ static int luv_clock_gettime(lua_State* L) {
+ #if LUV_UV_VERSION_GEQ(1, 49, 0)
+ 
+ static int luv_utf16_length_as_wtf8(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this Unicode conversion. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   size_t sz;
+   const uint16_t *utf16 = (const uint16_t *)luaL_checklstring(L, 1, &sz);
+   ssize_t utf16_len = sz/2;
+   sz = uv_utf16_length_as_wtf8(utf16, utf16_len);
+   lua_pushinteger(L, sz);
+   return 1;
++#endif
+ }
+ 
+ static int luv_utf16_to_wtf8(lua_State *L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this Unicode conversion. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   int ret;
+   size_t sz;
+   char *wtf8;
+@@ -862,18 +962,28 @@ static int luv_utf16_to_wtf8(lua_State *L) {
+   }
+   free(wtf8);
+   return ret;
++#endif
+ }
+ 
+ static int luv_wtf8_length_as_utf16(lua_State *L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this Unicode conversion. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   /* checkstring is guaranteed to return a NUL terminated string */
+   const char* wtf8 = luaL_checkstring(L, 1);
+   ssize_t ssz = uv_wtf8_length_as_utf16(wtf8);
+   /* The length includes a NUL terminator, but we return the length without the NUL terminator */
+   lua_pushinteger(L, ssz - 1);
+   return 1;
++#endif
+ }
+ 
+ static int luv_wtf8_to_utf16(lua_State *L) {
++#ifdef __pyxis__
++  /* Pyxis: libuv omits this Unicode conversion. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   size_t sz;
+   uint16_t *utf16;
+   const char* wtf8 = luaL_checklstring(L, 1, &sz);
+@@ -885,6 +995,7 @@ static int luv_wtf8_to_utf16(lua_State *L) {
+   lua_pushlstring(L, (const char*)utf16, (ssz-1) * 2);
+   free(utf16);
+   return 1;
++#endif
+ }
+ 
+ #endif
+diff --git a/src/pipe.c b/src/pipe.c
+index 324d87f..5275407 100644
+--- a/src/pipe.c
++++ b/src/pipe.c
+@@ -58,7 +58,18 @@ static int luv_pipe_connect(lua_State* L) {
+   int ref = luv_check_continuation(L, 3);
+   uv_connect_t* req = (uv_connect_t*)lua_newuserdata(L, uv_req_size(UV_CONNECT));
+   req->data = luv_setup_req(L, ctx, ref);
++#ifdef __pyxis__
++  /* Pyxis libuv has only uv_pipe_connect2, which reports its error at once,
++   * as luv_pipe_connect2 handles it. */
++  int ret = uv_pipe_connect2(req, handle, name, strlen(name), 0, luv_connect_cb);
++  if (ret < 0) {
++    luv_cleanup_req(L, (luv_req_t*)req->data);
++    lua_pop(L, 1);
++    return luv_error(L, ret);
++  }
++#else
+   uv_pipe_connect(req, handle, name, luv_connect_cb);
++#endif
+   return 1;
+ }
+ 
+@@ -131,10 +142,15 @@ static int luv_pipe_getpeername(lua_State* L) {
+ #endif
+ 
+ static int luv_pipe_pending_instances(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: there are no pipe instances or IPC handles. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   uv_pipe_t* handle = luv_check_pipe(L, 1);
+   int count = luaL_checkinteger(L, 2);
+   uv_pipe_pending_instances(handle, count);
+   return 0;
++#endif
+ }
+ 
+ static int luv_pipe_pending_count(lua_State* L) {
+@@ -144,6 +160,10 @@ static int luv_pipe_pending_count(lua_State* L) {
+ }
+ 
+ static int luv_pipe_pending_type(lua_State* L) {
++#ifdef __pyxis__
++  /* Pyxis: there are no pipe instances or IPC handles. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   uv_pipe_t* handle = luv_check_pipe(L, 1);
+   uv_handle_type type = uv_pipe_pending_type(handle);
+   const char* type_name;
+@@ -156,6 +176,7 @@ static int luv_pipe_pending_type(lua_State* L) {
+   }
+   lua_pushstring(L, type_name);
+   return 1;
++#endif
+ }
+ 
+ #if LUV_UV_VERSION_GEQ(1,16,0)
+diff --git a/src/private.h b/src/private.h
+index 6aa3fc4..778153d 100644
+--- a/src/private.h
++++ b/src/private.h
+@@ -85,8 +85,10 @@ static uv_buf_t* luv_prep_bufs(lua_State* L, int index, size_t *count, int **ref
+ static uv_buf_t* luv_check_bufs(lua_State* L, int index, size_t *count, luv_req_t* req_data);
+ static uv_buf_t* luv_check_bufs_noref(lua_State* L, int index, size_t *count);
+ 
+-/* From tcp.c */
++/* From tcp.c, or pyxis.c without sockets */
++#ifndef __pyxis__
+ static void parse_sockaddr(lua_State* L, struct sockaddr_storage* address);
++#endif
+ static void luv_connect_cb(uv_connect_t* req, int status);
+ 
+ /* From fs.c */
+diff --git a/src/process.c b/src/process.c
+index 127be3d..173d51d 100644
+--- a/src/process.c
++++ b/src/process.c
+@@ -16,6 +16,9 @@
+  */
+ #include "private.h"
+ #include <math.h>
++#ifdef __pyxis__
++#include <abi/process.h>
++#endif
+ 
+ static int luv_disable_stdio_inheritance(lua_State* L) {
+   (void)L;
+@@ -29,12 +32,31 @@ static uv_process_t* luv_check_process(lua_State* L, int index) {
+   return handle;
+ }
+ 
++#ifdef __pyxis__
++/* Pyxis: the native result says how the child ended. A fault or termination
++ * reports status -1 and signal 0, which the status alone cannot tell apart
++ * from exit(-1), so the callback gets the reason as a third argument. */
++static const char* luv_exit_reason(uint64_t reason) {
++  switch (reason) {
++    case PROCESS_EXITED: return "exited";
++    case PROCESS_FAULTED: return "faulted";
++    case PROCESS_TERMINATED: return "terminated";
++    default: return NULL;
++  }
++}
++#endif
++
+ static void exit_cb(uv_process_t* handle, int64_t exit_status, int term_signal) {
+   luv_handle_t* data = (luv_handle_t*)handle->data;
+   lua_State* L = data->ctx->L;
+   lua_pushinteger(L, exit_status);
+   lua_pushinteger(L, term_signal);
++#ifdef __pyxis__
++  lua_pushstring(L, luv_exit_reason(handle->exit_reason));
++  luv_call_callback(L, data, LUV_EXIT, 3);
++#else
+   luv_call_callback(L, data, LUV_EXIT, 2);
++#endif
+ }
+ 
+ static void luv_spawn_close_cb(uv_handle_t* handle) {
+@@ -300,7 +322,11 @@ static int luv_spawn(lua_State* L) {
+     uv_close((uv_handle_t*)handle, luv_spawn_close_cb);
+     return luv_error(L, ret);
+   }
++#ifdef __pyxis__
++  lua_pushnil(L);  /* Pyxis has no process IDs */
++#else
+   lua_pushinteger(L, handle->pid);
++#endif
+   return 2;
+ }
+ 
+@@ -311,7 +337,11 @@ static int luv_parse_signal(lua_State* L, int slot) {
+   if (lua_isstring(L, slot)) {
+     return luv_sig_string_to_num(lua_tostring(L, slot));
+   }
++#ifdef SIGTERM
+   return SIGTERM;
++#else
++  return 0;  /* Pyxis has no signals; libuv reports kill as ENOSYS */
++#endif
+ }
+ 
+ static int luv_process_kill(lua_State* L) {
+@@ -331,7 +361,12 @@ static int luv_kill(lua_State* L) {
+ #if LUV_UV_VERSION_GEQ(1, 19, 0)
+ static int luv_process_get_pid(lua_State* L) {
+   uv_process_t* handle = luv_check_process(L, 1);
+-  lua_pushinteger(L, uv_process_get_pid(handle));
++  uv_pid_t pid = uv_process_get_pid(handle);
++#ifdef __pyxis__
++  /* Pyxis has no process IDs; libuv returns a negative error instead. */
++  if (pid < 0) return luv_error(L, pid);
++#endif
++  lua_pushinteger(L, pid);
+   return 1;
+ }
+ #endif
+diff --git a/src/pyxis.c b/src/pyxis.c
+new file mode 100644
+index 0000000..e6e854c
+--- /dev/null
++++ b/src/pyxis.c
+@@ -0,0 +1,193 @@
++/*
++ *  Pyxis has no BSD sockets or resolver, and its libuv reports sockets and
++ *  address conversion as unsupported and omits file watches. These replace
++ *  dns.c, tcp.c, udp.c, fs_event.c and fs_poll.c: each function keeps its Lua
++ *  name and reports ENOSYS like any libuv error, before touching a handle.
++ */
++#include "private.h"
++
++/* Also used by pipe connections; as in tcp.c. */
++static void luv_connect_cb(uv_connect_t* req, int status) {
++  luv_req_t* data = (luv_req_t*)req->data;
++  lua_State* L = data->ctx->L;
++  luv_status(L, status);
++  luv_fulfill_req(L, (luv_req_t*)req->data, 1);
++  luv_cleanup_req(L, (luv_req_t*)req->data);
++  req->data = NULL;
++}
++
++/* DNS */
++
++static int luv_getaddrinfo(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_getnameinfo(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++/* TCP */
++
++static int luv_new_tcp(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_socketpair(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_bind(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_close_reset(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_connect(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_getpeername(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_getsockname(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_keepalive(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_nodelay(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_open(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_tcp_simultaneous_accepts(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_write_queue_size(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++/* UDP */
++
++static int luv_new_udp(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_bind(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_connect(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_get_send_queue_count(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_get_send_queue_size(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_getpeername(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_getsockname(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_open(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_recv_start(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_recv_stop(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_send(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_set_broadcast(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_set_membership(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_set_multicast_interface(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_set_multicast_loop(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_set_multicast_ttl(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_set_source_membership(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_set_ttl(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_try_send(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_udp_try_send2(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++/* File watches */
++
++static int luv_new_fs_event(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_fs_event_start(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_fs_event_stop(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_fs_event_getpath(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_new_fs_poll(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_fs_poll_start(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_fs_poll_stop(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
++
++static int luv_fs_poll_getpath(lua_State* L) {
++  return luv_error(L, UV_ENOSYS);
++}
+diff --git a/src/tty.c b/src/tty.c
+index 01aa5d2..f7fedbf 100644
+--- a/src/tty.c
++++ b/src/tty.c
+@@ -87,11 +87,16 @@ static int luv_tty_get_winsize(lua_State* L) {
+ #if LUV_UV_VERSION_GEQ(1, 33, 0)
+ int luv_tty_set_vterm_state(lua_State* L)
+ {
++#ifdef __pyxis__
++  /* Pyxis: there is no console vterm state to set. */
++  return luv_error(L, UV_ENOSYS);
++#else
+   uv_tty_vtermstate_t state[] = {UV_TTY_SUPPORTED, UV_TTY_UNSUPPORTED};
+   const char* option[] = {"supported", "unsupported", NULL};
+   int idx = luaL_checkoption (L, 1, NULL, option);
+   uv_tty_set_vterm_state(state[idx]);
+   return 0;
++#endif
+ }
+ 
+ int luv_tty_get_vterm_state(lua_State* L)
