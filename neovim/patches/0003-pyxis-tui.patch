@@ -1,0 +1,739 @@
+diff --git a/src/nvim/event/stream.c b/src/nvim/event/stream.c
+index be3120a..3ce4795 100644
+--- a/src/nvim/event/stream.c
++++ b/src/nvim/event/stream.c
+@@ -26,6 +26,10 @@
+ /// @return `0` on success, or libuv error code on failure.
+ int stream_set_blocking(int fd, bool blocking)
+ {
++#ifdef __pyxis__
++  // Stream ownership cannot be borrowed into a temporary libuv handle.
++  return UV_ENOSYS;
++#else
+   // Private loop to avoid conflict with existing watcher(s):
+   //    uv__io_stop: Assertion `loop->watchers[w->fd] == w' failed.
+   uv_loop_t loop;
+@@ -38,6 +42,7 @@ int stream_set_blocking(int fd, bool blocking)
+   uv_run(&loop, UV_RUN_NOWAIT);  // not necessary, but couldn't hurt.
+   uv_loop_close(&loop);
+   return retval;
++#endif
+ }
+ 
+ void stream_init(Loop *loop, Stream *stream, int fd, uv_stream_t *uvstream)
+@@ -57,8 +62,18 @@ void stream_init(Loop *loop, Stream *stream, int fd, uv_stream_t *uvstream)
+       // processed between reads.
+       uv_idle_init(&loop->uv, &stream->uv.idle);
+       stream->uv.idle.data = stream;
+-#ifdef MSWIN
++#if defined(MSWIN) || defined(__pyxis__)
+     } else if (type == UV_TTY) {
++#ifdef __pyxis__
++      int error = uv_tty_init(&loop->uv, &stream->uv.tty, fd, 1);
++      if (!error) {
++        error = uv_tty_set_mode(&stream->uv.tty, UV_TTY_MODE_RAW);
++      }
++      if (error) {
++        ELOG("Cannot initialize native terminal input: %s", uv_strerror(error));
++        abort();
++      }
++#else
+       uv_tty_init(&loop->uv, &stream->uv.tty, fd, 0);
+       uv_tty_set_mode(&stream->uv.tty, UV_TTY_MODE_RAW);
+       DWORD dwMode;
+@@ -66,12 +81,24 @@ void stream_init(Loop *loop, Stream *stream, int fd, uv_stream_t *uvstream)
+         dwMode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+         SetConsoleMode(stream->uv.tty.handle, dwMode);
+       }
++#endif
+       stream->uvstream = (uv_stream_t *)&stream->uv.tty;
+ #endif
+     } else {
+       assert(type == UV_NAMED_PIPE || type == UV_TTY);
++#ifdef __pyxis__
++      int error = uv_pipe_init(&loop->uv, &stream->uv.pipe, 0);
++      if (!error) {
++        error = uv_pipe_open(&stream->uv.pipe, fd);
++      }
++      if (error) {
++        ELOG("Cannot initialize native pipe stream: %s", uv_strerror(error));
++        abort();
++      }
++#else
+       uv_pipe_init(&loop->uv, &stream->uv.pipe, 0);
+       uv_pipe_open(&stream->uv.pipe, fd);
++#endif
+       stream->uvstream = (uv_stream_t *)&stream->uv.pipe;
+     }
+   }
+@@ -101,8 +128,8 @@ void stream_may_close(Stream *stream)
+   DLOG("closing Stream: %p", (void *)stream);
+   stream->closed = true;
+ 
+-#ifdef MSWIN
+-  if (UV_TTY == uv_guess_handle(stream->fd)) {
++#if defined(MSWIN) || defined(__pyxis__)
++  if (stream->uvstream && stream->uvstream->type == UV_TTY) {
+     // Undo UV_TTY_MODE_RAW from stream_init(). #10801
+     uv_tty_set_mode(&stream->uv.tty, UV_TTY_MODE_NORMAL);
+   }
+diff --git a/src/nvim/tui/terminfo.c b/src/nvim/tui/terminfo.c
+index 493454d..4acfccd 100644
+--- a/src/nvim/tui/terminfo.c
++++ b/src/nvim/tui/terminfo.c
+@@ -20,6 +20,54 @@
+ # include "nvim/os/os.h"
+ #endif
+ 
++// The first native profile promises only sixteen palette colours and reverse.
++static const TerminfoEntry pyxis_terminfo = {
++  .bce = true,
++  .max_colors = 16,
++  .lines = 24,
++  .columns = 80,
++  .defs = {
++    [kTerm_carriage_return] = "\r",
++    [kTerm_change_scroll_region] = "\x1b[%i%p1%d;%p2%dr",
++    [kTerm_clear_screen] = "\x1b[H\x1b[2J",
++    [kTerm_clr_eol] = "\x1b[K",
++    [kTerm_clr_eos] = "\x1b[J",
++    [kTerm_cursor_address] = "\x1b[%i%p1%d;%p2%dH",
++    [kTerm_cursor_down] = "\x1b[B",
++    [kTerm_cursor_invisible] = "\x1b[?25l",
++    [kTerm_cursor_left] = "\x1b[D",
++    [kTerm_cursor_home] = "\x1b[H",
++    [kTerm_cursor_normal] = "\x1b[?25h",
++    [kTerm_cursor_up] = "\x1b[A",
++    [kTerm_cursor_right] = "\x1b[C",
++    [kTerm_delete_line] = "\x1b[M",
++    [kTerm_enter_ca_mode] = "\x1b[?1049h",
++    [kTerm_exit_ca_mode] = "\x1b[?1049l",
++    [kTerm_enter_reverse_mode] = "\x1b[7m",
++    [kTerm_enter_standout_mode] = "\x1b[7m",
++    [kTerm_exit_attribute_mode] = "\x1b[0m",
++    [kTerm_insert_line] = "\x1b[L",
++    [kTerm_parm_delete_line] = "\x1b[%p1%dM",
++    [kTerm_parm_down_cursor] = "\x1b[%p1%dB",
++    [kTerm_parm_insert_line] = "\x1b[%p1%dL",
++    [kTerm_parm_left_cursor] = "\x1b[%p1%dD",
++    [kTerm_parm_right_cursor] = "\x1b[%p1%dC",
++    [kTerm_parm_up_cursor] = "\x1b[%p1%dA",
++    [kTerm_set_a_background] = "\x1b[%?%p1%{8}%<%t4%p1%d%e10%p1%{8}%-%d%;m",
++    [kTerm_set_a_foreground] = "\x1b[%?%p1%{8}%<%t3%p1%d%e9%p1%{8}%-%d%;m",
++  },
++  .keys = {
++    [kTermKey_backspace] = {"\b", "\x7f"},
++    [kTermKey_dc] = {"\x1b[3~", NULL},
++    [kTermKey_end] = {"\x1b[F", NULL},
++    [kTermKey_home] = {"\x1b[H", NULL},
++    [kTermKey_npage] = {"\x1b[6~", NULL},
++    [kTermKey_ppage] = {"\x1b[5~", NULL},
++    [kTermKey_left] = {"\x1b[D", NULL},
++    [kTermKey_right] = {"\x1b[C", NULL},
++  },
++};
++
+ typedef struct {
+   long nums[20];
+   char *strings[20];
+@@ -70,7 +118,10 @@ bool terminfo_is_bsd_console(const char *term)
+ /// @return [allocated] terminfo structure
+ const TerminfoEntry *terminfo_from_builtin(const char *term, char **termname)
+ {
+-  if (strequal(term, "ghostty") || strequal(term, "xterm-ghostty")) {
++  if (strequal(term, "pyxis")) {
++    *termname = "pyxis";
++    return &pyxis_terminfo;
++  } else if (strequal(term, "ghostty") || strequal(term, "xterm-ghostty")) {
+     *termname = "ghostty";
+     return &ghostty_terminfo;
+   } else if (terminfo_is_term_family(term, "xterm")) {
+diff --git a/src/nvim/tui/termkey/termkey-internal.h b/src/nvim/tui/termkey/termkey-internal.h
+index 2e2f8d7..32f6ade 100644
+--- a/src/nvim/tui/termkey/termkey-internal.h
++++ b/src/nvim/tui/termkey/termkey-internal.h
+@@ -5,7 +5,7 @@
+ #include "nvim/tui/termkey/termkey_defs.h"
+ 
+ #define HAVE_TERMIOS
+-#ifdef _WIN32
++#if defined(_WIN32) || defined(__pyxis__)
+ # undef HAVE_TERMIOS
+ #endif
+ 
+diff --git a/src/nvim/tui/termkey/termkey.c b/src/nvim/tui/termkey/termkey.c
+index 77b65bc..86a8bea 100644
+--- a/src/nvim/tui/termkey/termkey.c
++++ b/src/nvim/tui/termkey/termkey.c
+@@ -14,7 +14,9 @@
+ 
+ #ifndef _WIN32
+ // Include these directly instead of <termios.h> which is system-dependent. #31704
+-# include <poll.h>  // IWYU pragma: keep
++# ifndef __pyxis__
++#  include <poll.h>  // IWYU pragma: keep
++# endif
+ # include <strings.h>  // IWYU pragma: keep
+ # include <unistd.h>  // IWYU pragma: keep
+ #else
+diff --git a/src/nvim/tui/tui.c b/src/nvim/tui/tui.c
+index ed23034..86fc5d9 100644
+--- a/src/nvim/tui/tui.c
++++ b/src/nvim/tui/tui.c
+@@ -2,7 +2,12 @@
+ 
+ #include <assert.h>
+ #include <inttypes.h>
+-#include <signal.h>
++#ifndef __pyxis__
++# include <signal.h>
++#else
++# include <uv/pyxis-native.h>
++# include "nvim/event/proc.h"
++#endif
+ #include <stdbool.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -145,6 +150,10 @@ struct TUIData {
+ 
+ static bool cursor_style_enabled = false;
+ #include "tui/tui.c.generated.h"
++#ifdef __pyxis__
++static void tui_native_resize_cb(uv_tty_t *handle, int status, int width, int height);
++static void tui_native_write(TUIData *tui, uv_buf_t *bufs, unsigned count);
++#endif
+ 
+ #define TERMINFO_SEQ_LIMIT 128
+ 
+@@ -166,8 +175,10 @@ void tui_start(TUIData **tui_p, int *width, int *height, char **term, bool *rgb)
+ 
+   kv_init(tui->invalid_regions);
+   kv_init(tui->urlbuf);
++#ifndef __pyxis__
+   signal_watcher_init(tui->loop, &tui->winch_handle, tui);
+   signal_watcher_start(&tui->winch_handle, sigwinch_cb, SIGWINCH);
++#endif
+ 
+   // TODO(bfredl): zero hl is empty, send this explicitly?
+   kv_push(tui->attrs, HLATTRS_INIT);
+@@ -194,6 +205,9 @@ void tui_start(TUIData **tui_p, int *width, int *height, char **term, bool *rgb)
+ static void tui_request_term_mode(TUIData *tui, TermMode mode)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   // 5 bytes for \x1b[?$p, 1 byte for null terminator, 6 bytes for mode digits (more than enough)
+   char buf[12];
+   int len = snprintf(buf, sizeof(buf), "\x1b[?%d$p", (int)mode);
+@@ -205,6 +219,9 @@ static void tui_request_term_mode(TUIData *tui, TermMode mode)
+ static void tui_set_term_mode(TUIData *tui, TermMode mode, bool set)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   char buf[12];
+   int len = snprintf(buf, sizeof(buf), "\x1b[?%d%c", (int)mode, set ? 'h' : 'l');
+   assert((len > 0) && (len < (int)sizeof(buf)));
+@@ -215,6 +232,9 @@ static void tui_set_term_mode(TUIData *tui, TermMode mode, bool set)
+ void tui_handle_term_mode(TUIData *tui, TermMode mode, TermModeState state)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   bool is_set = false;
+   switch (state) {
+   case kTermModeNotRecognized:
+@@ -276,6 +296,9 @@ void tui_handle_term_mode(TUIData *tui, TermMode mode, TermModeState state)
+ /// Query the terminal emulator to see if it supports extended underline.
+ static void tui_query_extended_underline(TUIData *tui)
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   // Try to set an undercurl using an SGR sequence, followed by a DECRQSS SGR query.
+   // Reset attributes first, as other code may have set attributes.
+   out(tui, S_LEN("\x1b[0m\x1b[4:3m\x1bP$qm\x1b\\"));
+@@ -284,6 +307,9 @@ static void tui_query_extended_underline(TUIData *tui)
+ 
+ void tui_enable_extended_underline(TUIData *tui)
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   terminfo_set_if_empty(tui, kTerm_set_underline_style, "\x1b[4:%p1%dm");
+   tui->can_set_underline_color = true;
+ }
+@@ -299,6 +325,9 @@ void tui_enable_extended_underline(TUIData *tui)
+ static void tui_query_kitty_keyboard(TUIData *tui)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   // Set the key encoding whenever the Device Attributes (DA1) response is received.
+   tui->input.callbacks.primary_device_attr = tui_set_key_encoding;
+   out(tui, S_LEN("\x1b[?u\x1b[c"));
+@@ -307,6 +336,9 @@ static void tui_query_kitty_keyboard(TUIData *tui)
+ void tui_set_key_encoding(TUIData *tui)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   switch (tui->input.key_encoding) {
+   case kKeyEncodingKitty:
+     // Progressive enhancement flags:
+@@ -325,6 +357,9 @@ void tui_set_key_encoding(TUIData *tui)
+ static void tui_reset_key_encoding(TUIData *tui)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   switch (tui->input.key_encoding) {
+   case kKeyEncodingKitty:
+     out(tui, S_LEN("\x1b[<u"));
+@@ -340,6 +375,9 @@ static void tui_reset_key_encoding(TUIData *tui)
+ static void tui_query_bg_color_noflush(TUIData *tui)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   out(tui, S_LEN("\x1b]11;?\x07\x1b[5n"));
+ }
+ 
+@@ -350,10 +388,39 @@ static void tui_query_bg_color_noflush(TUIData *tui)
+ void tui_query_bg_color(TUIData *tui)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   tui_query_bg_color_noflush(tui);
+   flush_buf(tui);
+ }
+ 
++#ifdef __pyxis__
++static void tui_native_write_cb(uv_write_t *request, int status)
++{
++  int *result = request->data;
++  *result = status;
++}
++
++static void tui_native_write(TUIData *tui, uv_buf_t *bufs, unsigned count)
++{
++  int status = 0;
++  uv_write_t request = { .data = &status };
++  int error = uv_write(&request, (uv_stream_t *)&tui->output_handle,
++                       bufs, count, tui_native_write_cb);
++  if (!error) {
++    error = uv_run(&tui->write_loop, UV_RUN_DEFAULT);
++    if (error >= 0) {
++      error = status;
++    }
++  }
++  if (error < 0) {
++    ELOG("Native terminal output failed: %s", uv_strerror(error));
++    abort();
++  }
++}
++#endif
++
+ /// Enable the alternate screen and emit other control sequences to start the TUI.
+ ///
+ /// This is also called when the TUI is resumed after being suspended. We reinitialize all state
+@@ -383,6 +450,14 @@ static void terminfo_start(TUIData *tui)
+   tui->ti_arena = (Arena)ARENA_EMPTY;
+   assert(tui->term == NULL);
+ 
++#ifdef __pyxis__
++  char *term = xstrdup("pyxis");
++  const TerminfoEntry *native = terminfo_from_builtin(term, &tui->term);
++  memcpy(&tui->ti, native, sizeof tui->ti);
++  tui->rgb = false;
++  tui->screen_or_tmux = false;
++  tui->terminfo_ext.reset_scroll_region = "\x1b[r";
++#else
+   char *term = os_getenv("TERM");
+ #ifdef MSWIN
+   const char *guessed_term = NULL;
+@@ -437,6 +512,8 @@ static void terminfo_start(TUIData *tui)
+   patch_terminfo_bugs(tui, term, colorterm, vtev, konsolev, iterm_env, nsterm);
+   augment_terminfo(tui, term, vtev, konsolev, weztermv, iterm_env, nsterm);
+ 
++#endif
++
+ #define TI_HAS(name) (tui->ti.defs[name] != NULL)
+   tui->can_change_scroll_region = TI_HAS(kTerm_change_scroll_region);
+   // note: also gated by tui->has_left_and_right_margin_mode
+@@ -469,6 +546,7 @@ static void terminfo_start(TUIData *tui)
+   tui->has_left_and_right_margin_mode = false;
+   tui->has_sync_mode = false;
+ 
++#ifndef __pyxis__
+   // Query support for private DEC modes that Nvim can take advantage of.
+   // Some terminals (such as Terminal.app) do not support DECRQM, so skip the query.
+   if (!nsterm) {
+@@ -494,14 +572,27 @@ static void terminfo_start(TUIData *tui)
+   // we won't have received the report, so we also query it on resume.
+   tui_query_bg_color_noflush(tui);
+ 
++#endif
++
+   int ret;
++#ifdef __pyxis__
++  ret = uv_loop_init(&tui->write_loop);
++  if (ret) {
++    ELOG("Cannot initialize native terminal output loop: %s", uv_strerror(ret));
++    abort();
++  }
++#else
+   uv_loop_init(&tui->write_loop);
++#endif
+   if (tui->out_isatty) {
+     ret = uv_tty_init(&tui->write_loop, &tui->output_handle.tty, tui->out_fd, 0);
+     if (ret) {
+       ELOG("uv_tty_init failed: %s", uv_strerror(ret));
++#ifdef __pyxis__
++      abort();
++#endif
+     }
+-#ifndef MSWIN
++#if !defined(MSWIN) && !defined(__pyxis__)
+     int retry_count = 10;
+     // A signal may cause uv_tty_set_mode() to fail (e.g., SIGCONT). Retry a
+     // few times. #12322
+@@ -526,11 +617,13 @@ static void terminfo_start(TUIData *tui)
+   flush_buf(tui);
+ 
+   xfree(term);
++#ifndef __pyxis__
+   xfree(colorterm);
+   xfree(termprg);
+   xfree(vte_version_env);
+   xfree(konsolev_env);
+   xfree(term_program_version_env);
++#endif
+ #undef TI_HAS
+ }
+ 
+@@ -576,7 +669,9 @@ static void terminfo_disable(TUIData *tui)
+ 
+   // Send a DA1 request. When the terminal responds we know that it has
+   // processed all of our requests and won't be emitting anymore sequences.
++#ifndef __pyxis__
+   out(tui, S_LEN("\x1b[c"));
++#endif
+ 
+   // Immediately flush the buffer and wait for the DA1 response.
+   flush_buf(tui);
+@@ -592,6 +687,10 @@ static void terminfo_stop(TUIData *tui)
+   // If Nvim exited with nonzero status, without indicating this was an
+   // intentional exit (like `:1cquit`), it likely was an internal failure.
+   // Don't clobber the stderr error message in this case. #21608
++#ifdef __pyxis__
++  // Every native exit restores the terminal, including child fault/termination.
++  terminfo_out(tui, kTerm_exit_ca_mode);
++#else
+   if (ui_client_exit_status == MAX(ui_client_error_exit, 0)) {
+     // Position the cursor on the last screen line, below all the text
+     cursor_goto(tui, tui->height - 1, 0);
+@@ -599,10 +698,21 @@ static void terminfo_stop(TUIData *tui)
+     terminfo_out(tui, kTerm_exit_ca_mode);
+   }
+ 
++#endif
+   flush_buf(tui);
++#ifndef __pyxis__
+   uv_tty_reset_mode();
++#endif
+   uv_close((uv_handle_t *)&tui->output_handle, NULL);
++#ifdef __pyxis__
++  int error = uv_run(&tui->write_loop, UV_RUN_DEFAULT);
++  if (error < 0) {
++    ELOG("Native terminal close failed: %s", uv_strerror(error));
++    abort();
++  }
++#else
+   uv_run(&tui->write_loop, UV_RUN_DEFAULT);
++#endif
+   if (uv_loop_close(&tui->write_loop)) {
+     abort();
+   }
+@@ -621,6 +731,14 @@ static void tui_terminal_start(TUIData *tui)
+   }
+   tui_guess_size(tui);
+   tinput_start(&tui->input);
++#ifdef __pyxis__
++  int error = uv_pyxis_tty_resize_start(&tui->input.read_stream.s.uv.tty,
++                                      tui_native_resize_cb);
++  if (error) {
++    ELOG("Cannot watch native terminal resize: %s", uv_strerror(error));
++    abort();
++  }
++#endif
+ }
+ 
+ static void after_startup_cb(uv_timer_t *handle)
+@@ -648,6 +766,10 @@ void tui_stop(TUIData *tui)
+     return;
+   }
+ 
++#ifdef __pyxis__
++  uv_pyxis_tty_resize_stop(&tui->input.read_stream.s.uv.tty);
++  terminfo_disable(tui);
++#else
+   tui->input.callbacks.primary_device_attr = tui_stop_cb;
+   terminfo_disable(tui);
+ 
+@@ -657,13 +779,18 @@ void tui_stop(TUIData *tui)
+   if (!tui->stopped && !tui->input.read_stream.did_eof) {
+     WLOG("TUI: timed out waiting for DA1 response");
+   }
++#endif
+   tui->stopped = true;
+ 
+   tui_terminal_stop(tui);
++#ifndef __pyxis__
+   stream_set_blocking(tui->input.in_fd, true);   // normalize stream (#2598)
++#endif
+   tinput_destroy(&tui->input);
++#ifndef __pyxis__
+   signal_watcher_stop(&tui->winch_handle);
+   signal_watcher_close(&tui->winch_handle, NULL);
++#endif
+   uv_close((uv_handle_t *)&tui->startup_delay_timer, NULL);
+ }
+ 
+@@ -710,6 +837,23 @@ void tui_free_all_mem(TUIData *tui)
+ }
+ #endif
+ 
++#ifdef __pyxis__
++static void tui_native_resize_cb(uv_tty_t *handle, int status, int width, int height)
++{
++  Stream *stream = handle->data;
++  TermInput *input = stream->cb_data;
++  TUIData *tui = input->tui_data;
++  if (tui_is_stopped(tui)) {
++    return;
++  }
++  if (status) {
++    ELOG("Native terminal resize failed: %s", uv_strerror(status));
++    exit_on_closed_chan(1);
++    return;
++  }
++  tui_set_size(tui, width, height);
++}
++#else
+ static void sigwinch_cb(SignalWatcher *watcher, int signum, void *cbdata)
+ {
+   TUIData *tui = cbdata;
+@@ -719,6 +863,7 @@ static void sigwinch_cb(SignalWatcher *watcher, int signum, void *cbdata)
+ 
+   tui_guess_size(tui);
+ }
++#endif
+ 
+ static bool attrs_differ(TUIData *tui, int id1, int id2, bool rgb)
+ {
+@@ -843,9 +988,11 @@ static void update_attrs(TUIData *tui, int attr_id)
+   if (conceal) {
+     terminfo_out(tui, kTerm_enter_secure_mode);
+   }
++#ifndef __pyxis__
+   if (overline) {
+     out(tui, S_LEN("\x1b[53m"));
+   }
++#endif
+   if (tui->ti.defs[kTerm_set_underline_style]) {
+     if (undercurl) {
+       terminfo_print_num1(tui, kTerm_set_underline_style, 3);
+@@ -885,6 +1032,11 @@ static void update_attrs(TUIData *tui, int attr_id)
+   } else {
+     fg = (attrs.cterm_fg_color
+           ? attrs.cterm_fg_color - 1 : (tui->clear_attrs.cterm_fg_color - 1));
++#ifdef __pyxis__
++    if (fg < 0 || fg >= 16) {
++      fg = -1;
++    }
++#endif
+     if (fg != -1) {
+       terminfo_print_num1(tui, kTerm_set_a_foreground, fg);
+     }
+@@ -902,11 +1054,17 @@ static void update_attrs(TUIData *tui, int attr_id)
+   } else {
+     bg = (attrs.cterm_bg_color
+           ? attrs.cterm_bg_color - 1 : (tui->clear_attrs.cterm_bg_color - 1));
++#ifdef __pyxis__
++    if (bg < 0 || bg >= 16) {
++      bg = -1;
++    }
++#endif
+     if (bg != -1) {
+       terminfo_print_num1(tui, kTerm_set_a_background, bg);
+     }
+   }
+ 
++#ifndef __pyxis__
+   if (tui->url != attrs.url) {
+     if (attrs.url >= 0) {
+       const char *url = urls.keys[attrs.url];
+@@ -925,6 +1083,8 @@ static void update_attrs(TUIData *tui, int attr_id)
+     tui->url = attrs.url;
+   }
+ 
++#endif
++
+   tui->default_attr = fg == -1 && bg == -1
+                       && !bold && !dim && !blink && !conceal && !overline && !italic
+                       && !has_any_underline && !reverse && !standout && !strikethrough;
+@@ -1353,6 +1513,9 @@ void tui_busy_stop(TUIData *tui)
+ 
+ void tui_mouse_on(TUIData *tui)
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   if (!tui->mouse_enabled) {
+     tui_set_term_mode(tui, kTermModeMouseButtonEvent, true);
+     tui_set_term_mode(tui, kTermModeMouseSGRExt, true);
+@@ -1365,6 +1528,9 @@ void tui_mouse_on(TUIData *tui)
+ 
+ void tui_mouse_off(TUIData *tui)
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   if (tui->mouse_enabled) {
+     if (tui->mouse_move_enabled) {
+       tui_set_term_mode(tui, kTermModeMouseAnyEvent, false);
+@@ -1426,7 +1592,7 @@ static void tui_set_mode(TUIData *tui, ModeShape mode)
+ /// @param mode editor mode
+ void tui_mode_change(TUIData *tui, String mode, Integer mode_idx)
+ {
+-#ifdef UNIX
++#if defined(UNIX) && !defined(__pyxis__)
+   // If stdin is not a TTY, the LHS of pipe may change the state of the TTY
+   // after calling uv_tty_set_mode. So, set the mode of the TTY again here.
+   // #13073
+@@ -1545,6 +1711,9 @@ void tui_bell(TUIData *tui)
+ 
+ void tui_visual_bell(TUIData *tui)
+ {
++#ifdef __pyxis__
++  return;
++#endif
+   if (tui->screen_or_tmux) {
+     out(tui, S_LEN("\x1bg"));
+   } else {
+@@ -1576,13 +1745,17 @@ void tui_default_colors_set(TUIData *tui, Integer rgb_fg, Integer rgb_bg, Intege
+ void tui_ui_send(TUIData *tui, String content)
+   FUNC_ATTR_NONNULL_ALL
+ {
+-  uv_write_t req;
+   uv_buf_t buf = { .base = content.data, .len = UV_BUF_LEN(content.size) };
++#ifdef __pyxis__
++  tui_native_write(tui, &buf, 1);
++#else
++  uv_write_t req;
+   int ret = uv_write(&req, (uv_stream_t *)&tui->output_handle, &buf, 1, NULL);
+   if (ret) {
+     ELOG("uv_write failed: %s", uv_strerror(ret));
+   }
+   uv_run(&tui->write_loop, UV_RUN_DEFAULT);
++#endif
+ }
+ 
+ /// Flushes TUI grid state to a buffer (which is later flushed to the TTY by `flush_buf`).
+@@ -1663,8 +1836,20 @@ static void show_verbose_terminfo(TUIData *tui)
+ 
+ void tui_suspend(TUIData *tui)
+ {
++#ifdef __pyxis__
++  MAXSIZE_TEMP_ARRAY(chunk, 2);
++  ADD_C(chunk, CSTR_AS_OBJ("Native terminal suspension is unsupported"));
++  ADD_C(chunk, CSTR_AS_OBJ("ErrorMsg"));
++  MAXSIZE_TEMP_ARRAY(chunks, 1);
++  ADD_C(chunks, ARRAY_OBJ(chunk));
++  MAXSIZE_TEMP_ARRAY(args, 3);
++  ADD_C(args, ARRAY_OBJ(chunks));
++  ADD_C(args, BOOLEAN_OBJ(true));
++  ADD_C(args, DICT_OBJ((Dict)ARRAY_DICT_INIT));
++  rpc_send_event(ui_client_channel_id, "nvim_echo", args);
++#endif
+ // on a non-UNIX system, this is a no-op
+-#ifdef UNIX
++#if defined(UNIX) && !defined(__pyxis__)
+   ui_client_detach();
+   tui->mouse_enabled_save = tui->mouse_enabled;
+   tui->input.callbacks.primary_device_attr = tui_suspend_cb;
+@@ -1672,7 +1857,7 @@ void tui_suspend(TUIData *tui)
+ #endif
+ }
+ 
+-#ifdef UNIX
++#if defined(UNIX) && !defined(__pyxis__)
+ static void tui_suspend_cb(TUIData *tui)
+   FUNC_ATTR_NONNULL_ALL
+ {
+@@ -1771,6 +1956,9 @@ void tui_option_set(TUIData *tui, String name, Object value)
+       }
+     }
+   } else if (strequal(name.data, "termguicolors")) {
++#ifdef __pyxis__
++    value.data.boolean = false;
++#endif
+     tui->rgb = value.data.boolean;
+     tui->print_attr_id = -1;
+     invalidate(tui, 0, tui->grid.height, 0, tui->grid.width);
+@@ -1880,6 +2068,18 @@ void tui_set_size(TUIData *tui, int width, int height)
+ /// application (i.e., the host terminal).
+ void tui_guess_size(TUIData *tui)
+ {
++#ifdef __pyxis__
++  int native_width, native_height;
++  int error = tui->out_isatty
++              ? uv_tty_get_winsize(&tui->output_handle.tty, &native_width, &native_height)
++              : UV_ENOTTY;
++  if (error) {
++    ELOG("Cannot query native terminal geometry: %s", uv_strerror(error));
++    abort();
++  }
++  tui_set_size(tui, native_width, native_height);
++  return;
++#endif
+   int width = 0;
+   int height = 0;
+   char *lines = NULL;
+@@ -2511,7 +2711,9 @@ static size_t flush_buf_end(TUIData *tui, char *buf, size_t len)
+ /// @see tui_flush
+ static void flush_buf(TUIData *tui)
+ {
++#ifndef __pyxis__
+   uv_write_t req;
++#endif
+   uv_buf_t bufs[3];
+   char pre[32];
+   char post[32];
+@@ -2534,12 +2736,16 @@ static void flush_buf(TUIData *tui)
+       fwrite(bufs[i].base, bufs[i].len, 1, tui->screenshot);
+     }
+   } else {
++#ifdef __pyxis__
++    tui_native_write(tui, bufs, ARRAY_SIZE(bufs));
++#else
+     int ret
+       = uv_write(&req, (uv_stream_t *)&tui->output_handle, bufs, ARRAY_SIZE(bufs), NULL);
+     if (ret) {
+       ELOG("uv_write failed: %s", uv_strerror(ret));
+     }
+     uv_run(&tui->write_loop, UV_RUN_DEFAULT);
++#endif
+   }
+   tui->buf_to_flush = NULL;
+   tui->bufpos = 0;
