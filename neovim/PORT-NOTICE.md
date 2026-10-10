@@ -20,7 +20,7 @@ Unicode data terms; tree-sitter 0.26.13 retains MIT and Unicode-DFS-2016 terms.
 Native libuv adapter files retain their MPL-2.0 notices. Host Lua and LPeg
 build inputs retain MIT and are separate from target archives.
 
-Local changes are recorded as four ordered upstream-derived patches, retaining
+Local changes are recorded as five ordered upstream-derived patches, retaining
 the licences of the files they modify:
 
 1. `0001-pyxis-platform.patch`: native process observation/termination, explicit
@@ -35,6 +35,8 @@ the licences of the files they modify:
 4. `0004-pyxis-core.patch`: Pyxis build/runtime selection, static Lua module
    loading, native home/runtime paths, restricted internal channels and omitted
    automatic listeners and PID metadata.
+5. `0005-pyxis-undo-mode.patch`: persistent undo files are created with mode
+   0666 instead of the edited file's permission bits.
 
 Original recipe, host wrapper, configuration, colourscheme and documentation
 are MPL-2.0 under the ports repository `LICENSE`. The host help-tag wrapper

@@ -55,8 +55,10 @@ configuration can invoke unsupported operations and receive errors. QEMU
 qualification covers local editing, highlighting, save and `:cd` with the
 16-colour profile; it does not establish physical-host qualification.
 
-The four ordered patches adapt platform/process APIs, native paths and file
-comparison, the console TUI, and core/runtime assumptions. Exact pins,
+The five ordered patches adapt platform/process APIs, native paths and file
+comparison, the console TUI, core/runtime assumptions, and persistent undo,
+whose files are created with libc's 0666 creation mode instead of the edited
+file's permission bits. Exact pins,
 checksums and patch order are in `metadata.lua` and staged
 `share/neovim/source.txt`. See [PORT-NOTICE.md](PORT-NOTICE.md) for licences
 and local-change attribution.

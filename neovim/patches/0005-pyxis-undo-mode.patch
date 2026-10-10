@@ -1,0 +1,24 @@
+diff --git a/src/nvim/undo.c b/src/nvim/undo.c
+index 9810e30..4e9bc9a 100644
+--- a/src/nvim/undo.c
++++ b/src/nvim/undo.c
+@@ -1183,6 +1183,11 @@ void u_write_undo(const char *const name, const bool forceit, buf_T *const buf,
+     file_name = (char *)name;
+   }
+ 
++#ifdef __pyxis__
++  // Pyxis files have no permission bits to copy, and libc's open creates
++  // files only with the native 0666 creation mode.
++  int perm = 0666;
++#else
+   // Decide about the permission to use for the undo file.  If the buffer
+   // has a name use the permission of the original file.  Otherwise only
+   // allow the user to access the undo file.
+@@ -1193,6 +1198,7 @@ void u_write_undo(const char *const name, const bool forceit, buf_T *const buf,
+       perm = 0600;
+     }
+   }
++#endif
+ 
+   // Strip any sticky and executable bits.
+   perm = perm & 0666;

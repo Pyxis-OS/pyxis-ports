@@ -30,7 +30,8 @@ return {
     pyxis = { "libc", "libpyxis" },
   },
   patches = { "patches/0001-pyxis-platform.patch", "patches/0002-pyxis-files.patch",
-    "patches/0003-pyxis-tui.patch", "patches/0004-pyxis-core.patch" },
+    "patches/0003-pyxis-tui.patch", "patches/0004-pyxis-core.patch",
+    "patches/0005-pyxis-undo-mode.patch" },
   outputs = {
     manifest = "share/neovim/nvim.pxb/manifest.json",
     executable = "share/neovim/nvim.pxb/app/bin/nvim.pxe",
