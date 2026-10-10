@@ -42,6 +42,8 @@ from uv_run, in addition to the ordinary zero/alive return values.
 
 Stream open transfers responsibility for its libc descriptor. It must not be
 closed, reused or independently consumed until the libuv handle closes. Data
+I/O through a duplicated descriptor also consumes the shared cursor and
+read-ahead, so leave its aliases unused for I/O while the stream owns it. Data
 I/O uses libc's descriptor-aware try operations, preserving read-ahead. Submitted
 writes copy buffer descriptors and borrow their bytes until one callback. Close
 cancels pending writes before the close callback; successful queued completions
@@ -63,6 +65,10 @@ Filesystem calls run only with a null callback. A supplied callback rejects
 before filesystem effects. The adapter exposes ordinary libc operations for
 open/close, read/write and explicit offsets, metadata, rename/remove/create,
 sync/resize/access, exclusive temporary files and directory enumeration.
+`uv_fs_realpath` returns libc's proved native scheme spelling in request-owned
+storage released by `uv_fs_req_cleanup`. Providers, unavailable identity and
+stale or unknown cwd ancestry fail; aliases are not collapsed. `uv_cwd` remains
+a descriptive path and does not establish this proof.
 Temporary-file creation requires native random and clock grants. Native type and size are always
 known on a successful query. `uv_stat_t.stat_valid` carries UV_STAT_DEV_VALID,
 UV_STAT_INO_VALID and UV_STAT_MTIME_VALID, aliases of libc's optional validity

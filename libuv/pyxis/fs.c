@@ -75,7 +75,7 @@ void uv_fs_req_cleanup(uv_fs_t *request)
     uv__free(request->dir_names[i]);
   }
   uv__free(request->dir_names);
-  if (request->fs_type == UV_FS_SCANDIR) {
+  if (request->fs_type == UV_FS_SCANDIR || request->fs_type == UV_FS_REALPATH) {
     uv__free(request->ptr);
   }
   uv__free((void *)request->path);
@@ -563,8 +563,17 @@ int uv_fs_readlink(uv_loop_t *loop, uv_fs_t *request, const char *path,
 int uv_fs_realpath(uv_loop_t *loop, uv_fs_t *request, const char *path,
     uv_fs_cb callback)
 {
-  (void)path;
-  return fs_unsupported(loop, request, UV_FS_REALPATH, callback);
+  int result = fs_begin(loop, request, UV_FS_REALPATH, callback);
+  if (result || (result = fs_path(request, path))) {
+    return result;
+  }
+  char *resolved = realpath(path, NULL);
+  if (!resolved) {
+    return fs_result(request, -1);
+  }
+  request->ptr = uv__strdup(resolved);
+  free(resolved);
+  return request->result = request->ptr ? 0 : UV_ENOMEM;
 }
 
 int uv_fs_chown(uv_loop_t *loop, uv_fs_t *request, const char *path, uv_uid_t uid, uv_gid_t gid,
