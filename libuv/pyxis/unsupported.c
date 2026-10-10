@@ -419,34 +419,6 @@ int uv_poll_stop(uv_poll_t* handle)
   return UV_ENOSYS;
 }
 
-int uv_timer_init(uv_loop_t* argument_0, uv_timer_t* handle)
-{
-  (void)argument_0;
-  (void)handle;
-  return UV_ENOSYS;
-}
-
-int uv_timer_start(uv_timer_t* handle, uv_timer_cb cb, uint64_t timeout, uint64_t repeat)
-{
-  (void)handle;
-  (void)cb;
-  (void)timeout;
-  (void)repeat;
-  return UV_ENOSYS;
-}
-
-int uv_timer_stop(uv_timer_t* handle)
-{
-  (void)handle;
-  return UV_ENOSYS;
-}
-
-int uv_timer_again(uv_timer_t* handle)
-{
-  (void)handle;
-  return UV_ENOSYS;
-}
-
 int uv_getaddrinfo(uv_loop_t* loop, uv_getaddrinfo_t* req, uv_getaddrinfo_cb getaddrinfo_cb, const char* node, const char* service, const struct addrinfo* hints)
 {
   (void)loop;

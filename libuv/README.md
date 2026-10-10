@@ -71,8 +71,8 @@ native lifetime rules. Unix owners, permissions, link counts and other extra
 metadata remain unknown even though legacy fields are zero-initialized.
 
 Workers/pool submissions, thread creation/join, asynchronous filesystem calls,
-sockets/address conversion, watches, signals and dynamic module loading return
-UV_ENOSYS. Unsupported fs flags remain distinct so open can reject them before
+sockets/address conversion, signals and dynamic module loading return
+UV_ENOSYS. File watches (`uv_fs_event_*`, `uv_fs_poll_*`) are omitted. Unsupported fs flags remain distinct so open can reject them before
 effects. Single-thread mutexes, recursive depth, once, keys and thread identity
 are real native-process state; they do not claim cross-thread synchronization.
 Cwd and environment use the shared mutable libc stores. `uv_chdir` performs
