@@ -1,0 +1,366 @@
+--- a/grep.c
++++ b/grep.c
+@@ -1,18 +1,26 @@
+ /* See LICENSE file for copyright and license details. */
++#include <dirent.h>
++#include <errno.h>
+ #include <regex.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <strings.h>
++#include <sys/stat.h>
+ 
+ #include "queue.h"
+ #include "util.h"
+ 
+ enum { Match = 0, NoMatch = 1, Error = 2 };
+ 
++/* Deeper trees are reported, not followed: each level holds its entry names. */
++#define RECURSE_DEPTH_LIMIT 64
++
+ static void addpattern(const char *);
++static void addpatterntext(const char *);
+ static void addpatternfile(FILE *);
+ static int grep(FILE *, const char *);
++static int grepdir(const char *, int);
+ 
+ static int Eflag;
+ static int Fflag;
+@@ -21,6 +29,7 @@ static int eflag;
+ static int fflag;
+ static int hflag;
+ static int iflag;
++static int rflag;
+ static int sflag;
+ static int vflag;
+ static int wflag;
+@@ -59,6 +68,27 @@ addpattern(const char *pattern)
+ 	}
+ }
+ 
++/* Each line of TEXT is a pattern, as when read from a file; the part after
++ * the last newline counts even when empty. */
++static void
++addpatterntext(const char *text)
++{
++	char *line;
++	const char *end;
++
++	for (;;) {
++		end = strchr(text, '\n');
++		if (!end)
++			end = text + strlen(text);
++		line = enstrndup(Error, text, end - text);
++		addpattern(line);
++		free(line);
++		if (!*end)
++			break;
++		text = end + 1;
++	}
++}
++
+ static void
+ addpatternfile(FILE *fp)
+ {
+@@ -75,6 +105,52 @@ addpatternfile(FILE *fp)
+ 		enprintf(Error, "read error:");
+ }
+ 
++/* Stdio output is unbuffered, so every printf or puts is a native write.
++ * Output is collected here and written in blocks; grep() flushes after each
++ * line when reading stdin, and at the end of each file. */
++static char outbuf[BUFSIZ];
++static size_t outlen;
++
++static void
++flushout(void)
++{
++	if (outlen)
++		fwrite(outbuf, 1, outlen, stdout);
++	outlen = 0;
++}
++
++static void
++putout(const char *s, size_t len)
++{
++	size_t n;
++
++	while (len) {
++		if (outlen == sizeof(outbuf))
++			flushout();
++		n = MIN(len, sizeof(outbuf) - outlen);
++		memcpy(outbuf + outlen, s, n);
++		outlen += n;
++		s += n;
++		len -= n;
++	}
++}
++
++static void
++putname(const char *str)
++{
++	putout(str, strlen(str));
++	putout(":", 1);
++}
++
++static void
++putnumber(long n, char end)
++{
++	char text[32];
++	int len = snprintf(text, sizeof(text), "%ld%c", n, end);
++
++	putout(text, len);
++}
++
+ static int
+ grep(FILE *fp, const char *str)
+ {
+@@ -117,23 +193,31 @@ grep(FILE *fp, const char *str)
+ 				c++;
+ 				break;
+ 			case 'l':
+-				puts(str);
++				putout(str, strlen(str));
++				putout("\n", 1);
+ 				goto end;
+ 			case 'q':
+ 				exit(Match);
+ 			default:
+ 				if (!hflag && (many || Hflag))
+-					printf("%s:", str);
++					putname(str);
+ 				if (mode == 'n')
+-					printf("%ld:", n);
+-				puts(buf);
++					putnumber(n, ':');
++				putout(buf, strlen(buf));
++				putout("\n", 1);
++				if (fp == stdin)
++					flushout();
+ 				break;
+ 			}
+ 		}
+ 	}
+-	if (mode == 'c')
+-		printf("%ld\n", c);
++	if (mode == 'c') {
++		if (!hflag && (many || Hflag))
++			putname(str);
++		putnumber(c, '\n');
++	}
+ end:
++	flushout();
+ 	if (ferror(fp)) {
+ 		weprintf("%s: read error:", str);
+ 		result = Error;
+@@ -141,10 +225,138 @@ end:
+ 	return result;
+ }
+ 
++static int
++isdirectory(const char *path)
++{
++	struct stat st;
++
++	return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
++}
++
++/* DIR/NAME; an empty DIR gives just NAME. */
++static char *
++joinpath(const char *dir, const char *name)
++{
++	size_t dirlen = strlen(dir);
++	size_t namelen = strlen(name);
++	int slash = dirlen && dir[dirlen - 1] != '/';
++	char *path = enmalloc(Error, dirlen + slash + namelen + 1);
++
++	memcpy(path, dir, dirlen);
++	if (slash)
++		path[dirlen] = '/';
++	memcpy(path + dirlen + slash, name, namelen + 1);
++	return path;
++}
++
++struct dirname {
++	char *name;
++	int directory;
++};
++
++static int
++dirnamecmp(const void *a, const void *b)
++{
++	return strcmp(((const struct dirname *)a)->name,
++	              ((const struct dirname *)b)->name);
++}
++
++static int
++grepfile(const char *path)
++{
++	FILE *fp;
++	int m;
++
++	if (!(fp = fopen(path, "r"))) {
++		if (!sflag)
++			weprintf("fopen %s:", path);
++		return Error;
++	}
++	m = grep(fp, path);
++	if (fshut(fp, path))
++		m = Error;
++	return m;
++}
++
++static int
++combine(int match, int m)
++{
++	if (m == Error || (match != Error && m == Match))
++		return m;
++	return match;
++}
++
++/* Searches every file below PATH in byte order of the names the native listing
++ * returned, descending where a subdirectory sorts. Symbolic links are not
++ * followed. The listing is read and closed before descending, so open handles
++ * do not grow with depth. An empty PATH is the working directory, whose files
++ * are named without a prefix. */
++static int
++grepdir(const char *path, int depth)
++{
++	struct dirname *names = NULL;
++	struct dirent *ent;
++	DIR *dp;
++	size_t count = 0, cap = 0, i;
++	char *child;
++	int match = NoMatch, m;
++
++	if (!(dp = opendir(*path ? path : "."))) {
++		if (!sflag)
++			weprintf("opendir %s:", *path ? path : ".");
++		return Error;
++	}
++	for (;;) {
++		errno = 0;
++		if (!(ent = readdir(dp)))
++			break;
++		if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, ".."))
++			continue;
++		if (ent->d_type == DT_LNK)
++			continue;
++		if (count == cap) {
++			cap = cap ? cap * 2 : 16;
++			names = enreallocarray(Error, names, cap, sizeof(*names));
++		}
++		names[count].name = enstrdup(Error, ent->d_name);
++		names[count].directory = ent->d_type == DT_DIR;
++		if (ent->d_type == DT_UNKNOWN) {
++			child = joinpath(path, ent->d_name);
++			names[count].directory = isdirectory(child);
++			free(child);
++		}
++		count++;
++	}
++	if (errno) {
++		weprintf("readdir %s:", *path ? path : ".");
++		match = Error;
++	}
++	closedir(dp);
++
++	qsort(names, count, sizeof(*names), dirnamecmp);
++	for (i = 0; i < count; i++) {
++		child = joinpath(path, names[i].name);
++		if (names[i].directory && depth + 1 >= RECURSE_DEPTH_LIMIT) {
++			weprintf("%s: deeper than %d levels; not searched\n",
++			         child, RECURSE_DEPTH_LIMIT);
++			m = Error;
++		} else if (names[i].directory) {
++			m = grepdir(child, depth + 1);
++		} else {
++			m = grepfile(child);
++		}
++		match = combine(match, m);
++		free(child);
++		free(names[i].name);
++	}
++	free(names);
++	return match;
++}
++
+ static void
+ usage(void)
+ {
+-	enprintf(Error, "usage: %s [-EFHchilnqsvwx] [-e pattern] [-f file] "
++	enprintf(Error, "usage: %s [-EFHchilnqrsvwx] [-e pattern] [-f file] "
+ 	         "[pattern] [file ...]\n", argv0);
+ }
+ 
+@@ -175,10 +387,7 @@ main(int argc, char *argv[])
+ 		break;
+ 	case 'e':
+ 		arg = EARGF(usage());
+-		if (!(fp = fmemopen(arg, strlen(arg) + 1, "r")))
+-			eprintf("fmemopen:");
+-		addpatternfile(fp);
+-		efshut(fp, arg);
++		addpatterntext(arg);
+ 		eflag = 1;
+ 		break;
+ 	case 'f':
+@@ -204,6 +413,9 @@ main(int argc, char *argv[])
+ 		flags |= REG_ICASE;
+ 		iflag = 1;
+ 		break;
++	case 'r':
++		rflag = 1;
++		break;
+ 	case 's':
+ 		sflag = 1;
+ 		break;
+@@ -225,10 +437,7 @@ main(int argc, char *argv[])
+ 
+ 	/* just add literal pattern to list */
+ 	if (!eflag && !fflag) {
+-		if (!(fp = fmemopen(argv[0], strlen(argv[0]) + 1, "r")))
+-			eprintf("fmemopen:");
+-		addpatternfile(fp);
+-		efshut(fp, argv[0]);
++		addpatterntext(argv[0]);
+ 		argc--;
+ 		argv++;
+ 	}
+@@ -238,13 +447,20 @@ main(int argc, char *argv[])
+ 		SLIST_FOREACH(pnode, &phead, entry)
+ 			enregcomp(Error, &pnode->preg, pnode->pattern, flags);
+ 	many = (argc > 1);
+-	if (argc == 0) {
++	if (argc == 0 && rflag) {
++		many = 1;
++		match = grepdir("", 0);
++	} else if (argc == 0) {
+ 		match = grep(stdin, "<stdin>");
+ 	} else {
+ 		for (; *argv; argc--, argv++) {
+ 			if (!strcmp(*argv, "-")) {
+ 				*argv = "<stdin>";
+ 				fp = stdin;
++			} else if (rflag && isdirectory(*argv)) {
++				many = 1;
++				match = combine(match, grepdir(*argv, 0));
++				continue;
+ 			} else if (!(fp = fopen(*argv, "r"))) {
+ 				if (!sflag)
+ 					weprintf("fopen %s:", *argv);
+--- a/util.h
++++ b/util.h
+@@ -1,4 +1,5 @@
+ /* See LICENSE file for copyright and license details. */
++#include <regex.h>
+ #include <stdarg.h>
+ #include <stdio.h>
+ #include <unistd.h>
+@@ -48,3 +49,5 @@ void *memmem(const void *, size_t, const void *, size_t);
+ long long strtonum(const char *, long long, long long, const char **);
+ long long enstrtonum(int, const char *, long long, long long);
+ long long estrtonum(const char *, long long, long long);
++
++int enregcomp(int, regex_t *, const char *, int);

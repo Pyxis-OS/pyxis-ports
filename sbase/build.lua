@@ -16,6 +16,8 @@ return function(ctx)
     ctx.stage .. "/" .. ctx.metadata.outputs.tail })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/sort.pxe",
     ctx.stage .. "/" .. ctx.metadata.outputs.sort })
+  ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/grep.pxe",
+    ctx.stage .. "/" .. ctx.metadata.outputs.grep })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/arg.h",

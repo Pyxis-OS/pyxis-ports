@@ -1,11 +1,11 @@
-# sbase cksum, tee, uniq, sha256sum, wc, tail and sort
+# sbase cksum, tee, uniq, sha256sum, wc, tail, sort and grep
 
 [Upstream sbase](https://git.suckless.org/sbase) is pinned to
 `c546c3a5724c81cee9a11d816a38ccdf17472129`. This recipe builds cksum, a
 restricted tee, uniq, sha256sum, wc, a follow-less tail and sort, plus their
-libutil, libutf and hashing helpers. It stages `bin/cksum.pxe`, `bin/tee.pxe`,
-`bin/uniq.pxe`, `bin/sha256sum.pxe`, `bin/wc.pxe`, `bin/tail.pxe` and
-`bin/sort.pxe`, with the complete MIT license/contributor list and these
+libutil, libutf and hashing helpers. It also builds grep with recursive search.
+It stages `bin/cksum.pxe`, `bin/tee.pxe`, `bin/uniq.pxe`, `bin/sha256sum.pxe`,
+`bin/wc.pxe`, `bin/tail.pxe`, `bin/sort.pxe` and `bin/grep.pxe`, with the complete MIT license/contributor list and these
 individual notices under `share/licenses/sbase`: arg.h; `libutil/strtonum.c`
 (OpenBSD ISC); `libutil/reallocarray.c` (OpenBSD ISC); `libutil/memmem.c`
 (BSD-3-Clause); `queue.h` (BSD-3-Clause); and `unicode-license.txt`.
@@ -25,7 +25,9 @@ from upstream. Patch 0004 restores the further declarations wc, tail and sort
 need: `UTF8_POINT`, `MIN`/`MAX`, `concat`, `unescape`, `memmem` and the
 `reallocarray` family, as upstream wrote them. The header retains its license
 notice and avoids unrelated regex and offset APIs. Patch 0005 removes tail's
-follow mode (see below). Cksum, uniq, sha256sum, wc, sort, helper bodies and
+follow mode (see below). Patch 0006 adds grep's recursive search, replaces its
+`fmemopen` and restores the regex helper declaration (see below). Cksum, uniq,
+sha256sum, wc, sort, helper bodies and
 arg.h are unchanged. Conventional I/O, `getline`, `isblank`, `bsearch` (used by
 libutf's rune classification), BUFSIZ and PRIu32 come from the real Pyxis SDK. No compatibility headers are installed, and the SDK is never modified.
 
@@ -222,9 +224,58 @@ lines that compare equal under the selected keys is kept (for example
 output is opened after all input is read, so it may be an input file; upstream
 checks neither writes to it nor its close, so an error there is not reported.
 
+## Grep
+
+The shell resolves `grep` to `bin://grep.pxe`:
+
+```text
+grep -n main host://notes.c
+grep -Ei 'error|warn' host://log.txt home://other.txt
+grep -rl TODO home://src
+cat host://words | grep -v '^#' | grep -c .
+```
+
+Grep prints the lines of each operand (or stdin) that match any pattern. The
+options are upstream's: `-E` extended expressions, `-F` fixed strings, `-i`
+case folding, `-v` non-matching lines, `-n` line numbers, `-c` counts, `-l` names of
+matching files, `-q` no output, `-s` no unreadable-file messages, `-H`/`-h`
+force or suppress names, `-w`/`-x` whole words or lines, and `-e` and `-f` for
+several patterns, one per line. Expressions use libc's TRE matcher with
+ASCII-only classes and folding. The status is 0 for a match, 1 for none and 2
+for an error, which wins over a match.
+
+Patch 0006 changes four things:
+
+- **`-r`** searches directories. An operand that is a directory is read through
+  libc `opendir`/`readdir`, which follow the native listing, and each name is
+  joined to the operand with `/`, with no slash added after `home://`-style
+  roots and none doubled. Names are sorted bytewise, so output order does not
+  depend on the filesystem, and a subdirectory is entered where it sorts.
+  Entries reported as symbolic links are skipped, as GNU grep does during a
+  walk. With no operand `-r` searches the working directory and prints names
+  without a prefix. Several operands, or any directory, add the `name:`
+  prefix; a lone file operand does not. A directory's listing is read and
+  closed before descending, so handles do not grow with depth; nesting beyond
+  64 levels is reported and skipped.
+- **`-e` and the pattern operand** no longer go through `fmemopen`, which libc
+  does not provide. Each line of the text is a pattern, including an empty
+  one after a final newline, exactly as upstream read it.
+- **`-c`** prints `name:count` when names are shown. Upstream printed bare counts
+  for several files, which cannot be told apart.
+- **Output** is collected in a `BUFSIZ` buffer and written once per file, or once
+  per line from stdin, because each unbuffered `printf` or `puts` is a native
+  write. A 2,000-line result took 6 s on a remote console before and 0.1 s after.
+
+Lines are read with libc `getline` over stdio read-ahead, which fetches file
+and pipe input in blocks; console stdin is still one native read per byte.
+Input is not tested for binary content: a NUL ends the part of a line the
+matcher sees, and nothing prints a "binary file matches" notice. Without `-r`,
+a directory operand is reported as unreadable. Upstream has no `-L`, `-m`, `-o`, `-A`/`-B`/`-C`
+or `--include`.
+
 ## Limits
 
-Wc, tail and sort read terminal stdin to EOF. The framebuffer console has no EOF
+Wc, tail, sort and grep read terminal stdin to EOF. The framebuffer console has no EOF
 operation, so use a file, redirect or pipeline there; remote sessions deliver
 EOF. The compiler reports `-Wsign-compare` in tail.c and sort.c and
 `-Wconstant-conversion` in libutil/unescape.c; these are upstream's and are

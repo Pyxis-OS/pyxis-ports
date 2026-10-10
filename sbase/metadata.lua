@@ -15,6 +15,7 @@ return {
     "patches/0003-declare-uniq-helpers.patch",
     "patches/0004-declare-wc-tail-sort-helpers.patch",
     "patches/0005-refuse-tail-follow.patch",
+    "patches/0006-grep-recursive-search.patch",
   },
   outputs = {
     executable = "bin/cksum.pxe",
@@ -24,6 +25,7 @@ return {
     wc = "bin/wc.pxe",
     tail = "bin/tail.pxe",
     sort = "bin/sort.pxe",
+    grep = "bin/grep.pxe",
     license = "share/licenses/sbase/LICENSE",
     argument_notice = "share/licenses/sbase/arg.h",
     strtonum_notice = "share/licenses/sbase/strtonum.c",

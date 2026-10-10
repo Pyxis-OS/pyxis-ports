@@ -22,10 +22,13 @@ SORT_OBJECTS := $(BUILD)/sort.o $(BUILD)/libutil/ealloc.o $(BUILD)/libutil/eprin
                 $(BUILD)/libutf/isblankrune.o $(BUILD)/libutf/iscntrlrune.o \
                 $(BUILD)/libutf/isdigitrune.o $(BUILD)/libutf/isprintrune.o \
                 $(BUILD)/libutf/lowerrune.o $(UTF_COMMON)
+GREP_OBJECTS := $(BUILD)/grep.o $(BUILD)/libutil/ealloc.o $(BUILD)/libutil/eprintf.o \
+                $(BUILD)/libutil/eregcomp.o $(BUILD)/libutil/fshut.o \
+                $(BUILD)/libutil/reallocarray.o
 
 .PHONY: all
 all: $(BUILD)/cksum.pxe $(BUILD)/tee.pxe $(BUILD)/uniq.pxe $(BUILD)/sha256sum.pxe \
-     $(BUILD)/wc.pxe $(BUILD)/tail.pxe $(BUILD)/sort.pxe
+     $(BUILD)/wc.pxe $(BUILD)/tail.pxe $(BUILD)/sort.pxe $(BUILD)/grep.pxe
 
 $(BUILD)/%.o: $(SOURCE)/%.c $(SOURCE)/util.h $(SOURCE)/arg.h $(SOURCE)/compat.h \
               $(SOURCE)/utf.h $(SOURCE)/text.h $(SOURCE)/queue.h
@@ -53,6 +56,9 @@ $(BUILD)/tail.pxe: $(TAIL_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LIN
 $(BUILD)/sort.pxe: $(SORT_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(SORT_OBJECTS) $(PYXIS_LDLIBS)
 
+$(BUILD)/grep.pxe: $(GREP_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(GREP_OBJECTS) $(PYXIS_LDLIBS)
+
 -include $(sort $(CKSUM_OBJECTS:.o=.d) $(TEE_OBJECTS:.o=.d) $(UNIQ_OBJECTS:.o=.d) \
   $(SHA256SUM_OBJECTS:.o=.d) $(WC_OBJECTS:.o=.d) $(TAIL_OBJECTS:.o=.d) \
-  $(SORT_OBJECTS:.o=.d))
+  $(SORT_OBJECTS:.o=.d) $(GREP_OBJECTS:.o=.d))
