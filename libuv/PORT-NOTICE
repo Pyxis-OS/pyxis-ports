@@ -7,3 +7,9 @@ The Pyxis platform selection patch retains upstream MIT terms.
 Original native adapter, recipe and documentation are MPL-2.0 under the ports
 repository LICENSE. The adapter uses native capabilities and libc descriptors;
 it does not compile the upstream Unix or Windows backends or worker pool.
+
+The native os.c supplies uv_os_uname and uv_os_gethostname from SYSTEM_INFO
+READ, and uv_os_homedir/uv_os_tmpdir from the caller's home/tmp roots. Without
+SYSTEM_INFO, uname retains Pyxis/x86_64 and empty release/version fields;
+hostname returns UV_EACCES. Missing directory roots return UV_ENOENT. Passwd,
+group and priority queries remain unsupported rather than inventing values.

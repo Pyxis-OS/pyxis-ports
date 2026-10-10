@@ -38,7 +38,8 @@ Local changes are recorded as eight ordered upstream-derived patches, retaining
 the licences of the files they modify:
 
 1. `0001-pyxis-platform.patch`: native process observation/termination, explicit
-   internal child grants, one-thread event loops, and rejected Unix process,
+   internal child grants (including optional SYSTEM_INFO READ forwarded to the
+   embedded server), one-thread event loops, and rejected Unix process,
    socket, signal and PTY paths.
 2. `0002-pyxis-files.patch`: native scheme paths and proved realpath, validity-aware
    metadata, retained file references and checked overwrite; unavailable
