@@ -476,7 +476,7 @@ index afe356a..a28aeb0 100644
      "android",
  #endif
 diff --git a/src/nvim/fileio.c b/src/nvim/fileio.c
-index 4ae7e72..90cd8e8 100644
+index 4ae7e72..7464be7 100644
 --- a/src/nvim/fileio.c
 +++ b/src/nvim/fileio.c
 @@ -373,7 +373,9 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
@@ -489,7 +489,23 @@ index 4ae7e72..90cd8e8 100644
          && !(IS_CHR_DEV(perm, fname))
          // ... or a character special file named /dev/fd/<n>
          ) {
-@@ -440,7 +442,10 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
+@@ -406,6 +408,7 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
+   }
+ 
+   if (newfile && !read_stdin && !read_buffer && !read_fifo) {
++#ifndef __pyxis__
+     // Remember time of file.
+     if (os_fileinfo(fname, &file_info)) {
+       buf_store_file_info(curbuf, &file_info);
+@@ -432,6 +435,7 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
+       curbuf->b_orig_mode = 0;
+     }
+ 
++#endif
+     // Reset the "new file" flag.  It will be set again below when the
+     // file doesn't exist.
+     curbuf->b_flags &= ~(BF_NEW | BF_NEW_W);
+@@ -440,7 +444,10 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
    // Check readonly.
    bool file_readonly = false;
    if (!read_buffer && !read_stdin) {
@@ -501,7 +517,7 @@ index 4ae7e72..90cd8e8 100644
          || !os_file_is_writable(fname)) {
        file_readonly = true;
      }
-@@ -548,7 +553,7 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
+@@ -548,7 +555,7 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
        }
        goto theend;
      }
@@ -510,7 +526,7 @@ index 4ae7e72..90cd8e8 100644
      // Set swap file protection bits after creating it.
      if (swap_mode > 0 && curbuf->b_ml.ml_mfp != NULL
          && curbuf->b_ml.ml_mfp->mf_fname != NULL) {
-@@ -660,6 +665,24 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
+@@ -660,6 +667,24 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
      }
    }
  
@@ -535,7 +551,7 @@ index 4ae7e72..90cd8e8 100644
    // Autocommands may add lines to the file, need to check if it is empty
    wasempty = (curbuf->b_ml.ml_flags & ML_EMPTY);
  
-@@ -1758,10 +1781,12 @@ failed:
+@@ -1758,10 +1783,12 @@ failed:
          buflen += snprintf(IObuff + buflen, (size_t)(IOSIZE - buflen), _("[fifo]"));
          c = true;
        }
@@ -548,7 +564,7 @@ index 4ae7e72..90cd8e8 100644
  # ifdef OPEN_CHR_FILES
        if (S_ISCHR(perm)) {                          // or character special
          buflen += snprintf(IObuff + buflen, (size_t)(IOSIZE - buflen), _("[character special]"));
-@@ -2214,6 +2239,11 @@ void msg_add_lines(int insert_space, linenr_T lnum, off_T nchars)
+@@ -2214,6 +2241,11 @@ void msg_add_lines(int insert_space, linenr_T lnum, off_T nchars)
  bool time_differs(const FileInfo *file_info, int64_t mtime, int64_t mtime_ns)
    FUNC_ATTR_CONST
  {
@@ -560,7 +576,7 @@ index 4ae7e72..90cd8e8 100644
  #if defined(__linux__) || defined(MSWIN)
    return file_info->stat.st_mtim.tv_nsec != mtime_ns
           // On a FAT filesystem, esp. under Linux, there are only 5 bits to store
-@@ -2706,6 +2736,11 @@ int vim_rename(const char *from, const char *to)
+@@ -2706,6 +2738,11 @@ int vim_rename(const char *from, const char *to)
      }
    }
  
@@ -572,7 +588,7 @@ index 4ae7e72..90cd8e8 100644
    // Fail if the "from" file doesn't exist. Avoids that "to" is deleted.
    FileInfo from_info;
    if (!os_fileinfo(from, &from_info)) {
-@@ -2897,6 +2932,10 @@ static int move_lines(buf_T *frombuf, buf_T *tobuf)
+@@ -2897,6 +2934,10 @@ static int move_lines(buf_T *frombuf, buf_T *tobuf)
  int buf_check_timestamp(buf_T *buf)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -583,7 +599,7 @@ index 4ae7e72..90cd8e8 100644
    int retval = 0;
    char *mesg = NULL;
    char *mesg2 = "";
-@@ -3313,7 +3352,9 @@ static void vim_mktempdir(void)
+@@ -3313,7 +3354,9 @@ static void vim_mktempdir(void)
  
    // Make sure the umask doesn't remove the executable bit.
    // "repl" has been reported to use "0177".
@@ -593,7 +609,7 @@ index 4ae7e72..90cd8e8 100644
    for (size_t i = 0; i < ARRAY_SIZE(temp_dirs); i++) {
      // Expand environment variables, leave room for "/tmp/nvim.<user>/XXXXXX/999999999".
      size_t tmplen = expand_env((char *)temp_dirs[i], tmp, TEMP_FILE_PATH_MAXLEN - 64);
-@@ -3385,7 +3426,9 @@ static void vim_mktempdir(void)
+@@ -3385,7 +3428,9 @@ static void vim_mktempdir(void)
      // Couldn't set `vim_tempdir` to `path` so remove created directory.
      os_rmdir(path);
    }
@@ -604,7 +620,7 @@ index 4ae7e72..90cd8e8 100644
  
  /// Core part of "readdir()" function.
 diff --git a/src/nvim/memline.c b/src/nvim/memline.c
-index 3f382b5..9d95b01 100644
+index 3f382b5..63060a2 100644
 --- a/src/nvim/memline.c
 +++ b/src/nvim/memline.c
 @@ -481,6 +481,13 @@ void ml_open_files(void)
@@ -621,7 +637,37 @@ index 3f382b5..9d95b01 100644
    memfile_T *mfp = buf->b_ml.ml_mfp;
    if (mfp == NULL || mfp->mf_fd >= 0 || !buf->b_p_swf
        || (cmdmod.cmod_flags & CMOD_NOSWAPFILE)
-@@ -742,6 +749,10 @@ static void add_b0_fenc(ZeroBlock *b0p, buf_T *buf)
+@@ -611,7 +618,9 @@ void ml_close_notmod(void)
+ /// Used when the file has been written.
+ void ml_timestamp(buf_T *buf)
+ {
++#ifndef __pyxis__
+   ml_upd_block0(buf, UB_FNAME);
++#endif
+ }
+ 
+ /// Checks whether the IDs in b0 are valid.
+@@ -682,6 +691,11 @@ static void set_b0_fname(ZeroBlock *b0p, buf_T *buf)
+         memmove(b0p->b0_fname + 1, uname, ulen);
+       }
+     }
++#ifdef __pyxis__
++    // RAM memline names must not refresh the held file's comparison baseline.
++    long_to_char(0, b0p->b0_mtime);
++    long_to_char(0, b0p->b0_ino);
++#else
+     FileInfo file_info;
+     if (os_fileinfo(buf->b_ffname, &file_info)) {
+       long_to_char(file_info.stat.st_mtim.tv_sec, b0p->b0_mtime);
+@@ -699,6 +713,7 @@ static void set_b0_fname(ZeroBlock *b0p, buf_T *buf)
+       buf->b_orig_size = 0;
+       buf->b_orig_mode = 0;
+     }
++#endif
+   }
+ 
+   // Also add the 'fileencoding' if there is room.
+@@ -742,6 +757,10 @@ static void add_b0_fenc(ZeroBlock *b0p, buf_T *buf)
  /// @return PID, or 0 if process is not running or the swapfile is from before a reboot.
  static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
  {
@@ -632,7 +678,7 @@ index 3f382b5..9d95b01 100644
    FileInfo st;
    double uptime;
    // If the system rebooted after when the swapfile was written then the
-@@ -753,6 +764,7 @@ static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
+@@ -753,6 +772,7 @@ static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
    }
    int pid = (int)char_to_long(b0p->b0_pid);
    return os_proc_running(pid) ? pid : 0;
@@ -640,7 +686,7 @@ index 3f382b5..9d95b01 100644
  }
  
  /// Try to recover curbuf from the .swp file.
-@@ -760,6 +772,10 @@ static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
+@@ -760,6 +780,10 @@ static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
  /// @param checkext  if true, check the extension and detect whether it is a swapfile.
  void ml_recover(bool checkext)
  {
