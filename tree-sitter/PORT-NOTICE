@@ -1,0 +1,11 @@
+tree-sitter's C library retains its MIT license in LICENSE. Its bundled
+Unicode headers retain the complete notices in unicode-LICENSE.
+
+0001-pyxis-endian.patch modifies lib/src/portable/endian.h, whose upstream
+notice dedicates it to the public domain with BSD, MIT and Apache license
+alternatives. The patch retains those terms and uses compiler byte-order
+definitions and byte-swap builtins for Pyxis.
+
+The build uses the upstream C amalgamation and real SDK libc APIs. It omits
+Wasm, parser modules, shared libraries, the CLI and upstream tests. The exact
+archive pin, checksum and profile are recorded in share/tree-sitter/source.txt.
