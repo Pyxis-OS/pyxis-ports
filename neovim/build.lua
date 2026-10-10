@@ -84,6 +84,8 @@ return function(ctx)
     local notice
     if path == "src/nvim/tui/terminfo.c" then
       notice = text:match("(// Copyright %(c%) 2009.-)\n// nvim modifications:")
+    elseif path == "src/klib/kvec.h" then
+      notice = text:match("^(.-)\n// An example:")
     elseif path == "src/nvim/fuzzy.c" or path == "src/nvim/marktree.c" then
       notice = text:match("^(.-)#include")
     else
