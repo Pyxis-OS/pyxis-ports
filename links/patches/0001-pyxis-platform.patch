@@ -11,19 +11,6 @@ index 0d15ba3..4ef803b 100644
  	fprintf(stderr, "\n"ANSI_SET_BOLD"Exiting"ANSI_CLEAR_BOLD"\n");
  	fflush(stdout);
  	fflush(stderr);
-diff --git a/fn_impl.c b/fn_impl.c
-index 4f58f9f..df0d4a5 100644
---- a/fn_impl.c
-+++ b/fn_impl.c
-@@ -66,7 +66,7 @@ int gettimeofday(struct timeval *tv, struct timezone *tz)
- 	return 0;
- }
- #endif
--#ifndef HAVE_GETCWD
-+#if !defined(HAVE_GETCWD) && !defined(PYXIS)
- char *getcwd(char *buf, size_t size)
- {
- #ifndef MAXPATHLEN
 diff --git a/kbd.c b/kbd.c
 index c7c1ee3..bb1c348 100644
 --- a/kbd.c

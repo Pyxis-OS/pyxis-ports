@@ -39,6 +39,7 @@
 #define RENAME_OVER_EXISTING_FILES 1
 
 #define HAVE_CALLOC 1
+#define HAVE_GETCWD 1
 #define HAVE_GMTIME 1
 #define HAVE_MEMCHR 1
 #define HAVE_MEMCMP 1

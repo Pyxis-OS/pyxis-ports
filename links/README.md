@@ -123,6 +123,10 @@ Links' internal threads talk through virtual pipes in one process, as on DOS.
   - GET forms work as URLs with a query string. There is no POST, and no
     cookies or request headers.
   - Response Content-Type takes precedence over HTML sniffing and URL extensions.
+  - HTTP dates are not parsed (`HAVE_MKTIME` stays undefined). Without
+    `timegm`, upstream's fallback measures the zone offset on 1980-01-01 with
+    `mktime`, which misreads dates across a DST change, so upstream's
+    no-parser path is kept.
 - **Local paths.** Native paths are literal bytes, except that Links decodes
   `%XX` escapes in local URLs as it does for `file://`. Symlinks are listed but
   cannot be opened. Directories show size 0.
