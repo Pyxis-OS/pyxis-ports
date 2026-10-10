@@ -92,7 +92,7 @@ int uv_fs_open(uv_loop_t *loop, uv_fs_t *request, const char *path, int flags,
     int mode, uv_fs_cb callback)
 {
   int result = fs_begin(loop, request, UV_FS_OPEN, callback);
-  if (!result && (flags & ~(O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_EXCL | O_APPEND))) {
+  if (!result && (flags & ~(O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_EXCL | O_APPEND | O_NOFOLLOW))) {
     return request->result = UV_ENOSYS;
   }
   if (result || (result = fs_path(request, path))) {

@@ -142,14 +142,15 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
 #define UV_FS_O_TRUNC O_TRUNC
 #define UV_FS_O_EXCL O_EXCL
 #define UV_FS_O_APPEND O_APPEND
-/* Unsupported flags remain distinguishable so open rejects before effects. */
-#define UV_FS_O_DIRECT (1 << 12)
-#define UV_FS_O_DIRECTORY (1 << 13)
-#define UV_FS_O_DSYNC (1 << 14)
-#define UV_FS_O_EXLOCK (1 << 15)
-#define UV_FS_O_NOATIME (1 << 16)
-#define UV_FS_O_NOCTTY (1 << 17)
-#define UV_FS_O_NOFOLLOW (1 << 18)
+#define UV_FS_O_NOFOLLOW O_NOFOLLOW
+/* Unsupported flags remain distinguishable so open rejects before effects.
+ * They stay clear of libc's open flags, which end at O_NOFOLLOW (1 << 12). */
+#define UV_FS_O_DIRECT (1 << 13)
+#define UV_FS_O_DIRECTORY (1 << 14)
+#define UV_FS_O_DSYNC (1 << 15)
+#define UV_FS_O_EXLOCK (1 << 16)
+#define UV_FS_O_NOATIME (1 << 17)
+#define UV_FS_O_NOCTTY (1 << 18)
 #define UV_FS_O_NONBLOCK (1 << 19)
 #define UV_FS_O_SYMLINK (1 << 20)
 #define UV_FS_O_SYNC (1 << 21)
