@@ -1,0 +1,707 @@
+diff --git a/src/nvim/event/defs.h b/src/nvim/event/defs.h
+index 95a7303..15ba2ec 100644
+--- a/src/nvim/event/defs.h
++++ b/src/nvim/event/defs.h
+@@ -82,7 +82,7 @@ struct stream {
+     uv_pipe_t pipe;
+     uv_tcp_t tcp;
+     uv_idle_t idle;
+-#ifdef MSWIN
++#if defined(MSWIN) || defined(__pyxis__)
+     uv_tty_t tty;
+ #endif
+   } uv;
+@@ -157,6 +157,10 @@ struct proc {
+   Loop *loop;
+   void *data;
+   int pid, status, refcount;
++#ifdef __pyxis__
++  bool internal_tui, exited;
++  uint64_t exit_reason;
++#endif
+   uint8_t exit_signal;  // Signal used when killing (on Windows).
+   uint64_t stopped_time;  // proc_stop() timestamp
+   const char *cwd;
+diff --git a/src/nvim/event/libuv_proc.c b/src/nvim/event/libuv_proc.c
+index 50ab55e..5591582 100644
+--- a/src/nvim/event/libuv_proc.c
++++ b/src/nvim/event/libuv_proc.c
+@@ -2,6 +2,11 @@
+ #include <locale.h>
+ #include <stdint.h>
+ #include <uv.h>
++#ifdef __pyxis__
++# include <abi/pipe.h>
++# include <startup.h>
++# include <uv/pyxis-native.h>
++#endif
+ 
+ #include "nvim/eval/typval.h"
+ #include "nvim/event/defs.h"
+@@ -32,6 +37,11 @@ static void libuv_proc_stdio(LibuvProc *uvproc, int idx, uv_pipe_t *parent_pipe,
+                              bool child_readable, bool overlapped, bool win_create_pipe,
+                              int *to_close)
+ {
++#ifdef __pyxis__
++  uvproc->uvstdio[idx].flags = UV_CREATE_PIPE
++                              | (child_readable ? UV_READABLE_PIPE : UV_WRITABLE_PIPE);
++  uvproc->uvstdio[idx].data.stream = (uv_stream_t *)parent_pipe;
++#else
+ #ifdef MSWIN
+   if (win_create_pipe) {
+     uvproc->uvstdio[idx].flags = UV_CREATE_PIPE
+@@ -70,6 +80,7 @@ static void libuv_proc_stdio(LibuvProc *uvproc, int idx, uv_pipe_t *parent_pipe,
+   uvproc->uvstdio[idx].data.fd = child_fd;
+   to_close[idx] = child_fd;
+   uv_pipe_open(parent_pipe, parent_fd);
++#endif
+ }
+ 
+ /// @returns zero on success, or negative error code
+@@ -79,6 +90,9 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+   Proc *proc = (Proc *)uvproc;
+   uvproc->uvopts.file = proc_get_exepath(proc);
+   uvproc->uvopts.args = proc->argv;
++#ifdef __pyxis__
++  uvproc->uvopts.flags = 0;
++#else
+   uvproc->uvopts.flags = UV_PROCESS_WINDOWS_HIDE;
+ #ifdef MSWIN
+   // libuv collapses the argv to a CommandLineToArgvW()-style string. cmd.exe
+@@ -92,6 +106,7 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+ #else
+   // Always setsid() on unix-likes. #8107
+   uvproc->uvopts.flags |= UV_PROCESS_DETACHED;
++#endif
+ #endif
+   uvproc->uvopts.exit_cb = exit_cb;
+   uvproc->uvopts.cwd = proc->cwd;
+@@ -137,7 +152,19 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+   }
+ 
+   int status;
+-  if ((status = uv_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts))) {
++#ifdef __pyxis__
++  // Only the explicitly identified internal server gets a loop's pipe factory.
++  assert(proc->internal_tui && !ui_client_forward_stdin);
++  const uv_pyxis_resource_t resources[] = {
++    { .name = "pipe", .source = startup_resource("pipe"),
++      .rights = PIPE_SERVICE_RIGHT_CREATE, .transport = 0 },
++  };
++  status = uv_pyxis_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts,
++                         resources, ARRAY_SIZE(resources));
++#else
++  status = uv_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts);
++#endif
++  if (status) {
+     ILOG("uv_spawn(%s) failed: %s", uvproc->uvopts.file, uv_strerror(status));
+     if (uvproc->uvopts.env) {
+       os_free_fullenv(uvproc->uvopts.env);
+@@ -180,7 +207,13 @@ static void exit_cb(uv_process_t *handle, int64_t status, int term_signal)
+   // Use stored/expected signal.
+   term_signal = proc->exit_signal;
+ #endif
++#ifdef __pyxis__
++  proc->status = (int)status;
++  proc->exited = true;
++  proc->exit_reason = handle->exit_reason;
++#else
+   proc->status = term_signal ? 128 + term_signal : (int)status;
++#endif
+   proc->internal_exit_cb(proc);
+ }
+ 
+diff --git a/src/nvim/event/loop.c b/src/nvim/event/loop.c
+index 319f370..501d9f6 100644
+--- a/src/nvim/event/loop.c
++++ b/src/nvim/event/loop.c
+@@ -14,7 +14,15 @@
+ 
+ void loop_init(Loop *loop, void *data)
+ {
++#ifdef __pyxis__
++  int error = uv_loop_init(&loop->uv);
++  if (error) {
++    fprintf(stderr, "Cannot initialize native event loop: %s\n", uv_strerror(error));
++    abort();
++  }
++#else
+   uv_loop_init(&loop->uv);
++#endif
+   loop->recursive = 0;
+   loop->closing = false;
+   loop->uv.data = loop;
+@@ -24,7 +32,9 @@ void loop_init(Loop *loop, void *data)
+   loop->thread_events = multiqueue_new(NULL, NULL);
+   uv_mutex_init(&loop->mutex);
+   uv_async_init(&loop->uv, &loop->async, async_cb);
++#ifndef __pyxis__
+   uv_signal_init(&loop->uv, &loop->children_watcher);
++#endif
+   uv_timer_init(&loop->uv, &loop->children_kill_timer);
+   uv_timer_init(&loop->uv, &loop->poll_timer);
+   uv_timer_init(&loop->uv, &loop->exit_delay_timer);
+@@ -56,7 +66,15 @@ static bool loop_uv_run(Loop *loop, int64_t ms)
+     mode = UV_RUN_NOWAIT;
+   }
+ 
++#ifdef __pyxis__
++  int error = uv_run(&loop->uv, mode);
++  if (error < 0) {
++    ELOG("Native event wait failed: %s", uv_strerror(error));
++    abort();
++  }
++#else
+   uv_run(&loop->uv, mode);
++#endif
+ 
+   if (ms > 0) {
+     uv_timer_stop(&loop->poll_timer);
+@@ -151,7 +169,9 @@ bool loop_close(Loop *loop, bool wait)
+   bool rv = true;
+   loop->closing = true;
+   uv_mutex_destroy(&loop->mutex);
++#ifndef __pyxis__
+   uv_close((uv_handle_t *)&loop->children_watcher, NULL);
++#endif
+   uv_close((uv_handle_t *)&loop->children_kill_timer, NULL);
+   uv_close((uv_handle_t *)&loop->poll_timer, timer_close_cb);
+   uv_close((uv_handle_t *)&loop->exit_delay_timer, NULL);
+@@ -161,7 +181,16 @@ bool loop_close(Loop *loop, bool wait)
+   while (true) {
+     // Run the loop to tickle close-callbacks (which should then free memory).
+     // Use UV_RUN_NOWAIT to avoid a hang. #11820
++#ifdef __pyxis__
++    int error = uv_run(&loop->uv, didstop ? UV_RUN_DEFAULT : UV_RUN_NOWAIT);
++    if (error < 0) {
++      ELOG("Native close wait failed: %s", uv_strerror(error));
++      rv = false;
++      break;
++    }
++#else
+     uv_run(&loop->uv, didstop ? UV_RUN_DEFAULT : UV_RUN_NOWAIT);
++#endif
+     if ((uv_loop_close(&loop->uv) != UV_EBUSY) || !wait) {
+       break;
+     }
+diff --git a/src/nvim/event/proc.c b/src/nvim/event/proc.c
+index 7d258f1..19c9ac5 100644
+--- a/src/nvim/event/proc.c
++++ b/src/nvim/event/proc.c
+@@ -1,6 +1,11 @@
+ #include <assert.h>
+ #include <inttypes.h>
+-#include <signal.h>
++#ifndef __pyxis__
++# include <signal.h>
++#else
++# include <uv/pyxis-native.h>
++#endif
++#include <stdlib.h>
+ #include <string.h>
+ #include <uv.h>
+ 
+@@ -42,6 +47,11 @@ static int exit_need_delay = 0;
+ int proc_spawn(Proc *proc, bool in, bool out, bool err)
+   FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  if (!proc->internal_tui || proc->type != kProcTypeUv || ui_client_forward_stdin) {
++    return UV_ENOSYS;
++  }
++#endif
+   // forwarding stderr contradicts with processing it internally
+   assert(!(err && proc->fwd_err));
+ 
+@@ -124,7 +134,11 @@ int proc_spawn(Proc *proc, bool in, bool out, bool err)
+   proc->internal_close_cb = decref;
+   proc->refcount++;
+   kv_push(proc->loop->children, proc);
++#ifdef __pyxis__
++  DLOG("new native child: exepath=[%s]", proc_get_exepath(proc));
++#else
+   DLOG("new: pid=%d exepath=[%s]", proc->pid, proc_get_exepath(proc));
++#endif
+   return 0;
+ }
+ 
+@@ -133,12 +147,16 @@ void proc_teardown(Loop *loop) FUNC_ATTR_NONNULL_ALL
+   proc_is_tearing_down = true;
+   for (size_t i = 0; i < kv_size(loop->children); i++) {
+     Proc *proc = kv_A(loop->children, i);
++#ifdef __pyxis__
++    proc_stop(proc);
++#else
+     if (proc->detach || proc->type == kProcTypePty) {
+       // Close handles to process without killing it.
+       CREATE_EVENT(loop->events, proc_close_handles, proc);
+     } else {
+       proc_stop(proc);
+     }
++#endif
+   }
+ 
+   // Wait until all children exit and all close events are processed.
+@@ -196,7 +214,9 @@ int proc_wait(Proc *proc, int ms, MultiQueue *events)
+       LOOP_PROCESS_EVENTS(proc->loop, events, 0);
+     }
+ 
++#ifndef __pyxis__
+     proc->status = -2;
++#endif
+   }
+ 
+   if (proc->refcount == 1) {
+@@ -216,12 +236,21 @@ int proc_wait(Proc *proc, int ms, MultiQueue *events)
+ /// Ask a process to terminate and eventually kill if it doesn't respond
+ void proc_stop(Proc *proc) FUNC_ATTR_NONNULL_ALL
+ {
++#ifdef __pyxis__
++  bool exited = proc->exited;
++#else
+   bool exited = (proc->status >= 0);
++#endif
+   if (exited || proc->stopped_time) {
+     return;
+   }
+   proc->stopped_time = os_hrtime();
+ 
++#ifdef __pyxis__
++  // Closing the internal RPC writer asks the server to exit on EOF. Keep its
++  // output and observer alive until completion; the timer bounds cooperation.
++  stream_may_close(&proc->in);
++#else
+   switch (proc->type) {
+   case kProcTypeUv:
+     proc->exit_signal = SIGTERM;
+@@ -235,6 +264,8 @@ void proc_stop(Proc *proc) FUNC_ATTR_NONNULL_ALL
+     break;
+   }
+ 
++#endif
++
+   // (Re)start timer to verify that stopped process(es) died.
+   uv_timer_start(&proc->loop->children_kill_timer, children_kill_cb,
+                  KILL_TIMEOUT_MS, 0);
+@@ -255,6 +286,19 @@ static void children_kill_cb(uv_timer_t *handle)
+ {
+   Loop *loop = handle->loop->data;
+ 
++#ifdef __pyxis__
++  for (size_t i = 0; i < kv_size(loop->children); i++) {
++    Proc *proc = kv_A(loop->children, i);
++    if (proc->exited || !proc->stopped_time) {
++      continue;
++    }
++    int error = uv_pyxis_process_terminate(&((LibuvProc *)proc)->uv);
++    if (error) {
++      ELOG("Native child termination failed: %s", uv_strerror(error));
++      abort();
++    }
++  }
++#else
+   for (size_t i = 0; i < kv_size(loop->children); i++) {
+     Proc *proc = kv_A(loop->children, i);
+     bool exited = (proc->status >= 0);
+@@ -274,6 +318,7 @@ static void children_kill_cb(uv_timer_t *handle)
+                      KILL_TIMEOUT_MS, 0);
+     }
+   }
++#endif
+ }
+ 
+ static void proc_close_event(void **argv)
+@@ -444,7 +489,11 @@ void exit_on_closed_chan(int status)
+ static void on_proc_exit(Proc *proc)
+ {
+   Loop *loop = proc->loop;
++#ifdef __pyxis__
++  ILOG("native child completed: reason=%" PRIu64 " status=%d", proc->exit_reason, proc->status);
++#else
+   ILOG("child exited: pid=%d status=%d" PRIu64, proc->pid, proc->status);
++#endif
+ 
+   // Process has terminated, but there could still be data to be read from the
+   // OS. We are still in the libuv loop, so we cannot call code that polls for
+diff --git a/src/nvim/event/proc.h b/src/nvim/event/proc.h
+index bbd76ad..9201595 100644
+--- a/src/nvim/event/proc.h
++++ b/src/nvim/event/proc.h
+@@ -43,7 +43,11 @@ static inline const char *proc_get_exepath(Proc *proc)
+ 
+ static inline bool proc_is_stopped(Proc *proc)
+ {
++#ifdef __pyxis__
++  bool exited = proc->exited;
++#else
+   bool exited = (proc->status >= 0);
++#endif
+   return exited || (proc->stopped_time != 0);
+ }
+ 
+diff --git a/src/nvim/event/socket.c b/src/nvim/event/socket.c
+index baf9775..9cba32d 100644
+--- a/src/nvim/event/socket.c
++++ b/src/nvim/event/socket.c
+@@ -1,3 +1,41 @@
++#ifdef __pyxis__
++#include <stdlib.h>
++#include <uv.h>
++#include "nvim/event/socket.h"
++
++char *socket_address_tcp_host_end(char *address)
++{
++  return NULL;
++}
++
++int socket_watcher_init(Loop *loop, SocketWatcher *watcher, const char *endpoint)
++{
++  return UV_ENOSYS;
++}
++
++int socket_watcher_start(SocketWatcher *watcher, int backlog, socket_cb cb)
++{
++  return UV_ENOSYS;
++}
++
++int socket_watcher_accept(SocketWatcher *watcher, RStream *stream)
++{
++  return UV_ENOSYS;
++}
++
++__attribute__((noreturn))
++void socket_watcher_close(SocketWatcher *watcher, socket_close_cb cb)
++{
++  abort();  // Native initialization rejects before publishing a watcher.
++}
++
++bool socket_connect(Loop *loop, RStream *stream, bool is_tcp, const char *address,
++                    int timeout, const char **error)
++{
++  *error = uv_strerror(UV_ENOSYS);
++  return false;
++}
++#else
+ #include <assert.h>
+ #include <inttypes.h>
+ #include <stdbool.h>
+@@ -365,3 +403,5 @@ cleanup:
+   uv_freeaddrinfo(addr_req.addrinfo);
+   return success;
+ }
++
++#endif
+diff --git a/src/nvim/os/env.c b/src/nvim/os/env.c
+index a6a811d..550a077 100644
+--- a/src/nvim/os/env.c
++++ b/src/nvim/os/env.c
+@@ -225,7 +225,17 @@ int os_unsetenv(const char *name)
+ size_t os_get_fullenv_size(void)
+ {
+   size_t len = 0;
+-#ifdef MSWIN
++#ifdef __pyxis__
++  uv_env_item_t *items;
++  int count;
++  int error = uv_os_environ(&items, &count);
++  if (error) {
++    semsg("Cannot enumerate environment: %s", uv_strerror(error));
++    return 0;
++  }
++  uv_os_free_environ(items, count);
++  return (size_t)count;
++#elif defined(MSWIN)
+   wchar_t *envstrings = GetEnvironmentStringsW();
+   wchar_t *p = envstrings;
+   size_t l;
+@@ -274,7 +284,28 @@ void os_free_fullenv(char **env)
+ /// @param  env_size  size of `env`, @see os_fullenv_size
+ void os_copy_fullenv(char **env, size_t env_size)
+ {
+-#ifdef MSWIN
++#ifdef __pyxis__
++  uv_env_item_t *items;
++  int count;
++  int error = uv_os_environ(&items, &count);
++  if (error) {
++    semsg("Cannot enumerate environment: %s", uv_strerror(error));
++    return;
++  }
++  for (size_t i = 0; i < env_size && i < (size_t)count; i++) {
++    size_t name_length = strlen(items[i].name);
++    size_t value_length = strlen(items[i].value);
++    if (value_length > SIZE_MAX - 2 || name_length > SIZE_MAX - value_length - 2) {
++      uv_os_free_environ(items, count);
++      abort();
++    }
++    env[i] = xmalloc(name_length + value_length + 2);
++    memcpy(env[i], items[i].name, name_length);
++    env[i][name_length] = '=';
++    memcpy(env[i] + name_length + 1, items[i].value, value_length + 1);
++  }
++  uv_os_free_environ(items, count);
++#elif defined(MSWIN)
+   wchar_t *envstrings = GetEnvironmentStringsW();
+   if (!envstrings) {
+     return;
+@@ -319,7 +350,18 @@ void os_copy_fullenv(char **env, size_t env_size)
+ /// @return [allocated] environment variable's value, or NULL
+ char *os_getenvname_at_index(size_t index)
+ {
+-#ifdef MSWIN
++#ifdef __pyxis__
++  uv_env_item_t *items;
++  int count;
++  int error = uv_os_environ(&items, &count);
++  if (error) {
++    semsg("Cannot enumerate environment: %s", uv_strerror(error));
++    return NULL;
++  }
++  char *name = index < (size_t)count ? xstrdup(items[index].name) : NULL;
++  uv_os_free_environ(items, count);
++  return name;
++#elif defined(MSWIN)
+   wchar_t *envstrings = GetEnvironmentStringsW();
+   if (!envstrings) {
+     return NULL;
+@@ -385,7 +427,9 @@ char *os_getenvname_at_index(size_t index)
+ /// @return the process ID.
+ int64_t os_get_pid(void)
+ {
+-#ifdef MSWIN
++#ifdef __pyxis__
++  return UV_ENOSYS;
++#elif defined(MSWIN)
+   return (int64_t)GetCurrentProcessId();
+ #else
+   return (int64_t)getpid();
+diff --git a/src/nvim/os/os_defs.h b/src/nvim/os/os_defs.h
+index db575e0..ff44138 100644
+--- a/src/nvim/os/os_defs.h
++++ b/src/nvim/os/os_defs.h
+@@ -16,6 +16,8 @@
+ 
+ #ifdef MSWIN
+ # include "nvim/os/win_defs.h"
++#elif defined(__pyxis__)
++# include "nvim/os/pyxis_defs.h"
+ #else
+ # include "nvim/os/unix_defs.h"
+ #endif
+diff --git a/src/nvim/os/proc.c b/src/nvim/os/proc.c
+index 5e87f09..ff702bd 100644
+--- a/src/nvim/os/proc.c
++++ b/src/nvim/os/proc.c
+@@ -1,3 +1,23 @@
++#ifdef __pyxis__
++#include <errno.h>
++#include <uv.h>
++#include "nvim/os/proc.h"
++
++bool os_proc_tree_kill(int pid, int sig)
++{
++  errno = ENOTSUP;
++  return false;
++}
++
++int os_proc_children(int ppid, int **proc_list, size_t *proc_count)
++{
++  *proc_list = NULL;
++  *proc_count = 0;
++  errno = ENOTSUP;
++  return 2;
++}
++
++#else
+ /// OS process functions
+ ///
+ /// psutil is a good reference for cross-platform syscall voodoo:
+@@ -282,3 +302,5 @@ bool os_proc_running(int pid)
+   // other errors the process might be running, assuming it is then.
+   return true;
+ }
++
++#endif
+diff --git a/src/nvim/os/proc.h b/src/nvim/os/proc.h
+index 5e36006..b25c67a 100644
+--- a/src/nvim/os/proc.h
++++ b/src/nvim/os/proc.h
+@@ -4,4 +4,10 @@
+ 
+ #include "nvim/api/private/defs.h"  // IWYU pragma: keep
+ 
+-#include "os/proc.h.generated.h"
++#ifdef __pyxis__
++// Numeric process control/inspection fails; observer capabilities live in Proc.
++bool os_proc_tree_kill(int pid, int sig);
++int os_proc_children(int ppid, int **proc_list, size_t *proc_count);
++#else
++# include "os/proc.h.generated.h"
++#endif
+diff --git a/src/nvim/os/pty_proc_unix.c b/src/nvim/os/pty_proc_unix.c
+index c981b40..0b4a9ae 100644
+--- a/src/nvim/os/pty_proc_unix.c
++++ b/src/nvim/os/pty_proc_unix.c
+@@ -1,3 +1,61 @@
++#ifdef __pyxis__
++#include <errno.h>
++#include <stdlib.h>
++#include <uv.h>
++#include "nvim/event/proc.h"
++#include "nvim/os/pty_proc.h"
++
++int pty_proc_spawn(PtyProc *ptyproc)
++{
++  return UV_ENOSYS;
++}
++
++const char *pty_proc_tty_name(PtyProc *ptyproc)
++{
++  errno = ENOTSUP;
++  return NULL;
++}
++
++void pty_proc_resize(PtyProc *ptyproc, uint16_t width, uint16_t height)
++{
++  abort();  // No successful PTY creation can reach a PTY operation.
++}
++
++void pty_proc_resume(PtyProc *ptyproc)
++{
++  abort();
++}
++void pty_proc_flush_master(PtyProc *ptyproc)
++{
++  abort();
++}
++void pty_proc_close_master(PtyProc *ptyproc)
++{
++  abort();
++}
++
++void pty_proc_close(PtyProc *ptyproc)
++{
++  Proc *proc = &ptyproc->proc;
++  if (proc->internal_close_cb) {
++    proc->internal_close_cb(proc);
++  }
++}
++
++void pty_proc_teardown(Loop *loop)
++{
++}
++
++PtyProc pty_proc_init(Loop *loop, void *data)
++{
++  return (PtyProc) {
++    .proc = proc_init(loop, kProcTypePty, data),
++    .width = 80,
++    .height = 24,
++    .tty_fd = -1,
++  };
++}
++#else
+ // Some of the code came from pangoterm and libuv
+ 
+ #include <assert.h>
+@@ -462,3 +520,5 @@ PtyProc pty_proc_init(Loop *loop, void *data)
+   rv.tty_fd = -1;
+   return rv;
+ }
++
++#endif
+diff --git a/src/nvim/os/pty_proc_unix.h b/src/nvim/os/pty_proc_unix.h
+index d3bc8b7..fd46732 100644
+--- a/src/nvim/os/pty_proc_unix.h
++++ b/src/nvim/os/pty_proc_unix.h
+@@ -2,15 +2,32 @@
+ // IWYU pragma: private, include "nvim/os/pty_proc.h"
+ 
+ #include <stdint.h>
+-#include <sys/ioctl.h>
++#ifndef __pyxis__
++# include <sys/ioctl.h>
++#endif
+ 
+ #include "nvim/event/defs.h"
+ 
+ typedef struct {
+   Proc proc;
+   uint16_t width, height;
++#ifndef __pyxis__
+   struct winsize winsize;
++#endif
+   int tty_fd;
+ } PtyProc;
+ 
+-#include "os/pty_proc_unix.h.generated.h"
++#ifdef __pyxis__
++int pty_proc_spawn(PtyProc *ptyproc);
++const char *pty_proc_tty_name(PtyProc *ptyproc);
++void pty_proc_resize(PtyProc *ptyproc, uint16_t width, uint16_t height)
++  __attribute__((noreturn));
++void pty_proc_resume(PtyProc *ptyproc) __attribute__((noreturn));
++void pty_proc_flush_master(PtyProc *ptyproc) __attribute__((noreturn));
++void pty_proc_close_master(PtyProc *ptyproc) __attribute__((noreturn));
++void pty_proc_close(PtyProc *ptyproc);
++void pty_proc_teardown(Loop *loop);
++PtyProc pty_proc_init(Loop *loop, void *data);
++#else
++# include "os/pty_proc_unix.h.generated.h"
++#endif
+diff --git a/src/nvim/os/pyxis_defs.h b/src/nvim/os/pyxis_defs.h
+new file mode 100644
+index 0000000..d82d006
+--- /dev/null
++++ b/src/nvim/os/pyxis_defs.h
+@@ -0,0 +1,12 @@
++#pragma once
++// IWYU pragma: private, include "nvim/os/os_defs.h"
++
++#include <unistd.h>  // IWYU pragma: export
++
++#define TEMP_DIR_NAMES { "$TMPDIR", ".", "~" }
++#define TEMP_FILE_PATH_MAXLEN 256
++#define HAVE_ACL 0
++#define SPECIAL_WILDCHAR "`'{"
++// A colon is part of a native scheme spelling.
++#define ENV_SEPCHAR ';'
++#define ENV_SEPSTR ";"
+diff --git a/src/nvim/os/signal.c b/src/nvim/os/signal.c
+index 712309f..df00587 100644
+--- a/src/nvim/os/signal.c
++++ b/src/nvim/os/signal.c
+@@ -1,3 +1,27 @@
++#ifdef __pyxis__
++#include "nvim/os/signal.h"
++
++// Lifecycle hooks select no watchers on the native profile. Console input
++// handles Ctrl+C; native process observers handle completion and termination.
++void signal_init(void)
++{
++}
++void signal_teardown(void)
++{
++}
++void signal_start(void)
++{
++}
++void signal_stop(void)
++{
++}
++void signal_reject_deadly(void)
++{
++}
++void signal_accept_deadly(void)
++{
++}
++#else
+ #include <assert.h>
+ #include <stdbool.h>
+ #include <stdio.h>
+@@ -255,3 +279,5 @@ static void on_signal(SignalWatcher *handle, int signum, void *data)
+     break;
+   }
+ }
++
++#endif
