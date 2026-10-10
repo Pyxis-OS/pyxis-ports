@@ -118,6 +118,9 @@ current cwd/environment. A supplied cwd resolves in an independent child context
 and a supplied environment replaces inheritance, including an empty array.
 Relative executable and script interpreter paths resolve in the child context;
 there is no colon-separated PATH search or Unix slash-root namespace.
+`uv_print_all_handles` walks actual loop handles and prints their live state;
+`uv_freeaddrinfo` releases the upstream contiguous result allocation, although
+address lookup itself remains unsupported.
 Peripheral value-only memory/load/metrics introspection and Unicode conversion
 symbols are omitted from this bounded library profile. Consumers must adapt
 rather than assume those APIs exist or that every upstream libuv facility works.
