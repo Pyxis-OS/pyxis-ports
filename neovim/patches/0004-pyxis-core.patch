@@ -124,6 +124,46 @@ index 0f1c52f..4a3778a 100644
    if (chan) {
      channel_create_event(chan, NULL);
    }
+diff --git a/src/nvim/eval/fs.c b/src/nvim/eval/fs.c
+index 66d2284..3312fd2 100644
+--- a/src/nvim/eval/fs.c
++++ b/src/nvim/eval/fs.c
+@@ -1675,7 +1675,7 @@ static bool write_list(FileDescriptor *const fp, const list_T *const list, const
+     for (const char *p = hunk_start;; p++) {
+       if (*p == NUL || *p == NL) {
+         if (p != hunk_start) {
+-          const ptrdiff_t written = file_write(fp, hunk_start,
++          const ptrdiff_t written = nvim_file_write(fp, hunk_start,
+                                                (size_t)(p - hunk_start));
+           if (written < 0) {
+             error = (int)written;
+@@ -1686,7 +1686,7 @@ static bool write_list(FileDescriptor *const fp, const list_T *const list, const
+           break;
+         } else {
+           hunk_start = p + 1;
+-          const ptrdiff_t written = file_write(fp, (char[]){ NUL }, 1);
++          const ptrdiff_t written = nvim_file_write(fp, (char[]){ NUL }, 1);
+           if (written < 0) {
+             error = (int)written;
+             break;
+@@ -1695,7 +1695,7 @@ static bool write_list(FileDescriptor *const fp, const list_T *const list, const
+       }
+     }
+     if (!binary || TV_LIST_ITEM_NEXT(list, li) != NULL) {
+-      const ptrdiff_t written = file_write(fp, "\n", 1);
++      const ptrdiff_t written = nvim_file_write(fp, "\n", 1);
+       if (written < 0) {
+         error = (int)written;
+         goto write_list_error;
+@@ -1722,7 +1722,7 @@ static bool write_data(FileDescriptor *const fp, const char *const data, const s
+ {
+   int error = 0;
+   if (len > 0) {
+-    const ptrdiff_t written = file_write(fp, data, len);
++    const ptrdiff_t written = nvim_file_write(fp, data, len);
+     if (written < (ptrdiff_t)len) {
+       error = (int)written;
+       goto write_blob_error;
 diff --git a/src/nvim/eval/funcs.c b/src/nvim/eval/funcs.c
 index a28aeb0..614f096 100644
 --- a/src/nvim/eval/funcs.c
@@ -201,6 +241,19 @@ index 9f42d9f..f9fc9c8 100644
    if (!channel) {
      emsg("cannot create a channel job");
      goto fail_1;
+diff --git a/src/nvim/getchar.c b/src/nvim/getchar.c
+index a82c009..c132e6f 100644
+--- a/src/nvim/getchar.c
++++ b/src/nvim/getchar.c
+@@ -3050,7 +3050,7 @@ static int inchar(uint8_t *buf, int maxlen, long wait_time)
+   while (curscript >= 0 && read_size <= 0 && !ignore_script) {
+     char script_char;
+     if (got_int
+-        || (read_size = file_read(&scriptin[curscript], &script_char, 1)) != 1) {
++        || (read_size = nvim_file_read(&scriptin[curscript], &script_char, 1)) != 1) {
+       // Reached EOF or some error occurred.
+       // Careful: closescript() frees typebuf.tb_buf[] and buf[] may
+       // point inside typebuf.tb_buf[].  Don't use buf[] after this!
 diff --git a/src/nvim/log.c b/src/nvim/log.c
 index c7c46ff..e2816ce 100644
 --- a/src/nvim/log.c
@@ -219,7 +272,7 @@ index c7c46ff..e2816ce 100644
    }
  
 diff --git a/src/nvim/lua/executor.c b/src/nvim/lua/executor.c
-index 7506d25..3bebdc0 100644
+index 7506d25..311edf5 100644
 --- a/src/nvim/lua/executor.c
 +++ b/src/nvim/lua/executor.c
 @@ -71,7 +71,7 @@
@@ -242,6 +295,15 @@ index 7506d25..3bebdc0 100644
        ExitThread(0);
  #else
        pthread_exit(0);
+@@ -1909,7 +1911,7 @@ bool nlua_exec_file(const char *path)
+         kv_destroy(sb);
+         return false;
+       }
+-      ptrdiff_t read_size = file_read(&stdin_dup, IObuff, 64);
++      ptrdiff_t read_size = nvim_file_read(&stdin_dup, IObuff, 64);
+       if (read_size < 0) {  // Error.
+         file_close(&stdin_dup, false);
+         kv_destroy(sb);
 diff --git a/src/nvim/main.c b/src/nvim/main.c
 index bbd8db1..77e4a3e 100644
 --- a/src/nvim/main.c
@@ -327,6 +389,28 @@ index 6e9a63a..6f30288 100644
    return true;
 +#endif
  }
+diff --git a/src/nvim/os/fileio.c b/src/nvim/os/fileio.c
+index 801483b..3cfe47e 100644
+--- a/src/nvim/os/fileio.c
++++ b/src/nvim/os/fileio.c
+@@ -224,7 +224,7 @@ int file_flush(FileDescriptor *fp)
+ ///                   bytes.
+ ///
+ /// @return error_code (< 0) or number of bytes read.
+-ptrdiff_t file_read(FileDescriptor *const fp, char *const ret_buf, const size_t size)
++ptrdiff_t nvim_file_read(FileDescriptor *const fp, char *const ret_buf, const size_t size)
+   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
+ {
+   assert(!fp->wr);
+@@ -327,7 +327,7 @@ char *file_try_read_buffered(FileDescriptor *const fp, const size_t size)
+ /// @param[in]  size  Amount of bytes to write.
+ ///
+ /// @return Number of bytes written or libuv error code (< 0).
+-ptrdiff_t file_write(FileDescriptor *const fp, const char *const buf, const size_t size)
++ptrdiff_t nvim_file_write(FileDescriptor *const fp, const char *const buf, const size_t size)
+   FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ARG(1)
+ {
+   assert(fp->wr);
 diff --git a/src/nvim/os/fs.h b/src/nvim/os/fs.h
 index beb2b6d..e937d0f 100644
 --- a/src/nvim/os/fs.h
@@ -376,7 +460,7 @@ index a05b3c2..0e6cc9d 100644
    [kXDGConfigHome] = "~/.config",
    [kXDGDataHome] = "~/.local/share",
 diff --git a/src/nvim/shada.c b/src/nvim/shada.c
-index cb0de73..e9e2f63 100644
+index cb0de73..c0ade79 100644
 --- a/src/nvim/shada.c
 +++ b/src/nvim/shada.c
 @@ -2305,8 +2305,13 @@ static ShaDaWriteResult shada_write(FileDescriptor *const sd_writer,
@@ -404,6 +488,24 @@ index cb0de73..e9e2f63 100644
            { STATIC_CSTR_AS_STRING("encoding"),
              CSTR_AS_OBJ(p_enc) },
          }),
+@@ -2990,7 +2997,7 @@ static ShaDaReadResult fread_len(FileDescriptor *const sd_reader, char *const bu
+                                  const size_t length)
+   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
+ {
+-  const ptrdiff_t read_bytes = file_read(sd_reader, buffer, length);
++  const ptrdiff_t read_bytes = nvim_file_read(sd_reader, buffer, length);
+   if (read_bytes < 0) {
+     semsg(_(SERR "System error while reading ShaDa file: %s"),
+           os_strerror((int)read_bytes));
+@@ -3031,7 +3038,7 @@ static ShaDaReadResult msgpack_read_uint64(FileDescriptor *const sd_reader, bool
+   const uintmax_t fpos = sd_reader->bytes_read;
+ 
+   uint8_t ret;
+-  ptrdiff_t read_bytes = file_read(sd_reader, (char *)&ret, 1);
++  ptrdiff_t read_bytes = nvim_file_read(sd_reader, (char *)&ret, 1);
+ 
+   if (read_bytes < 0) {
+     semsg(_(SERR "System error while reading integer from ShaDa file: %s"),
 diff --git a/src/nvim/ui_client.c b/src/nvim/ui_client.c
 index 0a769cf..7a6e5b6 100644
 --- a/src/nvim/ui_client.c
