@@ -108,6 +108,7 @@ local function main()
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
     print("Chocolate Doom, Chocolate Quake and EDuke32 also require --sdl2 PATH to its development prefix.")
     print("Lua 5.1 also requires --libuv PATH to its development prefix.")
+    print("Neovim also requires --lua51, --libuv, --utf8proc and --tree-sitter development prefixes.")
     return
   end
   local name, options = arg[1], {}
@@ -116,7 +117,9 @@ local function main()
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
-      name == "chocolate-quake" or name == "eduke32", ["--libuv"] = name == "lua51" }
+      name == "chocolate-quake" or name == "eduke32", ["--libuv"] = name == "lua51" or name == "neovim",
+    ["--lua51"] = name == "neovim", ["--utf8proc"] = name == "neovim",
+    ["--tree-sitter"] = name == "neovim" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -217,11 +220,30 @@ local function main()
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
   end
   local libuv
-  if name == "lua51" then
-    assert(options["--libuv"], "Lua 5.1 needs --libuv PATH to its development prefix")
+  if name == "lua51" or name == "neovim" then
+    assert(options["--libuv"], name .. " needs --libuv PATH to its development prefix")
     libuv = make_path(capture({ "realpath", "-e", "--", options["--libuv"] }))
     require_file(libuv .. "/include/uv.h")
     require_file(libuv .. "/lib/libuv.a")
+  end
+  local lua51, utf8proc, tree_sitter
+  if name == "neovim" then
+    for _, option in ipairs({ "--lua51", "--utf8proc", "--tree-sitter" }) do
+      assert(options[option], "Neovim needs " .. option .. " PATH to its development prefix")
+    end
+    lua51 = make_path(capture({ "realpath", "-e", "--", options["--lua51"] }))
+    utf8proc = make_path(capture({ "realpath", "-e", "--", options["--utf8proc"] }))
+    tree_sitter = make_path(capture({ "realpath", "-e", "--", options["--tree-sitter"] }))
+    for _, library in ipairs({ "lua5.1", "luv", "lpeg" }) do
+      require_file(lua51 .. "/lib/lib" .. library .. ".a")
+    end
+    require_file(lua51 .. "/include/lua5.1/lua.h")
+    require_file(lua51 .. "/include/luv/luv.h")
+    require_file(libuv .. "/include/uv/pyxis-native.h")
+    require_file(utf8proc .. "/include/utf8proc.h")
+    require_file(utf8proc .. "/lib/libutf8proc.a")
+    require_file(tree_sitter .. "/include/tree_sitter/api.h")
+    require_file(tree_sitter .. "/lib/libtree-sitter.a")
   end
   for _, library in ipairs(metadata.dependencies.pyxis) do
     require_file(sdk .. "/sysroot/usr/lib/" .. library .. ".a")
@@ -275,7 +297,8 @@ local function main()
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
     metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib,
-    libpng = libpng, fmt = fmt, sdl2 = sdl2, libuv = libuv, extra = extra_sources })
+    libpng = libpng, fmt = fmt, sdl2 = sdl2, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
+    tree_sitter = tree_sitter, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))
   end

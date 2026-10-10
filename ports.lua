@@ -15,6 +15,7 @@ return {
   lua = "lua",
   lua51 = "lua51",
   mbedtls = "mbedtls",
+  neovim = "neovim",
   pciids = "pciids",
   picohttpparser = "picohttpparser",
   quake = "quake",

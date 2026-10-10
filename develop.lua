@@ -8,6 +8,8 @@ return function(inputs)
     { tree = inputs.ports .. "/libpng/stage/dev", at = "libpng" },
     { tree = inputs.ports .. "/libuv/stage/dev", at = "libuv" },
     { tree = inputs.ports .. "/lua51/stage/dev", at = "lua51" },
+    { tree = inputs.ports .. "/utf8proc/stage/dev", at = "utf8proc" },
+    { tree = inputs.ports .. "/tree-sitter/stage/dev", at = "tree-sitter" },
     { tree = inputs.ports .. "/fmt/stage/dev", at = "fmt" },
     { tree = inputs.ports .. "/sdl2/stage/dev", at = "sdl2" },
   }
