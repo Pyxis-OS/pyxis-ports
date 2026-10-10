@@ -108,6 +108,8 @@ int uv__pyxis_status(enum call_status status)
     case CALL_NOT_EMPTY: return UV_ENOTEMPTY;
     case CALL_NO_SPACE: case CALL_QUOTA: return UV_ENOSPC;
     case CALL_FILE_TOO_LARGE: return UV_EFBIG;
+    case CALL_LINK_NOT_FOLLOWED: return UV_ELOOP;
+    case CALL_NAME_TOO_LONG: return UV_ENAMETOOLONG;
     default: return UV_EIO;
   }
 }

@@ -635,24 +635,6 @@ index d9677cb..4c9b31f 100644
  #include "os/stdpaths.h.generated.h"
  #include "os/users.h.generated.h"
  // IWYU pragma: end_exports
-diff --git a/src/nvim/os/os_defs.h b/src/nvim/os/os_defs.h
-index ff44138..0117635 100644
---- a/src/nvim/os/os_defs.h
-+++ b/src/nvim/os/os_defs.h
-@@ -32,7 +32,12 @@
- # define NAME_MAX _XOPEN_NAME_MAX
- #endif
- 
--#define BASENAMELEN (NAME_MAX - 5)
-+#ifdef __pyxis__
-+// Generated-name budget for backings with 255-byte components, not a RAM limit.
-+# define BASENAMELEN 250
-+#else
-+# define BASENAMELEN (NAME_MAX - 5)
-+#endif
- 
- // Use the system path length if it makes sense.
- #define DEFAULT_MAXPATHL 4096
 diff --git a/src/nvim/os/stdpaths.c b/src/nvim/os/stdpaths.c
 index a05b3c2..378bd6b 100644
 --- a/src/nvim/os/stdpaths.c
@@ -775,20 +757,3 @@ index 0a769cf..1c249af 100644
    ADD_C(args2, DICT_OBJ(info));               // attributes
    rpc_send_event(ui_client_channel_id, "nvim_set_client_info", args2);
  
-diff --git a/src/nvim/undo.c b/src/nvim/undo.c
-index 9810e30..09d3980 100644
---- a/src/nvim/undo.c
-+++ b/src/nvim/undo.c
-@@ -1247,7 +1247,11 @@ void u_write_undo(const char *const name, const bool forceit, buf_T *const buf,
-     goto theend;
-   }
- 
--  int fd = os_open(file_name, O_CREAT|O_WRONLY|O_EXCL|O_NOFOLLOW, perm);
-+  int fd = os_open(file_name, O_CREAT|O_WRONLY|O_EXCL
-+#ifndef __pyxis__
-+                   |O_NOFOLLOW
-+#endif
-+                   , perm);
-   if (fd < 0) {
-     semsg(_(e_not_open), file_name);
-     goto theend;
