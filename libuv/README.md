@@ -62,7 +62,8 @@ caller must close it after a failed spawn as well as after successful observatio
 Filesystem calls run only with a null callback. A supplied callback rejects
 before filesystem effects. The adapter exposes ordinary libc operations for
 open/close, read/write and explicit offsets, metadata, rename/remove/create,
-sync/resize/access and directory enumeration. Native type and size are always
+sync/resize/access, exclusive temporary files and directory enumeration.
+Temporary-file creation requires native random and clock grants. Native type and size are always
 known on a successful query. `uv_stat_t.stat_valid` carries UV_STAT_DEV_VALID,
 UV_STAT_INO_VALID and UV_STAT_MTIME_VALID, aliases of libc's optional validity
 bits. A valid zero value differs from unknown. Domain/object tokens retain the
