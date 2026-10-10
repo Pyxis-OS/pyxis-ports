@@ -304,27 +304,6 @@ index 367422a..048bef7 100644
  #include "compat.h"
  
  #include "smmalloc.h"
-diff --git a/source/build/src/vfs.cpp b/source/build/src/vfs.cpp
-index a6b3617..141409e 100644
---- a/source/build/src/vfs.cpp
-+++ b/source/build/src/vfs.cpp
-@@ -410,6 +410,8 @@ buildvfs_kfd openfrompath(const char *fn, int32_t flags, int32_t mode)
-     return h;
- }
- 
-+#if !defined(__pyxis__)
-+// Pyxis libc has no fdopen; only the Mapster32 editor, not built here, uses this.
- buildvfs_FILE fopenfrompath(const char *fn, const char *mode)
- {
-     int32_t fh;
-@@ -437,6 +439,7 @@ buildvfs_FILE fopenfrompath(const char *fn, const char *mode)
- 
-     return h;
- }
-+#endif
- 
- #define MAXGROUPFILES 8     // Warning: Fix groupfil if this is changed
- #define MAXOPENFILES 64     // Warning: Fix filehan if this is changed
 diff --git a/source/duke3d/src/game.cpp b/source/duke3d/src/game.cpp
 index a3f46b5..634963a 100644
 --- a/source/duke3d/src/game.cpp

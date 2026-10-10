@@ -33,8 +33,7 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
      elsewhere.
    - **Files:** `BS_IREAD` and `BS_IWRITE` together make the 0666 libc's
      `open` accepts for creation. The data checksum cache matches on size
-     alone, and output redirection to `stdout.txt` is off. `fopenfrompath`,
-     used only by the editor, is left out.
+     alone, and output redirection to `stdout.txt` is off.
    - **Whole reads:** `Bread` loops until it has the count, end of file or an
      error, and the data checksum uses it (see the libc gaps).
    - **System:** the page size comes from `MEMORY_PAGE_SIZE`; there are no
@@ -78,8 +77,9 @@ this task; each needs a design decision first:
   a file, so it can stop short of the count before the end. EDuke32 expects
   POSIX's whole reads from regular files.
 - **File metadata:** `stat` reports no modification time.
-- **Absent:** `getuid` and `getpwuid`, `sysconf`, signals, `ioctl`, `fdopen`,
-  `freopen` and `setvbuf`.
+- **Absent:** `getuid` and `getpwuid`, `sysconf`, signals, `ioctl`,
+  `freopen` and `setvbuf`. Upstream's `fopenfrompath`, which only the
+  Mapster32 editor uses, builds with libc's `fdopen`.
 
 ## Memory
 
