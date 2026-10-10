@@ -128,7 +128,38 @@ static int open_image(const struct path_context *context, const char *path, hand
   return uv__pyxis_status(status);
 }
 
-int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t *options)
+static int validate_resources(const uv_pyxis_resource_t *resources, size_t count)
+{
+  if (count && !resources) {
+    return UV_EINVAL;
+  }
+  if (count > LAUNCH_CAPTURE_MAX_SIZE / sizeof(struct launch_binding) - 3) {
+    return UV_ENOSPC;
+  }
+  for (size_t i = 0; i < count; ++i) {
+    const char *name = resources[i].name;
+    if (!name || !*name) {
+      return UV_EINVAL;
+    }
+    if (strnlen(name, LAUNCH_CAPTURE_MAX_SIZE) == LAUNCH_CAPTURE_MAX_SIZE) {
+      return UV_ENOSPC;
+    }
+    if (!strcmp(name, "memory") || !strcmp(name, "clock") ||
+        !strcmp(name, "launcher") || !strcmp(name, "script")) {
+      return UV_EINVAL;
+    }
+    for (size_t j = 0; j < i; ++j) {
+      if (!strcmp(name, resources[j].name)) {
+        return UV_EINVAL;
+      }
+    }
+  }
+  return 0;
+}
+
+int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
+    const uv_process_options_t *options, const uv_pyxis_resource_t *extra_resources,
+    size_t extra_count)
 {
   if (!loop || !process || !options) {
     return UV_EINVAL;
@@ -150,9 +181,13 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
       (file_length >= 4 && !strcmp(options->file + file_length - 4, ".pxb"))) {
     return UV_ENOSYS;
   }
+  int error = validate_resources(extra_resources, extra_count);
+  if (error) {
+    return error;
+  }
   struct child_stream streams[STARTUP_STREAM_COUNT] = {0};
   unsigned needed;
-  int error = prepare_streams(loop, options, streams, &needed);
+  error = prepare_streams(loop, options, streams, &needed);
   if (error) {
     return error;
   }
@@ -167,6 +202,7 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
   size_t roots_count = startup_root_count();
   const struct startup_binding *startup_bindings = startup_roots();
   struct launch_grant *grants = NULL;
+  struct launch_binding *resources = NULL;
   uint64_t *directories = NULL;
   struct startup_variable *environment = NULL;
   char **environment_names = NULL;
@@ -182,19 +218,20 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
     roots_count = working.context.root_count;
   }
   if (roots_count > STARTUP_ROOT_LIMIT ||
-      depth > SIZE_MAX / sizeof(*grants) - roots_count - 7) {
+      extra_count > SIZE_MAX / sizeof(*grants) - roots_count - 7 ||
+      depth > SIZE_MAX / sizeof(*grants) - roots_count - 7 - extra_count) {
     error = UV_EOVERFLOW;
     goto done;
   }
-  grants = uv__calloc(depth + roots_count + 7, sizeof(*grants));
+  grants = uv__calloc(depth + roots_count + 7 + extra_count, sizeof(*grants));
+  resources = uv__calloc(extra_count + 3, sizeof(*resources));
   directories = uv__calloc(depth ? depth : 1, sizeof(*directories));
-  if (!grants || !directories) {
+  if (!grants || !directories || !resources) {
     error = UV_ENOMEM;
     goto done;
   }
   const char *resource_names[] = {"memory", "clock", "launcher"};
   const uint64_t resource_rights[] = {MEMORY_RIGHT_MANAGE, CLOCK_RIGHTS, LAUNCHER_RIGHT_LAUNCH};
-  struct launch_binding resources[ARRAY_SIZE(resource_names)];
   size_t grant_count = 0, resource_count = 0;
   for (size_t i = 0; i < ARRAY_SIZE(resource_names); ++i) {
     handle_t source = startup_resource(resource_names[i]);
@@ -209,6 +246,23 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
     }
     resources[resource_count++] = (struct launch_binding){(uintptr_t)resource_names[i], grant_count};
     grants[grant_count++] = (struct launch_grant){source, rights & resource_rights[i], transport};
+  }
+  for (size_t i = 0; i < extra_count; ++i) {
+    const uv_pyxis_resource_t *resource = &extra_resources[i];
+    uint64_t rights, transport;
+    enum call_status status = handle_rights(resource->source, &rights, &transport);
+    if (status != CALL_OK) {
+      error = uv__pyxis_status(status);
+      goto done;
+    }
+    if ((resource->rights & ~rights) || (resource->transport & ~transport)) {
+      error = UV_EACCES;
+      goto done;
+    }
+    resources[resource_count++] = (struct launch_binding){(uintptr_t)resource->name,
+        grant_count};
+    grants[grant_count++] = (struct launch_grant){resource->source,
+        resource->rights, resource->transport};
   }
   struct launch_binding roots[STARTUP_ROOT_LIMIT];
   size_t root_count = 0;
@@ -374,9 +428,15 @@ done:
   uv__free(environment_names);
   uv__free(environment);
   uv__free(directories);
+  uv__free(resources);
   uv__free(grants);
   uv__pyxis_release(loop, needed);
   return error;
+}
+
+int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t *options)
+{
+  return uv_pyxis_spawn(loop, process, options, NULL, 0);
 }
 
 void uv__pyxis_process_dispatch(uv_process_t *process)
@@ -408,6 +468,17 @@ int uv_process_kill(uv_process_t *process, int signal)
   (void)process;
   (void)signal;
   return UV_ENOSYS;
+}
+
+int uv_pyxis_process_terminate(uv_process_t *process)
+{
+  if (!process || process->type != UV_PROCESS || uv__is_closing(process)) {
+    return UV_EINVAL;
+  }
+  if (process->observer == HANDLE_INVALID) {
+    return UV_EBADF;
+  }
+  return uv__pyxis_status(process_terminate(process->observer));
 }
 
 int uv_kill(int pid, int signal)

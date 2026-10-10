@@ -48,7 +48,19 @@ I/O uses libc's descriptor-aware try operations, preserving read-ahead. Submitte
 writes copy buffer descriptors and borrow their bytes until one callback. Close
 cancels pending writes before the close callback; successful queued completions
 keep their result. Pipe shutdown closes its write descriptor after queued writes.
-Console raw mode and blocking stream writes are unsupported.
+TTY RAW mode holds a native console passthrough grant, making Ctrl+C ordinary
+input, until NORMAL mode, `uv_tty_reset_mode` or handle close. Console byte input
+already has no echo or line editing. RAW requires a readable TTY; IO mode and
+blocking stream writes remain unsupported. Reset withdraws every RAW reference
+owned by this adapter, including handles in other loops.
+
+`uv/pyxis-native.h` exposes native TTY resize callbacks through
+`uv_pyxis_tty_resize_start` and `uv_pyxis_tty_resize_stop`. Start records current
+geometry generation and makes the handle active; subsequent generation changes
+invoke the callback with new dimensions. Resize shares the TTY's existing wait
+interest with byte I/O and consumes no extra slot. Notifications coalesce;
+query failures stop observation and report their negative UV error with zero
+dimensions. Close withdraws observation. There is no SIGWINCH emulation.
 
 Child launch supports up to three explicit stdin/stdout/stderr slots, directional
 CREATE_PIPE, and inherited native PIPE/CONSOLE descriptors. Duplex/IPC pipes,
@@ -60,6 +72,23 @@ its signed status; FAULTED/TERMINATED report -1 and term_signal zero. The public
 UV_ENOSYS, already negative; no PID or Unix signal is invented.
 Spawn initializes its inactive process handle before fallible preparation, so a
 caller must close it after a failed spawn as well as after successful observation.
+
+`uv_pyxis_spawn` accepts an array of `uv_pyxis_resource_t` records containing
+name, source handle, rights and transport. These explicitly selected resources
+augment the ordinary attenuated memory/clock/launcher grants. Empty or duplicate
+names and reserved names `memory`, `clock`, `launcher` and `script` reject before
+pipe creation or child publication. Requested rights/transport must be held by
+the source. Native capture and startup budgets apply; there is no separate
+resource-count policy. The array, names and source handles are borrowed until
+return and preserved on success and failure. No extra reference survives launch
+capture in the parent. Ordinary `uv_spawn` continues to delegate no pipe/create
+resource. Neovim selects that resource only for its same-image internal `--embed`
+server, allowing both event loops to create their own wake pipes.
+
+`uv_pyxis_process_terminate` requests termination using the process handle's
+held native observer and its TERMINATE authority. It does not wait for cleanup,
+invent a numeric PID or translate Unix signals. Completion still arrives through
+the exit callback and `exit_reason`; close releases observation only.
 
 Filesystem calls run only with a null callback. A supplied callback rejects
 before filesystem effects. The adapter exposes ordinary libc operations for

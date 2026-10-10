@@ -126,7 +126,12 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
 #define UV_GETADDRINFO_PRIVATE_FIELDS struct addrinfo *addrinfo;
 #define UV_GETNAMEINFO_PRIVATE_FIELDS
 #define UV_WORK_PRIVATE_FIELDS
-#define UV_TTY_PRIVATE_FIELDS int mode;
+#define UV_TTY_PRIVATE_FIELDS \
+  int mode; \
+  handle_t passthrough; \
+  uv_tty_t *raw_next; \
+  uint64_t resize_generation; \
+  void (*resize_cb)(uv_tty_t *, int, int, int);
 #define UV_SIGNAL_PRIVATE_FIELDS
 #define UV_FS_EVENT_PRIVATE_FIELDS
 

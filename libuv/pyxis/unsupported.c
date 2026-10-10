@@ -315,18 +315,6 @@ int uv_udp_recv_stop(uv_udp_t* handle)
   return UV_ENOSYS;
 }
 
-int uv_tty_set_mode(uv_tty_t* argument_0, uv_tty_mode_t mode)
-{
-  (void)argument_0;
-  (void)mode;
-  return UV_ENOSYS;
-}
-
-int uv_tty_reset_mode()
-{
-  return UV_ENOSYS;
-}
-
 int uv_tty_get_vterm_state(uv_tty_vtermstate_t* state)
 {
   (void)state;

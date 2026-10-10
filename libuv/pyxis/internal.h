@@ -2,6 +2,7 @@
 #define UV_PYXIS_INTERNAL_H
 
 #include "uv.h"
+#include "uv/pyxis-native.h"
 #include "uv-common.h"
 #include <abi/syscall.h>
 #include <abi/wait.h>

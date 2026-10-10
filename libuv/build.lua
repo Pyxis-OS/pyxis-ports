@@ -14,6 +14,8 @@ return function(ctx)
   end
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/include/uv/pyxis.h",
     ctx.stage .. "/" .. ctx.metadata.outputs.platform })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/include/uv/pyxis-native.h",
+    ctx.stage .. "/" .. ctx.metadata.outputs.native })
   for _, name in ipairs({ "LICENSE", "LICENSE-extra" }) do
     ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/" .. name,
       ctx.stage .. "/share/licenses/libuv/" .. name })

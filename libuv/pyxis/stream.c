@@ -4,16 +4,21 @@
 #include <abi/pipe.h>
 #include <console.h>
 #include <errno.h>
+#include <handle.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #define WRITE_TRANSFERS_PER_TURN 32
 
+static uv_tty_t *raw_ttys;
+
 static void update_activity(uv_stream_t *stream)
 {
   if ((stream->flags & UV_HANDLE_READING) || !uv__queue_empty(&stream->write_queue) ||
-      !uv__queue_empty(&stream->write_completed_queue) || stream->shutdown_req) {
+      !uv__queue_empty(&stream->write_completed_queue) || stream->shutdown_req ||
+      (stream->type == UV_TTY && ((uv_tty_t *)stream)->resize_cb)) {
     uv__handle_start(stream);
   } else {
     uv__handle_stop(stream);
@@ -94,6 +99,10 @@ int uv_tty_init(uv_loop_t *loop, uv_tty_t *handle, uv_file fd, int readable)
   handle->admitted = 1;
   handle->flags |= readable ? UV_HANDLE_READABLE : UV_HANDLE_WRITABLE;
   handle->mode = UV_TTY_MODE_NORMAL;
+  handle->passthrough = HANDLE_INVALID;
+  handle->raw_next = NULL;
+  handle->resize_generation = 0;
+  handle->resize_cb = NULL;
   return 0;
 }
 
@@ -341,6 +350,10 @@ int uv__pyxis_stream_events(uv_stream_t *stream, struct wait_interest *interest)
       !uv__queue_empty(&stream->write_completed_queue) || stream->shutdown_req) {
     events |= WAIT_WRITABLE;
   }
+  uv_tty_t *tty = stream->type == UV_TTY ? (uv_tty_t *)stream : NULL;
+  if (tty && tty->resize_cb) {
+    events |= WAIT_RESIZED;
+  }
   if (!events) {
     return 0;
   }
@@ -348,8 +361,10 @@ int uv__pyxis_stream_events(uv_stream_t *stream, struct wait_interest *interest)
   if (pyxis_descriptor_borrow(stream->fd, &binding)) {
     return uv_translate_sys_error(errno);
   }
-  *interest = (struct wait_interest){binding.handle, events, 0};
-  return binding.buffered_read || !uv__queue_empty(&stream->write_completed_queue) ||
+  *interest = (struct wait_interest){binding.handle, events,
+      tty ? tty->resize_generation : 0};
+  return ((stream->flags & UV_HANDLE_READING) && binding.buffered_read) ||
+      !uv__queue_empty(&stream->write_completed_queue) ||
       (stream->shutdown_req && uv__queue_empty(&stream->write_queue)) ? 2 : 1;
 }
 
@@ -399,12 +414,65 @@ void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
     }
   }
   if (!uv__is_closing(stream)) {
+    if (stream->type == UV_TTY) {
+      uv_tty_t *tty = (uv_tty_t *)stream;
+      if (tty->resize_cb && (events & (WAIT_RESIZED | WAIT_ERROR))) {
+        struct pyxis_descriptor_binding binding;
+        struct console_size_reply size;
+        int error = pyxis_descriptor_borrow(tty->fd, &binding) ?
+            uv_translate_sys_error(errno) :
+            uv__pyxis_status(console_size(binding.handle, &size));
+        if (!error && (size.columns > INT_MAX || size.rows > INT_MAX)) {
+          error = UV_EOVERFLOW;
+        }
+        if (error || size.generation != tty->resize_generation) {
+          uv_pyxis_tty_resize_cb callback = tty->resize_cb;
+          if (error) {
+            tty->resize_cb = NULL;
+          } else {
+            tty->resize_generation = size.generation;
+          }
+          callback(tty, error, error ? 0 : (int)size.columns,
+              error ? 0 : (int)size.rows);
+        }
+      }
+    }
+  }
+  if (!uv__is_closing(stream)) {
     update_activity(stream);
   }
 }
 
+static int tty_normal(uv_tty_t *tty)
+{
+  if (tty->passthrough == HANDLE_INVALID) {
+    return 0;
+  }
+  enum call_status status = handle_close(tty->passthrough);
+  if (status != CALL_OK) {
+    return uv__pyxis_status(status);
+  }
+  uv_tty_t **entry = &raw_ttys;
+  while (*entry != tty) {
+    entry = &(*entry)->raw_next;
+  }
+  *entry = tty->raw_next;
+  tty->raw_next = NULL;
+  tty->passthrough = HANDLE_INVALID;
+  tty->mode = UV_TTY_MODE_NORMAL;
+  return 0;
+}
+
 void uv__pyxis_stream_close(uv_stream_t *stream)
 {
+  if (stream->type == UV_TTY) {
+    uv_tty_t *tty = (uv_tty_t *)stream;
+    tty->resize_cb = NULL;
+    /* This grant is private to the adapter and cannot be independently closed. */
+    if (tty_normal(tty)) {
+      abort();
+    }
+  }
   while (!uv__queue_empty(&stream->write_queue)) {
     uv_write_t *request = uv__queue_data(uv__queue_head(&stream->write_queue), uv_write_t, queue);
     finish_write(stream, request, UV_ECANCELED);
@@ -436,7 +504,7 @@ int uv_stream_set_blocking(uv_stream_t *stream, int blocking)
 
 int uv_tty_get_winsize(uv_tty_t *handle, int *width, int *height)
 {
-  if (!width || !height || uv__is_closing(handle)) {
+  if (!handle || handle->type != UV_TTY || !width || !height || uv__is_closing(handle)) {
     return UV_EINVAL;
   }
   struct pyxis_descriptor_binding binding;
@@ -453,5 +521,85 @@ int uv_tty_get_winsize(uv_tty_t *handle, int *width, int *height)
   }
   *width = (int)size.columns;
   *height = (int)size.rows;
+  return 0;
+}
+
+int uv_tty_set_mode(uv_tty_t *handle, uv_tty_mode_t mode)
+{
+  if (!handle || handle->type != UV_TTY || uv__is_closing(handle)) {
+    return UV_EINVAL;
+  }
+  if (mode == UV_TTY_MODE_NORMAL) {
+    return tty_normal(handle);
+  }
+  if (mode != UV_TTY_MODE_RAW) {
+    return UV_ENOSYS;
+  }
+  if (!(handle->access & PYXIS_DESCRIPTOR_READ)) {
+    return UV_EINVAL;
+  }
+  if (handle->mode == UV_TTY_MODE_RAW) {
+    return 0;
+  }
+  struct pyxis_descriptor_binding binding;
+  if (pyxis_descriptor_borrow(handle->fd, &binding)) {
+    return uv_translate_sys_error(errno);
+  }
+  handle_t passthrough;
+  enum call_status status = console_passthrough(binding.handle, &passthrough);
+  if (status != CALL_OK) {
+    return uv__pyxis_status(status);
+  }
+  handle->passthrough = passthrough;
+  handle->mode = UV_TTY_MODE_RAW;
+  handle->raw_next = raw_ttys;
+  raw_ttys = handle;
+  return 0;
+}
+
+int uv_tty_reset_mode(void)
+{
+  while (raw_ttys) {
+    int error = tty_normal(raw_ttys);
+    if (error) {
+      return error;
+    }
+  }
+  return 0;
+}
+
+int uv_pyxis_tty_resize_start(uv_tty_t *handle, uv_pyxis_tty_resize_cb callback)
+{
+  if (!handle || handle->type != UV_TTY || uv__is_closing(handle) || !callback) {
+    return UV_EINVAL;
+  }
+  if (handle->resize_cb) {
+    return UV_EALREADY;
+  }
+  struct pyxis_descriptor_binding binding;
+  if (pyxis_descriptor_borrow(handle->fd, &binding)) {
+    return uv_translate_sys_error(errno);
+  }
+  struct console_size_reply size;
+  enum call_status status = console_size(binding.handle, &size);
+  if (status != CALL_OK) {
+    return uv__pyxis_status(status);
+  }
+  if (size.columns > INT_MAX || size.rows > INT_MAX) {
+    return UV_EOVERFLOW;
+  }
+  handle->resize_generation = size.generation;
+  handle->resize_cb = callback;
+  update_activity((uv_stream_t *)handle);
+  return 0;
+}
+
+int uv_pyxis_tty_resize_stop(uv_tty_t *handle)
+{
+  if (!handle || handle->type != UV_TTY || uv__is_closing(handle)) {
+    return UV_EINVAL;
+  }
+  handle->resize_cb = NULL;
+  update_activity((uv_stream_t *)handle);
   return 0;
 }

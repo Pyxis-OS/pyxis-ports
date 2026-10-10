@@ -21,6 +21,7 @@ return {
     errors = "dev/include/uv/errno.h",
     version_header = "dev/include/uv/version.h",
     platform = "dev/include/uv/pyxis.h",
+    native = "dev/include/uv/pyxis-native.h",
     work_types = "dev/include/uv/threadpool.h",
     license = "share/licenses/libuv/LICENSE",
     extra_license = "share/licenses/libuv/LICENSE-extra",
