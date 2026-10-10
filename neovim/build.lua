@@ -49,13 +49,18 @@ return function(ctx)
   local runtime = ctx.stage .. "/share/neovim/nvim.pxb/app/share/nvim/runtime"
   ctx.run({ "mkdir", "-p", runtime })
   ctx.run({ "cp", "-R", ctx.source .. "/runtime/.", runtime })
-  -- Upstream runtime installation runs the target editor to generate help tags.
-  -- This cross build uses the native generator for Vim syntax and ships authored docs.
+  -- Run upstream generators with native host Lua, without executing the editor.
   ctx.run({ lua, ctx.source .. "/src/gen/preload_nlua.lua", ctx.source, host_module,
     ctx.build, ctx.source .. "/src/gen/gen_vimvim.lua", runtime .. "/syntax/vim/generated.vim",
     ctx.build .. "/funcs_data.mpack", ctx.source .. "/src/nvim/options.lua",
     ctx.source .. "/src/nvim/auevents.lua", ctx.source .. "/src/nvim/ex_cmds.lua",
     ctx.source .. "/src/nvim/vvars.lua" })
+  ctx.run({ lua, ctx.recipe .. "/host/helptags.lua", ctx.source,
+    runtime .. "/doc/tags", runtime .. "/doc" })
+  for _, name in ipairs({ "matchit", "netrw" }) do
+    local doc = runtime .. "/pack/dist/opt/" .. name .. "/doc"
+    ctx.run({ lua, ctx.recipe .. "/host/helptags.lua", ctx.source, doc .. "/tags", doc })
+  end
   local outputs = ctx.metadata.outputs
   local function install(mode, source, target)
     ctx.run({ "install", "-D", "-m", mode, source, ctx.stage .. "/" .. target })
