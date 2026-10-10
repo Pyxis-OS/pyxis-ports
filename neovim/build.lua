@@ -38,6 +38,12 @@ return function(ctx)
     "-DUTF8PROC_LIBRARY=" .. ctx.utf8proc .. "/lib/libutf8proc.a",
     "-DTREESITTER_INCLUDE_DIR=" .. ctx.tree_sitter .. "/include",
     "-DTREESITTER_LIBRARY=" .. ctx.tree_sitter .. "/lib/libtree-sitter.a",
+    "-DPYXIS_TREESITTER_C_SOURCE_DIR=" .. assert(ctx.extra.tree_sitter_c),
+    "-DPYXIS_TREESITTER_LUA_SOURCE_DIR=" .. assert(ctx.extra.tree_sitter_lua),
+    "-DPYXIS_TREESITTER_VIM_SOURCE_DIR=" .. assert(ctx.extra.tree_sitter_vim),
+    "-DPYXIS_TREESITTER_VIMDOC_SOURCE_DIR=" .. assert(ctx.extra.tree_sitter_vimdoc),
+    "-DPYXIS_TREESITTER_QUERY_SOURCE_DIR=" .. assert(ctx.extra.tree_sitter_query),
+    "-DPYXIS_TREESITTER_MARKDOWN_SOURCE_DIR=" .. assert(ctx.extra.tree_sitter_markdown),
     "-DICONV_INCLUDE_DIR=" .. ctx.sysroot .. "/usr/include", "-DICONV_LIBRARY=",
     "-DLUA_PRG=" .. lua, "-DLUA_GEN_PRG=" .. lua, "-DNLUA0_HOST_PRG=" .. host_module,
     "-DPREFER_LUA=ON", "-DCOMPILE_LUA=OFF", "-DENABLE_LTO=OFF",
@@ -102,6 +108,12 @@ return function(ctx)
   assert(notices:close())
   install("644", ctx.extra.host_lua .. "/COPYRIGHT", outputs.host_lua_license)
   install("644", host_lpeg .. "/lpeg.html", outputs.host_lpeg_license)
+  install("644", ctx.extra.tree_sitter_c .. "/LICENSE", outputs.tree_sitter_c_license)
+  install("644", ctx.extra.tree_sitter_lua .. "/LICENSE.md", outputs.tree_sitter_lua_license)
+  install("644", ctx.extra.tree_sitter_vim .. "/LICENSE", outputs.tree_sitter_vim_license)
+  install("644", ctx.extra.tree_sitter_vimdoc .. "/LICENSE", outputs.tree_sitter_vimdoc_license)
+  install("644", ctx.extra.tree_sitter_query .. "/LICENSE", outputs.tree_sitter_query_license)
+  install("644", ctx.extra.tree_sitter_markdown .. "/LICENSE", outputs.tree_sitter_markdown_license)
   local provenance = assert(io.open(ctx.stage .. "/" .. outputs.provenance, "w"))
   assert(provenance:write("source=" .. ctx.metadata.source.archive.url .. "\n",
     "commit=" .. ctx.metadata.source.commit .. "\n",
@@ -110,10 +122,16 @@ return function(ctx)
     "license=" .. ctx.metadata.license .. "\n",
     "patches=" .. table.concat(ctx.metadata.patches, " ") .. "\n",
     "profile=native terminal client/server, PUC Lua 5.1, synchronous filesystem, 16 colours\n",
+    "static_parsers=c lua vim vimdoc query markdown markdown_inline\n",
     "omitted=workers, jobs, terminal emulation, LSP, watches, sockets, signals, dynamic modules, swap/backup recovery\n"))
   for _, entry in ipairs(ctx.metadata.source.extra) do
     assert(provenance:write(entry.name .. "=" .. entry.archive.url .. "\n",
+      entry.name .. "_mirror=" .. entry.archive.mirror .. "\n",
       entry.name .. "_sha256=" .. entry.archive.sha256 .. "\n"))
+    if entry.version then
+      assert(provenance:write(entry.name .. "_version=" .. entry.version .. "\n",
+        entry.name .. "_license=" .. entry.license .. "\n"))
+    end
   end
   assert(provenance:close())
 end

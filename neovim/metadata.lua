@@ -7,7 +7,7 @@ return {
       mirror = "https://repo.internal/repository/raw-github/neovim/neovim/archive/5885a30e1e1225349079e7a1c4a3848aa8e43e42.tar.gz",
       sha256 = "314bb8d8695cc2c1c9b69e6c93df8c75108ca66588dfffb81c42369d2f85c90a",
     },
-    -- Pristine native tools, separate from the adapted target Lua/LPeg recipe.
+    -- Native generators and static grammars pinned by Neovim's cmake.deps/deps.txt.
     extra = {
       { name = "host_lua", url = "https://www.lua.org/ftp/lua-5.1.5.tar.gz",
         archive = {
@@ -20,6 +20,48 @@ return {
           url = "https://github.com/neovim/deps/raw/d495ee6f79e7962a53ad79670cb92488abe0b9b4/opt/lpeg-1.1.0.tar.gz",
           mirror = "https://repo.internal/repository/raw-github/neovim/deps/raw/d495ee6f79e7962a53ad79670cb92488abe0b9b4/opt/lpeg-1.1.0.tar.gz",
           sha256 = "4b155d67d2246c1ffa7ad7bc466c1ea899bbc40fef0257cc9c03cecbaed4352a",
+        } },
+      { name = "tree_sitter_c", url = "https://github.com/tree-sitter/tree-sitter-c",
+        version = "0.24.1", license = "MIT",
+        archive = {
+          url = "https://github.com/tree-sitter/tree-sitter-c/archive/v0.24.1.tar.gz",
+          mirror = "https://repo.internal/repository/raw-github/tree-sitter/tree-sitter-c/archive/v0.24.1.tar.gz",
+          sha256 = "25dd4bb3dec770769a407e0fc803f424ce02c494a56ce95fedc525316dcf9b48",
+        } },
+      { name = "tree_sitter_lua", url = "https://github.com/tree-sitter-grammars/tree-sitter-lua",
+        version = "0.5.0", license = "MIT",
+        archive = {
+          url = "https://github.com/tree-sitter-grammars/tree-sitter-lua/archive/v0.5.0.tar.gz",
+          mirror = "https://repo.internal/repository/raw-github/tree-sitter-grammars/tree-sitter-lua/archive/v0.5.0.tar.gz",
+          sha256 = "cf01b93f4b61b96a6d27942cf28eeda4cbce7d503c3bef773a8930b3d778a2d9",
+        } },
+      { name = "tree_sitter_vim", url = "https://github.com/tree-sitter-grammars/tree-sitter-vim",
+        version = "0.8.1", license = "MIT",
+        archive = {
+          url = "https://github.com/tree-sitter-grammars/tree-sitter-vim/archive/v0.8.1.tar.gz",
+          mirror = "https://repo.internal/repository/raw-github/tree-sitter-grammars/tree-sitter-vim/archive/v0.8.1.tar.gz",
+          sha256 = "93cafb9a0269420362454ace725a118ff1c3e08dcdfdc228aa86334b54d53c2a",
+        } },
+      { name = "tree_sitter_vimdoc", url = "https://github.com/neovim/tree-sitter-vimdoc",
+        version = "4.1.0", license = "Apache-2.0",
+        archive = {
+          url = "https://github.com/neovim/tree-sitter-vimdoc/archive/v4.1.0.tar.gz",
+          mirror = "https://repo.internal/repository/raw-github/neovim/tree-sitter-vimdoc/archive/v4.1.0.tar.gz",
+          sha256 = "020e8f117f648c8697fca967995c342e92dbd81dab137a115cc7555207fbc84f",
+        } },
+      { name = "tree_sitter_query", url = "https://github.com/tree-sitter-grammars/tree-sitter-query",
+        version = "0.8.0", license = "Apache-2.0",
+        archive = {
+          url = "https://github.com/tree-sitter-grammars/tree-sitter-query/archive/v0.8.0.tar.gz",
+          mirror = "https://repo.internal/repository/raw-github/tree-sitter-grammars/tree-sitter-query/archive/v0.8.0.tar.gz",
+          sha256 = "c2b23b9a54cffcc999ded4a5d3949daf338bebb7945dece229f832332e6e6a7d",
+        } },
+      { name = "tree_sitter_markdown", url = "https://github.com/tree-sitter-grammars/tree-sitter-markdown",
+        version = "0.5.3", license = "MIT",
+        archive = {
+          url = "https://github.com/tree-sitter-grammars/tree-sitter-markdown/archive/v0.5.3.tar.gz",
+          mirror = "https://repo.internal/repository/raw-github/tree-sitter-grammars/tree-sitter-markdown/archive/v0.5.3.tar.gz",
+          sha256 = "df845b1ab7c7c163ec57d7fa17170c92b04be199bddab02523636efec5224ab6",
         } },
     },
   },
@@ -47,6 +89,12 @@ return {
     vendor_notices = "share/licenses/neovim/vendor-notices.txt",
     host_lua_license = "share/licenses/neovim/host-lua-COPYRIGHT",
     host_lpeg_license = "share/licenses/neovim/host-lpeg.html",
+    tree_sitter_c_license = "share/licenses/neovim/tree-sitter-c-LICENSE",
+    tree_sitter_lua_license = "share/licenses/neovim/tree-sitter-lua-LICENSE.md",
+    tree_sitter_vim_license = "share/licenses/neovim/tree-sitter-vim-LICENSE",
+    tree_sitter_vimdoc_license = "share/licenses/neovim/tree-sitter-vimdoc-LICENSE",
+    tree_sitter_query_license = "share/licenses/neovim/tree-sitter-query-LICENSE",
+    tree_sitter_markdown_license = "share/licenses/neovim/tree-sitter-markdown-LICENSE",
     provenance = "share/neovim/source.txt",
   },
 }

@@ -3,7 +3,7 @@
 Neovim 0.12.5 is pinned to commit
 `5885a30e1e1225349079e7a1c4a3848aa8e43e42`. Its release archive has SHA-256
 `314bb8d8695cc2c1c9b69e6c93df8c75108ca66588dfffb81c42369d2f85c90a`.
-The source URL, owner mirror and generator-source hashes are recorded in
+The source URLs, owner mirrors and archive hashes are recorded in
 `metadata.lua` and `share/neovim/source.txt`.
 
 Neovim retains Apache-2.0 and Vim terms in upstream `LICENSE.txt`. That notice
@@ -19,6 +19,16 @@ libuv 1.52.1 is MIT with its `LICENSE-extra`; utf8proc 2.11.3 retains MIT and
 Unicode data terms; tree-sitter 0.26.13 retains MIT and Unicode-DFS-2016 terms.
 Native libuv adapter files retain their MPL-2.0 notices. Host Lua and LPeg
 build inputs retain MIT and are separate from target archives.
+
+The statically linked grammars use Neovim 0.12.5's exact dependency pins:
+tree-sitter-c 0.24.1, tree-sitter-lua 0.5.0, tree-sitter-vim 0.8.1 and
+tree-sitter-markdown 0.5.3 retain MIT terms; tree-sitter-vimdoc 4.1.0 and
+tree-sitter-query 0.8.0 retain Apache-2.0 terms. The Markdown archive supplies
+both `markdown` and `markdown_inline`. Each archive's original licence is
+staged separately under `share/licenses/neovim`; its URL, mirror, version,
+licence and SHA-256 are recorded in `share/neovim/source.txt`. Generated C
+parsers and scanners are compiled directly, without fetching or regenerating
+grammars during the target build.
 
 Local changes are recorded as five ordered upstream-derived patches, retaining
 the licences of the files they modify:
