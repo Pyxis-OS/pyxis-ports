@@ -1,0 +1,263 @@
+diff --git a/src/nvim/buffer.c b/src/nvim/buffer.c
+index db4c476..15eb593 100644
+--- a/src/nvim/buffer.c
++++ b/src/nvim/buffer.c
+@@ -1962,6 +1962,11 @@ buf_T *buflist_new(char *ffname_arg, char *sfname_arg, linenr_T lnum, int flags)
+   buf_T *buf;
+ 
+   fname_expand(curbuf, &ffname, &sfname);       // will allocate ffname
++#ifdef __pyxis__
++  if (ffname_arg != NULL && ffname == NULL) {
++    return NULL;
++  }
++#endif
+ 
+   // If the file name already exists in the list, update the entry.
+ 
+@@ -3141,16 +3146,26 @@ void buf_set_name(int fnum, char *name)
+     return;
+   }
+ 
++  char *ffname = xstrdup(name);
++  char *sfname = NULL;
++  fname_expand(buf, &ffname, &sfname);
++  if (ffname == NULL) {
++    xfree(sfname);
++    return;
++  }
++#ifdef __pyxis__
++  if (buf->b_ffname == NULL || path_fnamecmp(buf->b_ffname, ffname) != 0) {
++    buf_release_file_reference(buf);
++    buf->b_native_file_loaded = false;
++  }
++#endif
+   if (buf->b_sfname != buf->b_ffname) {
+     xfree(buf->b_sfname);
+   }
+   xfree(buf->b_ffname);
+-  buf->b_ffname = xstrdup(name);
+-  buf->b_sfname = NULL;
+-  // Allocate ffname and expand into full path.  Also resolves .lnk
+-  // files on Win32.
+-  fname_expand(buf, &buf->b_ffname, &buf->b_sfname);
+-  buf->b_fname = buf->b_sfname;
++  buf->b_ffname = ffname;
++  buf->b_sfname = sfname;
++  buf->b_fname = sfname;
+ }
+ 
+ /// Take care of what needs to be done when the name of buffer "buf" has changed.
+@@ -3642,7 +3657,11 @@ void fname_expand(buf_T *buf, char **ffname, char **sfname)
+   if (*sfname == NULL) {  // no short file name given, use ffname
+     *sfname = *ffname;
+   }
++#ifdef __pyxis__
++  *ffname = path_native_file_name(*ffname);
++#else
+   *ffname = fix_fname((*ffname));     // expand to full path
++#endif
+ 
+ #ifdef MSWIN
+   if (!buf->b_p_bin) {
+diff --git a/src/nvim/bufwrite.c b/src/nvim/bufwrite.c
+index 921b878..b52e815 100644
+--- a/src/nvim/bufwrite.c
++++ b/src/nvim/bufwrite.c
+@@ -1100,7 +1100,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+   // Don't do this for Windows, a "cd" in a sub-shell may have moved us to
+   // another directory, which we don't detect.
+   char *ffname = fname;                           // remember full fname
+-#ifdef UNIX
++#if defined(UNIX) && !defined(__pyxis__)
+   fname = sfname;
+ #endif
+ 
+@@ -1374,13 +1374,22 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+       // quotum for number of files).
+       // Appending will fail if the file does not exist and forceit is
+       // false.
+-      const int fflags = O_WRONLY | (append
+-                                     ? (forceit ? (O_APPEND | O_CREAT) : O_APPEND)
+ #ifdef __pyxis__
+-                                     : ((overwriting && buf->b_native_file_loaded && !forceit
+-                                         ? 0 : O_CREAT)
+-                                        | (newfile && !forceit ? O_EXCL : 0)));
++      int fflags = O_WRONLY;
++      if (append) {
++        fflags |= O_APPEND;
++        if (forceit) {
++          fflags |= O_CREAT;
++        }
++      } else if (forceit) {
++        fflags |= O_CREAT;
++      } else if (!overwriting || !buf->b_native_file_loaded) {
++        // No original at this name: refuse a file that appeared meanwhile.
++        fflags |= O_CREAT | O_EXCL;
++      }
+ #else
++      const int fflags = O_WRONLY | (append
++                                     ? (forceit ? (O_APPEND | O_CREAT) : O_APPEND)
+                                      : (O_CREAT | O_TRUNC));
+ #endif
+       const int mode = perm < 0 ? 0666 : (perm & 0777);
+diff --git a/src/nvim/ex_cmds.c b/src/nvim/ex_cmds.c
+index 3694323..72a4b8d 100644
+--- a/src/nvim/ex_cmds.c
++++ b/src/nvim/ex_cmds.c
+@@ -1733,6 +1733,13 @@ int rename_buffer(char *new_fname)
+     curbuf->b_sfname = sfname;
+     return FAIL;
+   }
++#ifdef __pyxis__
++  if (fname == NULL || curbuf->b_ffname == NULL
++      || path_fnamecmp(fname, curbuf->b_ffname) != 0) {
++    buf_release_file_reference(curbuf);
++    curbuf->b_native_file_loaded = false;
++  }
++#endif
+   curbuf->b_flags |= BF_NOTEDITED;
+   if (xfname != NULL && *xfname != NUL) {
+     buf = buflist_new(fname, xfname, curwin->w_cursor.lnum, 0);
+@@ -1847,7 +1854,14 @@ int do_write(exarg_T *eap)
+     other = false;
+   } else {
+     fname = ffname;
++#ifdef __pyxis__
++    free_fname = path_native_file_name(ffname);
++    if (free_fname == NULL) {
++      goto theend;
++    }
++#else
+     free_fname = fix_fname(ffname);
++#endif
+     // When out-of-memory, keep unexpanded file name, because we MUST be
+     // able to write the file in this situation.
+     if (free_fname != NULL) {
+@@ -1931,6 +1945,12 @@ int do_write(exarg_T *eap)
+       fname = alt_buf->b_sfname;
+       alt_buf->b_sfname = curbuf->b_sfname;
+       curbuf->b_sfname = fname;
++#ifdef __pyxis__
++      buf_release_file_reference(curbuf);
++      curbuf->b_native_file_loaded = false;
++      buf_release_file_reference(alt_buf);
++      alt_buf->b_native_file_loaded = false;
++#endif
+       buf_name_changed(curbuf);
+       apply_autocmds(EVENT_BUFFILEPOST, NULL, NULL, false, curbuf);
+       apply_autocmds(EVENT_BUFFILEPOST, NULL, NULL, false, alt_buf);
+@@ -2243,7 +2263,15 @@ int getfile(int fnum, char *ffname_arg, char *sfname_arg, bool setpm, linenr_T l
+ 
+   if (fnum == 0) {
+     // make ffname full path, set sfname
++    char *selected = ffname;
+     fname_expand(curbuf, &ffname, &sfname);
++#ifdef __pyxis__
++    if (selected != NULL && ffname == NULL) {
++      return GETFILE_ERROR;
++    }
++#else
++    (void)selected;
++#endif
+     other = otherfile(ffname);
+     free_me = ffname;                   // has been allocated, free() later
+   } else {
+@@ -2402,7 +2430,14 @@ int do_ecmd(int fnum, char *ffname, char *sfname, exarg_T *eap, linenr_T newlnum
+         ffname = curbuf->b_ffname;
+         sfname = curbuf->b_fname;
+       }
++#ifdef __pyxis__
++      free_fname = path_native_file_name(ffname);
++      if (free_fname == NULL) {
++        goto theend;
++      }
++#else
+       free_fname = fix_fname(ffname);       // may expand to full path name
++#endif
+       if (free_fname != NULL) {
+         ffname = free_fname;
+       }
+diff --git a/src/nvim/ex_cmds2.c b/src/nvim/ex_cmds2.c
+index cfd71a1..ef7e620 100644
+--- a/src/nvim/ex_cmds2.c
++++ b/src/nvim/ex_cmds2.c
+@@ -214,6 +214,9 @@ void dialog_changed(buf_T *buf, bool checkall)
+     bool empty_bufname = buf->b_fname == NULL;
+     if (empty_bufname) {
+       buf_set_name(buf->b_fnum, "Untitled");
++      if (buf->b_fname == NULL) {
++        return;
++      }
+     }
+ 
+     if (check_overwrite(&ea, buf, buf->b_fname, buf->b_ffname, false) == OK) {
+diff --git a/src/nvim/fileio.c b/src/nvim/fileio.c
+index 7464be7..6e3ca0f 100644
+--- a/src/nvim/fileio.c
++++ b/src/nvim/fileio.c
+@@ -282,7 +282,7 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
+   if (sfname == NULL) {
+     sfname = fname;
+   }
+-#if defined(UNIX)
++#if defined(UNIX) && !defined(__pyxis__)
+   fname = sfname;
+ #endif
+ 
+diff --git a/src/nvim/path.c b/src/nvim/path.c
+index a849a8a..250efd3 100644
+--- a/src/nvim/path.c
++++ b/src/nvim/path.c
+@@ -22,6 +22,8 @@
+ #include "nvim/macros_defs.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
++#include "nvim/message.h"
++#include "nvim/gettext_defs.h"
+ #include "nvim/option.h"
+ #include "nvim/option_vars.h"
+ #include "nvim/os/fs.h"
+@@ -1928,6 +1930,27 @@ char *fix_fname(const char *fname)
+ #endif
+ }
+ 
++#ifdef __pyxis__
++// File selection must anchor a possibly absent leaf to a proved existing parent.
++char *path_native_file_name(const char *fname)
++{
++  if (fname == NULL) {
++    return NULL;
++  }
++  if (strlen(fname) >= MAXPATHL) {
++    emsg(_("E212: Native file name too long"));
++    return NULL;
++  }
++  char *full = xmalloc(MAXPATHL);
++  if (path_to_absolute(fname, full, MAXPATHL, true) == FAIL) {
++    xfree(full);
++    emsg(_("E212: Cannot prove native file parent"));
++    return NULL;
++  }
++  return full;
++}
++#endif
++
+ /// Set the case of the file name, if it already exists.  This will cause the
+ /// file name to remain exactly the same.
+ /// Only required for file systems where case is ignored and preserved.
+@@ -2425,8 +2448,13 @@ static int path_to_absolute(const char *fname, char *buf, size_t len, int force)
+         p += 3;
+       }
+       assert(p >= fname);
+-      memcpy(relative_directory, fname, (size_t)(p - fname + 1));
+-      relative_directory[p - fname + 1] = NUL;
++      size_t parent_length = (size_t)(p - fname) + (*p != NUL);
++      if (parent_length >= len) {
++        xfree(relative_directory);
++        return FAIL;
++      }
++      memcpy(relative_directory, fname, parent_length);
++      relative_directory[parent_length] = NUL;
+       end_of_path = (vim_ispathsep(*p) ? p + 1 : p);
+     } else {
+       relative_directory[0] = NUL;

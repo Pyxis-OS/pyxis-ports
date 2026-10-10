@@ -41,6 +41,13 @@ disabled swap/backup/writebackup. Startup sets `NVIM_NOTTYFAST`, clears
 passthrough reference; resize uses native geometry generations. Capability
 traversal supplies scheme paths and `:cd`.
 
+File selection proves the existing parent, then anchors the final component to
+an absolute native scheme path; missing/unproved parents refuse selection.
+The selected name stays fixed across `:cd`. New files, `:w newname` and new
+`:saveas` targets create exclusively; files that appeared meanwhile require
+force. `:w!` selects the current writable target before truncation. Plain
+`:w >> missing` refuses; `:w! >> missing` creates and appends.
+
 Loaded file buffers retain a file reference until unload. Ordinary
 `:w` compares the held reference with the actual writable target, including
 identity and modification-time validity, before truncation. A replaced target,
@@ -71,8 +78,8 @@ reaching any uv call. QEMU
 qualification covers local editing, highlighting, save and `:cd` with the
 16-colour profile; it does not establish physical-host qualification.
 
-The seven ordered patches adapt platform/process APIs, native paths and file
-comparison, the console TUI, core/runtime assumptions, persistent undo, static parser registration and the swapfile prompt, which no
+The eight ordered patches adapt platform/process APIs, native paths and file
+comparison, the console TUI, core/runtime assumptions, persistent undo, static parser registration, anchored file selection and the swapfile prompt, which no
 longer indexes the passwd record Pyxis refuses to supply. Undo
 files are created with libc's 0666 creation mode instead of the edited
 file's permission bits. Exact pins,
