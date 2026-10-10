@@ -328,42 +328,6 @@ index dfa1422..3041077 100644
  	int rs;
  	if (std == 1)
  		fflush(stdout);
-diff --git a/terminal.c b/terminal.c
-index 6e58484..9086b2e 100644
---- a/terminal.c
-+++ b/terminal.c
-@@ -42,6 +42,22 @@ int hard_read(int fd, unsigned char *p, int l)
- 	return t;
- }
- 
-+#ifdef PYXIS
-+
-+/* The working directory is a chain of directory capabilities with no textual
-+ * path. Without one, relative file:// URLs stay relative and libc resolves
-+ * them against that chain. */
-+unsigned char *get_cwd(void)
-+{
-+	return NULL;
-+}
-+
-+void set_cwd(unsigned char *path)
-+{
-+}
-+
-+#else
-+
- unsigned char *get_cwd(void)
- {
- 	int bufsize = 128;
-@@ -66,6 +82,8 @@ void set_cwd(unsigned char *path)
- 		EINTRLOOP(rs, chdir(cast_const_char path));
- }
- 
-+#endif
-+
- unsigned char get_attribute(int fg, int bg)
- {
- 	return ((bg & 7) << 3) | (fg & 7) | ((fg & 8) << 3);
 diff --git a/vpipe.inc b/vpipe.inc
 index 9a16728..8a4d191 100644
 --- a/vpipe.inc

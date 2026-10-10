@@ -103,3 +103,16 @@ index e2b77c6..f4acea2 100644
  			if (port) *port = protocols[i].port;
  			if (func) *func = protocols[i].func;
  			if (nc_func) *nc_func = protocols[i].nc_func;
+@@ -502,6 +524,12 @@ static void insert_wd(unsigned char **up, unsigned char *cwd)
+ 	int url_l;
+ 	int i;
+ 	if (!u || !cwd || !*cwd) return;
++#ifdef PYXIS
++	/* A cwd description can be stale after rename. Keep file:// paths
++	   relative so libc resolves through its retained directory grants,
++	   rather than reopening the description as filesystem authority. */
++	return;
++#endif
+ 	if (casecmp(u, cast_uchar "file://", 7)) return;
+ 	for (i = 7; u[i] && !dir_sep(u[i]); i++) ;
+ 	host = memacpy(u + 7, i - 7);

@@ -51,8 +51,8 @@ input or input loss discards the pending chunk instead of executing partial
 source. Multiline source grows on Lua's heap. Allocation and terminal failures
 exit nonzero. Prompts are fixed; `_PROMPT`/`_PROMPT2` overrides are not supported.
 
-Script paths use the inherited working directory or an explicit Pyxis URI;
-the interpreter retains that cwd. Module search is separate from script loading.
+Script paths use the shared libc working directory or an explicit Pyxis URI;
+the interpreter retains its native directory grants. Module search is separate from script loading.
 For example, `lua home://scripts/hello.lua Alice` runs that file while retaining
 the caller's working directory. `arg[0]` is the supplied script name, positive
 indices contain its arguments, and negative indices contain preceding interpreter
@@ -90,6 +90,9 @@ module is executable-only, leaving configuration embeddings restricted.
 `PYXIS_BUNDLE_CATALOG` URI after a bare command's `bin://name.pxe` lookup fails.
 `bin://name` retains an existing file lookup before catalog resolution; a
 `.pxb` path, including a trailing slash, selects that bundle's default entry.
+Catalog lookup reads the shared mutable environment and preserves allocation
+errors. Child launch captures an owned snapshot of the current libc cwd and
+environment, keeping parent mutations separate from launch metadata.
 Invalid catalogs or manifests raise native errors. Bundles receive their
 manifest's requested resources from Lua's existing grants and read-only
 app/resource roots. Plain children omit an

@@ -38,8 +38,8 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
    - **Whole reads:** `Bread` loops until it has the count, end of file or an
      error, and the data checksum uses it (see the libc gaps).
    - **System:** the page size comes from `MEMORY_PAGE_SIZE`; there are no
-     signal handlers or stack traces; the log's working-directory line is
-     empty.
+     signal handlers or stack traces; the log uses libc's working-directory
+     description.
    - **Refresh rate:** Pyxis displays report none, which SDL gives as 0.
      Upstream's default frame limit divides by it and hangs in its catch-up
      loop, so Pyxis uses 60 Hz.
@@ -57,10 +57,10 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
    - **Locations:** the data is `boot://share/duke3d/` and generated files go
      to `home://eduke32/`, created on first run and searched first. Upstream
      uses the executable's directory and the XDG or Steam paths.
-   - **Working directory:** the port keeps its own, set by `buildvfs_chdir`.
-     The engine's open, `fopen`, `stat`, `mkdir`, `unlink` and directory
-     listings resolve relative names against it and collapse `./` and
-     repeated slashes.
+   - **Working directory:** `buildvfs_chdir` and `buildvfs_getcwd` use libc's
+     retained directory capabilities and descriptive scheme path. File operations
+     pass their original paths to libc; no private textual cwd or pre-lookup
+     component collapsing substitutes for ordered native traversal.
    - **Pyxis roots:** `Bcorrectfilename` keeps `boot://` and similar roots
      whole instead of collapsing the double slash.
    - **Home:** `Bgethomedir` returns `home://`.
@@ -74,7 +74,6 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
 
 The port works around these instead of adding them to libc, as accepted for
 this task; each needs a design decision first:
-- **Working directory:** libc has no `chdir` or `getcwd`; patch 3 keeps one.
 - **Whole reads:** libc `read` returns one native transfer, under 4 KiB from
   a file, so it can stop short of the count before the end. EDuke32 expects
   POSIX's whole reads from regular files.

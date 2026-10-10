@@ -51,7 +51,7 @@ Console raw mode and blocking stream writes are unsupported.
 Child launch supports up to three explicit stdin/stdout/stderr slots, directional
 CREATE_PIPE, and inherited native PIPE/CONSOLE descriptors. Duplex/IPC pipes,
 extra slots, FILE cursor inheritance, buffered inherited pipe input, process
-flags, cwd selection and child bundle paths reject before launch. Closing a
+flags and child bundle paths reject before launch. Closing a
 process handle releases observation and never terminates the child. EXITED keeps
 its signed status; FAULTED/TERMINATED report -1 and term_signal zero. The public
 `exit_reason` is the native PROCESS_* result. Numeric pid fields/accessors return
@@ -75,7 +75,14 @@ sockets/address conversion, watches, signals and dynamic module loading return
 UV_ENOSYS. Unsupported fs flags remain distinct so open can reject them before
 effects. Single-thread mutexes, recursive depth, once, keys and thread identity
 are real native-process state; they do not claim cross-thread synchronization.
-Cwd/environment are immutable startup observations; mutation is unsupported.
+Cwd and environment use the shared mutable libc stores. `uv_chdir` performs
+native capability traversal; `uv_cwd` returns its tracked scheme description,
+which may become stale after external rename. Environment mutation copies strings,
+and `uv_os_environ` returns a separately owned enumeration. Spawn captures the
+current cwd/environment. A supplied cwd resolves in an independent child context,
+and a supplied environment replaces inheritance, including an empty array.
+Relative executable and script interpreter paths resolve in the child context;
+there is no colon-separated PATH search or Unix slash-root namespace.
 Peripheral value-only memory/load/metrics introspection and Unicode conversion
 symbols are omitted from this bounded library profile. Consumers must adapt
 rather than assume those APIs exist or that every upstream libuv facility works.

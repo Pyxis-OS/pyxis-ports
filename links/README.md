@@ -51,8 +51,9 @@ to empty units.
   - **Nonblocking pipes.** Virtual pipes take descriptor numbers from
     `pyxis.c` instead of opening `/dev/null`, and are nonblocking as on DOS.
   - **No other programs.** `exe` fails, since Links starts no other programs.
-    There is no textual working directory, so relative `file://` URLs stay
-    relative.
+    Working-directory save/restore uses libc `getcwd`/`chdir`. Relative
+    `file://` URLs stay relative so loading uses retained directory capabilities;
+    a stale descriptive path after rename is not reopened as URL authority.
   - **Exit sequence.** Mouse-mode sequences are not sent.
 - **0002 Narrow file metadata.** Libc's `struct stat` has only a type and a
   size. Directory listings leave the date column blank, and the bookmark file

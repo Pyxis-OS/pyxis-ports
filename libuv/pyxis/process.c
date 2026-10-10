@@ -10,8 +10,12 @@
 #include <errno.h>
 #include <handle.h>
 #include <launcher.h>
+#include <path.h>
 #include <pipe.h>
 #include <process.h>
+#include <provider.h>
+#include <pyxis/environment.h>
+#include <pyxis/working_path.h>
 #include <startup.h>
 #include <stdlib.h>
 #include <string.h>
@@ -93,6 +97,37 @@ static int grant_same(struct launch_grant *grant, handle_t source)
   return 0;
 }
 
+static int open_image(const struct path_context *context, const char *path, handle_t *image)
+{
+  size_t length = strlen(path);
+  if (length == SIZE_MAX || context->count > SIZE_MAX - length - 1 ||
+      context->count + length + 1 > SIZE_MAX / sizeof(handle_t)) {
+    return UV_EOVERFLOW;
+  }
+  size_t slots = context->count + length + 1;
+  handle_t *directories = uv__malloc(slots * sizeof(*directories));
+  char *component = uv__malloc(length + 1);
+  struct provider_http_workspace *http = provider_http_uri(path) ?
+      uv__malloc(sizeof(*http)) : NULL;
+  if (!directories || !component || (provider_http_uri(path) && !http)) {
+    uv__free(http);
+    uv__free(component);
+    uv__free(directories);
+    return UV_ENOMEM;
+  }
+  struct path_workspace workspace = {
+    .directories = directories, .directory_capacity = slots,
+    .component = component, .component_capacity = length + 1,
+    .http = http, .clock = startup_resource("clock"),
+  };
+  enum call_status status = path_open_file(context, path, FILE_RIGHT_READ, false,
+      &workspace, image);
+  uv__free(http);
+  uv__free(component);
+  uv__free(directories);
+  return uv__pyxis_status(status);
+}
+
 int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t *options)
 {
   if (!loop || !process || !options) {
@@ -111,7 +146,7 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
     return UV_EINVAL;
   }
   size_t file_length = strlen(options->file);
-  if (options->flags || options->cwd || options->stdio_count > STARTUP_STREAM_COUNT ||
+  if (options->flags || options->stdio_count > STARTUP_STREAM_COUNT ||
       (file_length >= 4 && !strcmp(options->file + file_length - 4, ".pxb"))) {
     return UV_ENOSYS;
   }
@@ -125,8 +160,10 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
   if (error) {
     return error;
   }
-  int image_fd = -1;
-  size_t depth = startup_working_directory_count();
+  handle_t image = HANDLE_INVALID;
+  struct pyxis_working_snapshot working = {0};
+  struct pyxis_environment_snapshot inherited_environment = {0};
+  size_t depth = 0;
   size_t roots_count = startup_root_count();
   const struct startup_binding *startup_bindings = startup_roots();
   struct launch_grant *grants = NULL;
@@ -134,7 +171,18 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
   struct startup_variable *environment = NULL;
   char **environment_names = NULL;
   size_t environment_count = 0;
-  if (depth > SIZE_MAX / sizeof(*grants) - roots_count - 7) {
+  enum call_status snapshot_status = pyxis_working_snapshot_init(&working, options->cwd);
+  if (snapshot_status != CALL_OK) {
+    error = snapshot_status == CALL_WRONG_TYPE ? UV_ENOTDIR :
+        uv__pyxis_status(snapshot_status);
+    goto done;
+  }
+  depth = working.context.count;
+  if (working.context.roots) {
+    roots_count = working.context.root_count;
+  }
+  if (roots_count > STARTUP_ROOT_LIMIT ||
+      depth > SIZE_MAX / sizeof(*grants) - roots_count - 7) {
     error = UV_EOVERFLOW;
     goto done;
   }
@@ -165,7 +213,10 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
   struct launch_binding roots[STARTUP_ROOT_LIMIT];
   size_t root_count = 0;
   for (size_t i = 0; i < roots_count; ++i) {
-    const char *name = (const char *)(uintptr_t)startup_bindings[i].name;
+    const char *name = working.context.roots ? working.context.roots[i].name :
+        (const char *)(uintptr_t)startup_bindings[i].name;
+    handle_t source = working.context.roots ? working.context.roots[i].handle :
+        startup_bindings[i].handle;
     if (!strcmp(name, "app")) {
       continue;
     }
@@ -173,15 +224,15 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
       error = UV_ENOSPC;
       goto done;
     }
-    error = grant_same(&grants[grant_count], startup_bindings[i].handle);
+    error = grant_same(&grants[grant_count], source);
     if (error) {
       goto done;
     }
-    roots[root_count++] = (struct launch_binding){startup_bindings[i].name, grant_count++};
+    roots[root_count++] = (struct launch_binding){(uintptr_t)name, grant_count++};
   }
   for (size_t i = 0; i < depth; ++i) {
     directories[i] = grant_count;
-    error = grant_same(&grants[grant_count++], startup_working_directory(i));
+    error = grant_same(&grants[grant_count++], working.context.directories[i]);
     if (error) {
       goto done;
     }
@@ -194,13 +245,14 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
     .root_count = root_count,
     .working_directories = (uintptr_t)directories,
     .working_directory_count = depth,
-    .working_path = (uintptr_t)startup_working_path(),
+    .working_path = (uintptr_t)working.path,
     .argv = (uintptr_t)options->args,
   };
   while (options->args[request.argc]) {
     ++request.argc;
   }
-  handle_t namespace = startup_namespace();
+  handle_t namespace = working.context.namespace_handle != HANDLE_INVALID ?
+      working.context.namespace_handle : startup_namespace();
   if (namespace != HANDLE_INVALID) {
     error = grant_same(&grants[grant_count], namespace);
     if (error) {
@@ -235,20 +287,19 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
     request.environment = (uintptr_t)environment;
     request.environment_count = environment_count;
   } else {
-    request.environment = (uintptr_t)startup_environment_variables();
-    request.environment_count = startup_environment_count();
+    snapshot_status = pyxis_environment_snapshot_init(&inherited_environment);
+    if (snapshot_status != CALL_OK) {
+      error = uv__pyxis_status(snapshot_status);
+      goto done;
+    }
+    request.environment = (uintptr_t)inherited_environment.variables;
+    request.environment_count = inherited_environment.count;
   }
-  image_fd = open(options->file, O_RDONLY);
-  if (image_fd < 0) {
-    error = uv_translate_sys_error(errno);
+  error = open_image(&working.context, options->file, &image);
+  if (error) {
     goto done;
   }
-  struct pyxis_descriptor_binding image;
-  if (pyxis_descriptor_borrow(image_fd, &image)) {
-    error = uv_translate_sys_error(errno);
-    goto done;
-  }
-  request.image = image.handle;
+  request.image = image;
   for (size_t i = 0; i < STARTUP_STREAM_COUNT; ++i) {
     if (streams[i].stream) {
       struct pipe_create_reply pair;
@@ -279,7 +330,8 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
   }
   request.grant_count = grant_count;
   handle_t observer;
-  enum call_status status = program_launch(startup_resource("launcher"), &request, NULL, &observer);
+  enum call_status status = program_launch(startup_resource("launcher"), &request,
+      &working.context, &observer);
   if (status != CALL_OK) {
     error = uv__pyxis_status(status);
     goto done;
@@ -301,9 +353,11 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
   error = 0;
 
 done:
-  if (image_fd >= 0) {
-    close(image_fd);
+  if (image != HANDLE_INVALID) {
+    handle_close(image);
   }
+  pyxis_environment_snapshot_close(&inherited_environment);
+  pyxis_working_snapshot_close(&working);
   for (size_t i = 0; i < STARTUP_STREAM_COUNT; ++i) {
     if (streams[i].parent_fd >= 0) {
       close(streams[i].parent_fd);

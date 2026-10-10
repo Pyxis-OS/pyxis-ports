@@ -189,7 +189,9 @@ rejected by the Pyxis target.
 
 When the compiler itself is built for Pyxis:
 
-- Relative names use the inherited working directory through libc streams.
+- Relative names use the current libc working directory through libc streams.
+  Debug directory metadata uses its tracked scheme description; external rename
+  may leave that description stale without invalidating retained grants.
   A leading `scheme://` selects a startup root. Components are not normalized
   before traversal; `missing/..` must still fail at `missing`.
 - Include/library path APIs take one path per call; colons are preserved.

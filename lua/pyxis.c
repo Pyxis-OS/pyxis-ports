@@ -27,6 +27,8 @@
 #include <psa/crypto.h>
 #include <psa/crypto_extra.h>
 #include <pyxis/stdio.h>
+#include <pyxis/environment.h>
+#include <pyxis/working_path.h>
 #include <random.h>
 #include <startup.h>
 #include <stdio.h>
@@ -47,6 +49,8 @@ struct resources {
   char *argument_bytes;
   struct launch_grant *grants;
   uint64_t *directories;
+  struct pyxis_working_snapshot working;
+  struct pyxis_environment_snapshot environment;
   char *name;
   psa_hash_operation_t hash;
   bool hashing;
@@ -150,6 +154,8 @@ static enum call_status release_resources(struct resources *owned)
   owned->grants = NULL;
   free(owned->directories);
   owned->directories = NULL;
+  pyxis_working_snapshot_close(&owned->working);
+  pyxis_environment_snapshot_close(&owned->environment);
   free(owned->name);
   owned->name = NULL;
   return status;
@@ -211,11 +217,16 @@ static const char *check_text(lua_State *state, int index)
   return text;
 }
 
-/* Path resolution borrows the startup cwd, never duplicates or closes it. */
+/* Path resolution borrows the shared libc context for this call. */
 static enum call_status open_path(const char *path, uint64_t kind, uint64_t rights,
     handle_t *object)
 {
-  size_t length = strlen(path), depth = startup_working_directory_count();
+  const struct path_context *context;
+  enum call_status status = pyxis_working_context(&context);
+  if (status != CALL_OK) {
+    return status;
+  }
+  size_t length = strlen(path), depth = context->count;
   if (length == SIZE_MAX || depth > SIZE_MAX - length - 1 ||
       depth + length + 1 > SIZE_MAX / sizeof(handle_t)) {
     return CALL_LIMIT;
@@ -228,11 +239,11 @@ static enum call_status open_path(const char *path, uint64_t kind, uint64_t righ
     free(component);
     return CALL_NO_MEMORY;
   }
-  struct path_workspace workspace = {directories, slots, component, length + 1};
-  struct path_context context = {
-    .directories = (handle_t *)startup_working_directories(), .count = depth,
+  struct path_workspace workspace = {
+    .directories = directories, .directory_capacity = slots,
+    .component = component, .component_capacity = length + 1,
   };
-  enum call_status status = path_resolve(&context, path, kind, rights, &workspace, object);
+  status = path_resolve(context, path, kind, rights, &workspace, object);
   free(directories);
   free(component);
   return status;
@@ -240,15 +251,15 @@ static enum call_status open_path(const char *path, uint64_t kind, uint64_t righ
 
 static enum call_status open_bundle_command(const char *command, struct resources *owned)
 {
-  const char *catalog = startup_environment("PYXIS_BUNDLE_CATALOG");
-  if (!catalog) {
-    return CALL_NOT_FOUND;
+  const char *catalog;
+  enum call_status status = pyxis_environment_get("PYXIS_BUNDLE_CATALOG", &catalog);
+  if (status != CALL_OK) {
+    return status;
   }
-  struct path_context context = {
-    .directories = (handle_t *)startup_working_directories(),
-    .count = startup_working_directory_count(),
-  };
-  return bundle_command_open(&context, catalog, command, &owned->bundle);
+  const struct path_context *context;
+  status = pyxis_working_context(&context);
+  return status == CALL_OK ? bundle_command_open(context, catalog, command,
+      &owned->bundle) : status;
 }
 
 static enum call_status open_program(const char *command, struct resources *owned)
@@ -262,11 +273,9 @@ static enum call_status open_program(const char *command, struct resources *owne
     --end;
   }
   if (end >= 4 && !memcmp(command + end - 4, ".pxb", 4)) {
-    struct path_context context = {
-      .directories = (handle_t *)startup_working_directories(),
-      .count = startup_working_directory_count(),
-    };
-    return bundle_open(&context, command, &owned->bundle);
+    const struct path_context *context;
+    enum call_status status = pyxis_working_context(&context);
+    return status == CALL_OK ? bundle_open(context, command, &owned->bundle) : status;
   }
   if (strchr(command, '/')) {
     enum call_status status = open_path(command, DIRECTORY_KIND_FILE,
@@ -355,7 +364,16 @@ static enum call_status add_resource(struct launch_request *request,
 static enum call_status prepare_grants(struct resources *owned, struct launch_request *request,
     struct launch_binding *bindings, struct launch_binding *roots)
 {
-  size_t root_count = startup_root_count(), depth = startup_working_directory_count();
+  enum call_status status = pyxis_working_snapshot_init(&owned->working, NULL);
+  if (status == CALL_OK) {
+    status = pyxis_environment_snapshot_init(&owned->environment);
+  }
+  if (status != CALL_OK) {
+    return status;
+  }
+  const struct path_context *context = &owned->working.context;
+  size_t root_count = context->roots ? context->root_count : startup_root_count();
+  size_t depth = context->count;
   if (root_count > STARTUP_ROOT_LIMIT ||
       depth > SIZE_MAX / sizeof(*owned->grants) - root_count - RESOURCE_LIMIT - 4) {
     return CALL_LIMIT;
@@ -372,15 +390,17 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   request->roots = (uintptr_t)roots;
   request->working_directories = (uintptr_t)owned->directories;
   request->working_directory_count = depth;
-  request->working_path = (uintptr_t)startup_working_path();
-  request->environment = (uintptr_t)startup_environment_variables();
-  request->environment_count = startup_environment_count();
+  request->working_path = (uintptr_t)owned->working.path;
+  request->environment = (uintptr_t)owned->environment.variables;
+  request->environment_count = owned->environment.count;
   for (size_t i = 0; i < root_count + depth; ++i) {
-    if (i < root_count && !strcmp((const char *)startup_roots()[i].name, "app")) {
+    const char *name = i < root_count ? (context->roots ? context->roots[i].name :
+        (const char *)(uintptr_t)startup_roots()[i].name) : NULL;
+    if (name && !strcmp(name, "app")) {
       continue;
     }
-    handle_t source = i < root_count ? startup_roots()[i].handle :
-        startup_working_directory(i - root_count);
+    handle_t source = i < root_count ? (context->roots ? context->roots[i].handle :
+        startup_roots()[i].handle) : context->directories[i - root_count];
     struct handle_info info;
     enum call_status status = handle_query(source, &info);
     if (status != CALL_OK) {
@@ -391,7 +411,7 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     }
     if (i < root_count) {
       roots[request->root_count++] =
-          (struct launch_binding){startup_roots()[i].name, request->grant_count};
+          (struct launch_binding){(uintptr_t)name, request->grant_count};
     } else {
       owned->directories[i - root_count] = request->grant_count;
     }
@@ -464,7 +484,8 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
       }
     }
   }
-  handle_t namespace = startup_namespace();
+  handle_t namespace = context->namespace_handle != HANDLE_INVALID ?
+      context->namespace_handle : startup_namespace();
   if (namespace != HANDLE_INVALID) {
     struct handle_info info;
     enum call_status status = handle_query(namespace, &info);
@@ -566,13 +587,9 @@ static int run_program(lua_State *state)
     status = prepare_bundle_launch(owned, &request);
   }
   if (status == CALL_OK) {
-    struct path_context interpreters = {
-      .directories = (handle_t *)startup_working_directories(),
-      .count = startup_working_directory_count(),
-    };
     const struct launch_request *prepared = owned->launch ?
         bundle_launch_request(owned->launch) : &request;
-    status = program_launch(launcher, prepared, &interpreters, &owned->child);
+    status = program_launch(launcher, prepared, &owned->working.context, &owned->child);
   }
   if (status != CALL_OK) {
     return native_error(state, owned, "run", status);

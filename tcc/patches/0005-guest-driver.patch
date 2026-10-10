@@ -294,7 +294,7 @@ index 67e8564..8f1fa23 100644
  
  #include "tcc.h"
 +#ifdef __pyxis__
-+#include <startup.h>
++#include <pyxis/working_path.h>
 +#endif
  
  /* stab debug support */
@@ -306,7 +306,7 @@ index 67e8564..8f1fa23 100644
 +#ifdef __pyxis__
 +        {
 +            /* Metadata only: authority still comes from inherited handles. */
-+            const char *directory = startup_working_path();
++            const char *directory = pyxis_working_path();
 +            if (!directory)
 +                directory = "";
 +            if (strlen(directory) + 1 >= sizeof buf) {

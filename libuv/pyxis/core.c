@@ -4,9 +4,12 @@
 #include <handle.h>
 #include <limits.h>
 #include <pipe.h>
+#include <pyxis/environment.h>
+#include <pyxis/working_path.h>
 #include <startup.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <wait.h>
 
 static uv_malloc_func allocate = malloc;
@@ -608,15 +611,26 @@ static int copy_string(const char *text, char *buffer, size_t *size)
 
 int uv_cwd(char *buffer, size_t *size)
 {
-  return copy_string(startup_working_path(), buffer, size);
+  if (!buffer || !size || !*size) {
+    return UV_EINVAL;
+  }
+  const struct path_context *context;
+  enum call_status status = pyxis_working_context(&context);
+  if (status != CALL_OK) {
+    return uv__pyxis_status(status);
+  }
+  const char *path = pyxis_working_path();
+  return path ? copy_string(path, buffer, size) : UV_ENOSYS;
 }
 
 int uv_os_getenv(const char *name, char *buffer, size_t *size)
 {
-  if (!name) {
+  if (!name || !buffer || !size) {
     return UV_EINVAL;
   }
-  return copy_string(getenv(name), buffer, size);
+  const char *value;
+  enum call_status status = pyxis_environment_get(name, &value);
+  return status == CALL_OK ? copy_string(value, buffer, size) : uv__pyxis_status(status);
 }
 
 uv_pid_t uv_os_getpid(void)
@@ -644,4 +658,73 @@ const char *uv_dlerror(const uv_lib_t *library)
 {
   (void)library;
   return "module loading is unsupported";
+}
+
+int uv_chdir(const char *dir)
+{
+  return chdir(dir) ? uv_translate_sys_error(errno) : 0;
+}
+
+int uv_os_setenv(const char *name, const char *value)
+{
+  return setenv(name, value, 1) ? uv_translate_sys_error(errno) : 0;
+}
+
+int uv_os_unsetenv(const char *name)
+{
+  return unsetenv(name) ? uv_translate_sys_error(errno) : 0;
+}
+
+void uv_os_free_environ(uv_env_item_t *envitems, int count)
+{
+  for (int i = 0; i < count; ++i) {
+    uv__free(envitems[i].name);
+  }
+  uv__free(envitems);
+}
+
+int uv_os_environ(uv_env_item_t **envitems, int *count)
+{
+  if (!envitems || !count) {
+    return UV_EINVAL;
+  }
+  *envitems = NULL;
+  *count = 0;
+  struct pyxis_environment_snapshot snapshot = {0};
+  enum call_status status = pyxis_environment_snapshot_init(&snapshot);
+  if (status != CALL_OK) {
+    return uv__pyxis_status(status);
+  }
+  if (snapshot.count > INT_MAX || snapshot.count > SIZE_MAX / sizeof(uv_env_item_t)) {
+    pyxis_environment_snapshot_close(&snapshot);
+    return UV_EOVERFLOW;
+  }
+  uv_env_item_t *items = uv__calloc(snapshot.count ? snapshot.count : 1, sizeof(*items));
+  int error = items ? 0 : UV_ENOMEM;
+  size_t used = 0;
+  while (!error && used < snapshot.count) {
+    const char *name = (const char *)(uintptr_t)snapshot.variables[used].name;
+    const char *value = (const char *)(uintptr_t)snapshot.variables[used].value;
+    size_t name_size = strlen(name) + 1, value_size = strlen(value) + 1;
+    if (value_size > SIZE_MAX - name_size) {
+      error = UV_EOVERFLOW;
+      break;
+    }
+    char *storage = uv__malloc(name_size + value_size);
+    if (!storage) {
+      error = UV_ENOMEM;
+      break;
+    }
+    memcpy(storage, name, name_size);
+    memcpy(storage + name_size, value, value_size);
+    items[used++] = (uv_env_item_t){storage, storage + name_size};
+  }
+  pyxis_environment_snapshot_close(&snapshot);
+  if (error) {
+    uv_os_free_environ(items, (int)used);
+    return error;
+  }
+  *envitems = items;
+  *count = (int)used;
+  return 0;
 }

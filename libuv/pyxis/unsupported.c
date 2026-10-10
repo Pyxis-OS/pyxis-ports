@@ -593,26 +593,6 @@ int uv_interface_addresses(uv_interface_address_t** addresses, int* count)
   return UV_ENOSYS;
 }
 
-int uv_os_environ(uv_env_item_t** envitems, int* count)
-{
-  (void)envitems;
-  (void)count;
-  return UV_ENOSYS;
-}
-
-int uv_os_setenv(const char* name, const char* value)
-{
-  (void)name;
-  (void)value;
-  return UV_ENOSYS;
-}
-
-int uv_os_unsetenv(const char* name)
-{
-  (void)name;
-  return UV_ENOSYS;
-}
-
 int uv_os_gethostname(char* buffer, size_t* size)
 {
   (void)buffer;
@@ -750,12 +730,6 @@ int uv_exepath(char* buffer, size_t* size)
 {
   (void)buffer;
   (void)size;
-  return UV_ENOSYS;
-}
-
-int uv_chdir(const char* dir)
-{
-  (void)dir;
   return UV_ENOSYS;
 }
 

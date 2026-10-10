@@ -212,24 +212,6 @@ index 8d24342..50ce820 100644
  #else
          pageSize = sysconf(_SC_PAGESIZE);
  #endif
-diff --git a/source/build/src/loguru.cpp b/source/build/src/loguru.cpp
-index 226e33e..21848d9 100644
---- a/source/build/src/loguru.cpp
-+++ b/source/build/src/loguru.cpp
-@@ -652,7 +652,13 @@ namespace loguru
- 			#define getcwd _getcwd
- 		#endif
- 
-+#if defined(__pyxis__)
-+		// Pyxis libc has no getcwd; the log's working-directory line stays empty.
-+		s_current_dir[0] = 0;
-+		if (false) {
-+#else
- 		if (!getcwd(s_current_dir, sizeof(s_current_dir))) {
-+#endif
- 			const auto error_text = errno_as_text();
- 			LOG_F(WARNING, "Failed to get current working directory: " LOGURU_FMT(s) "", error_text.c_str());
- 		}
 diff --git a/source/build/src/mmulti.cpp b/source/build/src/mmulti.cpp
 index dd826ac..cd58be0 100644
 --- a/source/build/src/mmulti.cpp

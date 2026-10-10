@@ -2,86 +2,22 @@ diff --git a/source/build/include/vfs.h b/source/build/include/vfs.h
 index 4862820..4321f9d 100644
 --- a/source/build/include/vfs.h
 +++ b/source/build/include/vfs.h
-@@ -137,9 +137,45 @@ static FORCE_INLINE int64_t buildvfs_flength(FILE * f)
+@@ -137,6 +137,15 @@ static FORCE_INLINE int64_t buildvfs_flength(FILE * f)
  #endif
  }
  
 +#if defined(__pyxis__)
-+// Pyxis libc has no chdir or getcwd. The port keeps its own working
-+// directory, set by buildvfs_chdir, and these wrappers resolve relative names
-+// against it (vfs.cpp). Names with a root, such as boot://..., pass through.
-+char const *buildvfs_resolve(char const *path, char *buf, size_t size);
-+int buildvfs_pyxis_chdir(char const *dir);
-+char *buildvfs_pyxis_getcwd(char *buf, size_t size);
-+FILE *buildvfs_pyxis_fopen(char const *path, char const *mode);
-+int buildvfs_pyxis_open(char const *path, int flags);
-+int buildvfs_pyxis_stat(char const *path, struct Bstat *st);
-+int buildvfs_pyxis_mkdir(char const *path);
-+int buildvfs_pyxis_unlink(char const *path);
-+
-+#undef buildvfs_fopen_read
-+#undef buildvfs_fopen_write
-+#undef buildvfs_fopen_write_text
-+#undef buildvfs_fopen_append
-+#undef buildvfs_chdir
++// Libc owns cwd and resolves original paths through retained directory grants.
++// Native creation uses no permission bits.
 +#undef buildvfs_mkdir
-+#undef buildvfs_getcwd
-+#undef buildvfs_open_read
 +#undef buildvfs_open_write
-+#define buildvfs_fopen_read(fn) buildvfs_pyxis_fopen((fn), "rb")
-+#define buildvfs_fopen_write(fn) buildvfs_pyxis_fopen((fn), "wb")
-+#define buildvfs_fopen_write_text(fn) buildvfs_pyxis_fopen((fn), "w")
-+#define buildvfs_fopen_append(fn) buildvfs_pyxis_fopen((fn), "ab+")
-+#define buildvfs_chdir(dir) buildvfs_pyxis_chdir(dir)
-+#define buildvfs_mkdir(dir, x) buildvfs_pyxis_mkdir(dir)
-+#define buildvfs_getcwd(buf, size) buildvfs_pyxis_getcwd((buf), (size))
-+#define buildvfs_open_read(fn) buildvfs_pyxis_open((fn), O_RDONLY|O_BINARY)
-+#define buildvfs_open_write(fn) buildvfs_pyxis_open((fn), O_BINARY|O_TRUNC|O_CREAT|O_WRONLY)
++#define buildvfs_mkdir(dir, x) mkdir((dir), 0)
++#define buildvfs_open_write(fn) open((fn), O_BINARY|O_TRUNC|O_CREAT|O_WRONLY, 0666)
 +#endif
 +
  static FORCE_INLINE int buildvfs_exists(char const* path)
  {
--#ifdef _WIN32
-+#if defined(__pyxis__)
-+    struct Bstat st;
-+    return !buildvfs_pyxis_stat(path, &st);
-+#elif defined(_WIN32)
-     return GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES;
- #else
-     struct Bstat st;
-@@ -150,9 +186,17 @@ static FORCE_INLINE int buildvfs_exists(char const* path)
- static FORCE_INLINE int buildvfs_isdir(char const *path)
- {
-     struct Bstat st;
-+#if defined(__pyxis__)
-+    return (buildvfs_pyxis_stat(path, &st) ? 0 : (st.st_mode & S_IFDIR) == S_IFDIR);
-+#else
-     return (Bstat(path, &st) ? 0 : (st.st_mode & S_IFDIR) == S_IFDIR);
-+#endif
- }
-+#if defined(__pyxis__)
-+#define buildvfs_unlink(path) buildvfs_pyxis_unlink(path)
-+#else
- #define buildvfs_unlink(path) unlink(path)
-+#endif
- 
- #endif
- 
-diff --git a/source/build/src/baselayer.cpp b/source/build/src/baselayer.cpp
-index 41044a7..2c956b0 100644
---- a/source/build/src/baselayer.cpp
-+++ b/source/build/src/baselayer.cpp
-@@ -253,6 +253,10 @@ void engineSetLogFile(const char* fn, loguru::Verbosity verbosity /*= LOG_ENGINE
-     loguru::g_stderr_verbosity = verbosity;
-     loguru::remove_callback(CB_ENGINE);
-     loguru::add_callback(CB_ENGINE, engineLogCallback, nullptr, verbosity);
-+#if defined(__pyxis__)
-+    char buf[BMAX_PATH];
-+    fn = buildvfs_resolve(fn, buf, sizeof(buf));
-+#endif
-     loguru::add_file(fn, mode, verbosity);
- }
- 
+ #ifdef _WIN32
 diff --git a/source/build/src/compat.cpp b/source/build/src/compat.cpp
 index 50ce820..640c8d5 100644
 --- a/source/build/src/compat.cpp
@@ -109,19 +45,6 @@ index 50ce820..640c8d5 100644
      char *fn = Xstrdup(filename);
      char *tokarr[64], *first, *next = NULL;
  
-@@ -358,6 +367,12 @@ typedef struct
- BDIR *Bopendir(const char *name)
- {
-     BDIR_real *dirr;
-+#if defined __pyxis__
-+    // Resolve against the port's working directory; Breaddir stats entries
-+    // under the stored name.
-+    char resolved[BMAX_PATH];
-+    name = buildvfs_resolve(name, resolved, sizeof(resolved));
-+#endif
- #ifdef _MSC_VER
-     char *t, *tt;
-     t = (char *)Xmalloc(Bstrlen(name) + 1 + 4);
 diff --git a/source/build/src/screenshot.cpp b/source/build/src/screenshot.cpp
 index 88c245c..c6566c3 100644
 --- a/source/build/src/screenshot.cpp
@@ -149,121 +72,13 @@ diff --git a/source/build/src/vfs.cpp b/source/build/src/vfs.cpp
 index 141409e..6de050d 100644
 --- a/source/build/src/vfs.cpp
 +++ b/source/build/src/vfs.cpp
-@@ -13,6 +13,107 @@
- #include "osd.h"
- #include "pragmas.h"
- #include "vfs.h"
-+
-+#if defined(__pyxis__)
-+#include <errno.h>
-+#include <unistd.h>
-+
-+// The port's working directory; empty until buildvfs_chdir, when relative
-+// names resolve as libc resolves them.
-+static char pyxis_cwd[BMAX_PATH];
-+
-+char const *buildvfs_resolve(char const *path, char *buf, size_t size)
-+{
-+    int length;
-+
-+    if (Bstrstr(path, "://"))
-+        length = Bsnprintf(buf, size, "%s", path);
-+    else if (pyxis_cwd[0])
-+        length = Bsnprintf(buf, size, "%s/%s", pyxis_cwd, path);
-+    else
-+        return path;
-+
-+    if (length < 0 || (size_t)length >= size)
-+        return path;
-+
-+    // The engine builds names such as ./ and dir///; collapse them, and drop a
-+    // trailing slash unless it ends the root.
-+    Bcorrectfilename(buf, 0);
-+    size_t end = Bstrlen(buf);
-+    if (end > 0 && buf[end - 1] == '/' && !(end >= 3 && buf[end - 2] == '/' && buf[end - 3] == ':'))
-+        buf[end - 1] = 0;
-+
-+    return buf;
-+}
-+
-+int buildvfs_pyxis_chdir(char const *dir)
-+{
-+    char buf[BMAX_PATH];
-+    char const *path = buildvfs_resolve(dir, buf, sizeof(buf));
-+    struct Bstat st;
-+
-+    if (Bstat(path, &st) < 0)
-+        return -1;
-+    if (!(st.st_mode & S_IFDIR))
-+    {
-+        errno = ENOTDIR;
-+        return -1;
-+    }
-+    if (Bstrlen(path) >= sizeof(pyxis_cwd))
-+    {
-+        errno = ERANGE;
-+        return -1;
-+    }
-+    Bstrcpy(pyxis_cwd, path);
-+    return 0;
-+}
-+
-+char *buildvfs_pyxis_getcwd(char *buf, size_t size)
-+{
-+    if (!pyxis_cwd[0])
-+    {
-+        errno = ENOENT;
-+        return NULL;
-+    }
-+    if (Bstrlen(pyxis_cwd) >= size)
-+    {
-+        errno = ERANGE;
-+        return NULL;
-+    }
-+    return Bstrcpy(buf, pyxis_cwd);
-+}
-+
-+FILE *buildvfs_pyxis_fopen(char const *path, char const *mode)
-+{
-+    char buf[BMAX_PATH];
-+    return fopen(buildvfs_resolve(path, buf, sizeof(buf)), mode);
-+}
-+
-+int buildvfs_pyxis_open(char const *path, int flags)
-+{
-+    char buf[BMAX_PATH];
-+    // Native creation has no permission bits; libc accepts only 0666.
-+    return open(buildvfs_resolve(path, buf, sizeof(buf)), flags, 0666);
-+}
-+
-+int buildvfs_pyxis_stat(char const *path, struct Bstat *st)
-+{
-+    char buf[BMAX_PATH];
-+    return Bstat(buildvfs_resolve(path, buf, sizeof(buf)), st);
-+}
-+
-+int buildvfs_pyxis_mkdir(char const *path)
-+{
-+    char buf[BMAX_PATH];
-+    return mkdir(buildvfs_resolve(path, buf, sizeof(buf)), 0);
-+}
-+
-+int buildvfs_pyxis_unlink(char const *path)
-+{
-+    char buf[BMAX_PATH];
-+    return unlink(buildvfs_resolve(path, buf, sizeof(buf)));
-+}
-+#endif
- #include "cache1d.h"
- 
- #ifdef __cplusplus
-@@ -396,7 +497,12 @@ static inline buildvfs_kfd openfrompath_internal(const char *fn, char **where, i
+@@ -396,7 +396,12 @@ static inline buildvfs_kfd openfrompath_internal(const char *fn, char **where, i
      if (findfrompath(fn, where) < 0)
          return -1;
  
 +#if defined(__pyxis__)
 +    UNREFERENCED_PARAMETER(mode);
-+    return buildvfs_pyxis_open(*where, flags);
++    return Bopen(*where, flags, 0666);
 +#else
      return Bopen(*where, flags, mode);
 +#endif
