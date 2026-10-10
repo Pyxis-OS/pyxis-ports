@@ -66,10 +66,10 @@ index a9b2052..fa9e641 100644
      /* #pragma pack stack */
      int pack_stack[PACK_STACK_SIZE];
 diff --git a/tccpp.c b/tccpp.c
-index ab3a716..73ae62e 100644
+index ab3a716..9710f74 100644
 --- a/tccpp.c
 +++ b/tccpp.c
-@@ -1327,6 +1327,48 @@ ST_FUNC void skip_to_eol(int warn)
+@@ -1327,6 +1327,51 @@ ST_FUNC void skip_to_eol(int warn)
  static CachedInclude *
  search_cached_include(TCCState *s1, const char *filename, int add);
  
@@ -104,6 +104,9 @@ index ab3a716..73ae62e 100644
 +    if (bf->once_owned)
 +        return;
 +    once_identity(bf, &identity);
++    for (once = s1->once_includes; once; once = once->next)
++        if (once->domain == identity.st_dev && once->object == identity.st_ino)
++            return;
 +    once = tcc_malloc(sizeof(*once) + strlen(bf->true_filename));
 +    strcpy(once->filename, bf->true_filename);
 +    once->stream = bf->stream;
@@ -118,7 +121,7 @@ index ab3a716..73ae62e 100644
  static int parse_include(TCCState *s1, int do_next, int test)
  {
      int c, i;
-@@ -1414,7 +1456,11 @@ static int parse_include(TCCState *s1, int do_next, int test)
+@@ -1414,7 +1459,11 @@ static int parse_include(TCCState *s1, int do_next, int test)
              tcc_error("include path is too long");
          pstrcat(buf, sizeof buf, name);
          e = search_cached_include(s1, buf, 0);
@@ -131,7 +134,7 @@ index ab3a716..73ae62e 100644
              /* no need to parse the include because the 'ifndef macro'
                 is defined (or had #pragma once) */
  #ifdef INC_DEBUG
-@@ -1436,6 +1482,13 @@ static int parse_include(TCCState *s1, int do_next, int test)
+@@ -1436,6 +1485,13 @@ static int parse_include(TCCState *s1, int do_next, int test)
  #endif
      }
  
@@ -145,7 +148,7 @@ index ab3a716..73ae62e 100644
      if (test) {
          tcc_close();
      } else {
-@@ -1717,7 +1770,11 @@ static int pragma_parse(TCCState *s1)
+@@ -1717,7 +1773,11 @@ static int pragma_parse(TCCState *s1)
          pp_debug_tok = t, pp_debug_symv = v;
  
      } else if (tok == TOK_once) {
@@ -157,7 +160,7 @@ index ab3a716..73ae62e 100644
  
      } else if (s1->output_type == TCC_OUTPUT_PREPROCESS) {
          /* tcc -E: keep pragmas below unchanged */
-@@ -3796,6 +3853,15 @@ ST_FUNC void tccpp_delete(TCCState *s)
+@@ -3796,6 +3856,15 @@ ST_FUNC void tccpp_delete(TCCState *s)
  {
      int i, n;
  
