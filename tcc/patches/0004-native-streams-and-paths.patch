@@ -1276,18 +1276,6 @@ index 5317bdd..5588a54 100644
          i = e->hash_next;
      }
      if (!add)
-@@ -1683,7 +1717,11 @@ static int pragma_parse(TCCState *s1)
-         pp_debug_tok = t, pp_debug_symv = v;
- 
-     } else if (tok == TOK_once) {
-+#ifdef __pyxis__
-+        tcc_error("#pragma once requires file identity support; use include guards");
-+#else
-         search_cached_include(s1, file->true_filename, 1)->once = 1;
-+#endif
- 
-     } else if (s1->output_type == TCC_OUTPUT_PREPROCESS) {
-         /* tcc -E: keep pragmas below unchanged */
 @@ -1775,6 +1813,8 @@ ST_FUNC void tccpp_putfile(const char *filename)
          pstrcpy(buf, sizeof buf, file->true_filename);
          *tcc_basename(buf) = 0;

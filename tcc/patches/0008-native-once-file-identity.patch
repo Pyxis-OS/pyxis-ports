@@ -1,0 +1,175 @@
+diff --git a/libtcc.c b/libtcc.c
+index aa7c8ac..82a463c 100644
+--- a/libtcc.c
++++ b/libtcc.c
+@@ -793,7 +793,11 @@ ST_FUNC void tcc_close(void)
+     TCCState *s1 = tcc_state;
+     BufferedFile *bf = file;
+     if (bf->stream && bf->stream != stdin) {
++#ifdef __pyxis__
++        if (!bf->once_owned && fclose(bf->stream))
++#else
+         if (fclose(bf->stream))
++#endif
+             tcc_error_noabort("could not close '%s'", bf->filename);
+         total_lines += bf->line_num - 1;
+     }
+diff --git a/tcc.h b/tcc.h
+index a9b2052..fa9e641 100644
+--- a/tcc.h
++++ b/tcc.h
+@@ -37,6 +37,9 @@
+ #include <math.h>
+ #include <stdint.h>
+ #include <limits.h>
++#ifdef __pyxis__
++#include <sys/stat.h>
++#endif
+ #ifndef __pyxis__
+ #include <fcntl.h>
+ #endif
+@@ -646,6 +649,9 @@ typedef struct BufferedFile {
+     uint8_t *buf_ptr;
+     uint8_t *buf_end;
+     FILE *stream; /* NULL for memory input; stdin is borrowed. */
++#ifdef __pyxis__
++    int once_owned; /* The translation unit keeps the stream alive. */
++#endif
+     struct BufferedFile *prev;
+     int line_num;    /* current line number - here to simplify code */
+     int line_ref;    /* tcc -E: last printed line */
+@@ -707,6 +713,16 @@ typedef struct CachedInclude {
+ 
+ #define CACHED_INCLUDES_HASH_SIZE 32
+ 
++#ifdef __pyxis__
++typedef struct OnceInclude {
++    struct OnceInclude *next;
++    FILE *stream;
++    dev_t domain;
++    ino_t object;
++    char filename[1];
++} OnceInclude;
++#endif
++
+ #ifdef CONFIG_TCC_ASM
+ typedef struct ExprValue {
+     uint64_t v;
+@@ -887,6 +903,9 @@ struct TCCState {
+     int cached_includes_hash[CACHED_INCLUDES_HASH_SIZE];
+     CachedInclude **cached_includes;
+     int nb_cached_includes;
++#ifdef __pyxis__
++    OnceInclude *once_includes;
++#endif
+ 
+     /* #pragma pack stack */
+     int pack_stack[PACK_STACK_SIZE];
+diff --git a/tccpp.c b/tccpp.c
+index ab3a716..73ae62e 100644
+--- a/tccpp.c
++++ b/tccpp.c
+@@ -1327,6 +1327,48 @@ ST_FUNC void skip_to_eol(int warn)
+ static CachedInclude *
+ search_cached_include(TCCState *s1, const char *filename, int add);
+ 
++#ifdef __pyxis__
++static void once_identity(BufferedFile *bf, struct stat *identity)
++{
++    if (!bf->stream || fstat(fileno(bf->stream), identity))
++        tcc_error("could not query file identity for '%s'", bf->true_filename);
++    if ((identity->st_valid & (STAT_DEV_VALID | STAT_INO_VALID))
++        != (STAT_DEV_VALID | STAT_INO_VALID))
++        tcc_error("#pragma once comparison requires file identity for '%s'",
++                  bf->true_filename);
++}
++
++static int once_include_seen(TCCState *s1, BufferedFile *bf)
++{
++    OnceInclude *once;
++    struct stat identity;
++
++    once_identity(bf, &identity);
++    for (once = s1->once_includes; once; once = once->next)
++        if (once->domain == identity.st_dev && once->object == identity.st_ino)
++            return 1;
++    return 0;
++}
++
++static void once_include_add(TCCState *s1, BufferedFile *bf)
++{
++    OnceInclude *once;
++    struct stat identity;
++
++    if (bf->once_owned)
++        return;
++    once_identity(bf, &identity);
++    once = tcc_malloc(sizeof(*once) + strlen(bf->true_filename));
++    strcpy(once->filename, bf->true_filename);
++    once->stream = bf->stream;
++    once->domain = identity.st_dev;
++    once->object = identity.st_ino;
++    once->next = s1->once_includes;
++    s1->once_includes = once;
++    bf->once_owned = 1;
++}
++#endif
++
+ static int parse_include(TCCState *s1, int do_next, int test)
+ {
+     int c, i;
+@@ -1414,7 +1456,11 @@ static int parse_include(TCCState *s1, int do_next, int test)
+             tcc_error("include path is too long");
+         pstrcat(buf, sizeof buf, name);
+         e = search_cached_include(s1, buf, 0);
+-        if (e && (define_find(e->ifndef_macro) || e->once)) {
++        if (e && (define_find(e->ifndef_macro)
++#ifndef __pyxis__
++                  || e->once
++#endif
++                  )) {
+             /* no need to parse the include because the 'ifndef macro'
+                is defined (or had #pragma once) */
+ #ifdef INC_DEBUG
+@@ -1436,6 +1482,13 @@ static int parse_include(TCCState *s1, int do_next, int test)
+ #endif
+     }
+ 
++#ifdef __pyxis__
++    if (!test && s1->once_includes && once_include_seen(s1, file)) {
++        tcc_close();
++        return 1;
++    }
++#endif
++
+     if (test) {
+         tcc_close();
+     } else {
+@@ -1717,7 +1770,11 @@ static int pragma_parse(TCCState *s1)
+         pp_debug_tok = t, pp_debug_symv = v;
+ 
+     } else if (tok == TOK_once) {
++#ifdef __pyxis__
++        once_include_add(s1, file);
++#else
+         search_cached_include(s1, file->true_filename, 1)->once = 1;
++#endif
+ 
+     } else if (s1->output_type == TCC_OUTPUT_PREPROCESS) {
+         /* tcc -E: keep pragmas below unchanged */
+@@ -3796,6 +3853,15 @@ ST_FUNC void tccpp_delete(TCCState *s)
+ {
+     int i, n;
+ 
++#ifdef __pyxis__
++    while (s->once_includes) {
++        OnceInclude *once = s->once_includes;
++        s->once_includes = once->next;
++        if (once->stream != stdin && fclose(once->stream))
++            tcc_error_noabort("could not close once header '%s'", once->filename);
++        tcc_free(once);
++    }
++#endif
+     dynarray_reset(&s->cached_includes, &s->nb_cached_includes);
+ 
+     /* free tokens */

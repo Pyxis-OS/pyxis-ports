@@ -177,9 +177,10 @@ unsupported-C23 diagnostic and stream/process cleanup, not a new test source.
 ## Native stream and path adaptation
 
 The selected source, response-file and ELF object/archive readers now use
-`FILE *` streams. Source streams belong to the existing `BufferedFile` chain,
-which closes nested includes during normal completion and compile-error
-unwinding. Memory inputs have no stream; stdin is borrowed. Reads distinguish
+`FILE *` streams. Source streams belong to the existing `BufferedFile` chain;
+once-marked headers transfer their stream to translation-unit ownership.
+Normal completion and compile-error unwinding close both sets of streams.
+Memory inputs have no stream; stdin is borrowed. Reads distinguish
 errors from EOF, binary seeks check their offsets, and object/archive read
 failures release temporary data. Output uses create/truncate streams and checks
 writes and close; a failed output can remain partial because the port does not
@@ -200,9 +201,13 @@ When the compiler itself is built for Pyxis:
   opened directly, without falling back to search directories. `#include_next`
   requires a relative name. Paths exceeding TCC's existing filename buffers
   produce an error rather than being truncated.
-- `#pragma once` reports an error: native file handles have no identity query,
-  and aliases cannot be compared reliably using path strings. Use ordinary
-  include guards until that filesystem operation exists.
+- `#pragma once` compares libc's valid file domain/object identities across all
+  once-marked headers. Their opened streams remain alive until translation-unit
+  cleanup, so differently named aliases match and replacement files retain
+  their own identity. There is no pathname-only once shortcut. Missing identity
+  at the pragma or on a later include requiring comparison produces a diagnostic;
+  ordinary include guards still work without an identity cache. Retention uses
+  one open stream per once header and existing memory/descriptor limits apply.
 - `__DATE__` and `__TIME__` use UTC, with C's month-name date and 24-hour
   time spelling. A missing clock or date outside years 0000–9999 is an error;
   no date is invented. Explicit user macro definitions still work normally.
@@ -215,9 +220,10 @@ debug information. No fd compatibility layer or new libc/kernel API is added.
 ## Source and local changes
 
 Pinned upstream: [TinyCC 3dc99dbc82f8e07308c5d398136803e62f9676df](https://github.com/TinyCC/tinycc/tree/3dc99dbc82f8e07308c5d398136803e62f9676df)
-(`0.9.28rc`). Metadata lists seven ordered patches: the Pyxis object target,
+(`0.9.28rc`). Metadata lists eight ordered patches: the Pyxis object target,
 runtime symbol ownership, FP scratch allocation, native streams/paths, the
-guest driver, native P1F linking, and guest clock integration. The P1F writer consumes the SDK format
+guest driver, native P1F linking, guest clock integration, and native once-header
+identity/lifetime. The P1F writer consumes the SDK format
 header; the host build uses a quoted include path so it does not import target
 libc headers. The clock patch keeps host clock behavior and upstream floating-point
 benchmark formatting; the guest uses libpyxis monotonic reads and libc UTC
