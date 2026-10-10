@@ -7,6 +7,7 @@
 #include <pyxis/environment.h>
 #include <pyxis/working_path.h>
 #include <startup.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -34,6 +35,13 @@ void *uv__realloc(void *pointer, size_t size)
 void uv__free(void *pointer)
 {
   release(pointer);
+}
+
+void uv_freeaddrinfo(struct addrinfo *addresses)
+{
+  /* Match upstream's single-allocation cleanup through the selected allocator.
+   * Native getaddrinfo still rejects before allocating any result. */
+  uv__free(addresses);
 }
 
 void *uv__reallocf(void *pointer, size_t size)
@@ -338,6 +346,30 @@ void uv_walk(uv_loop_t *loop, uv_walk_cb callback, void *argument)
     uv__queue_insert_tail(&loop->handle_queue, entry);
     callback(handle, argument);
   }
+}
+
+static void print_handle(uv_handle_t *handle, void *argument)
+{
+  FILE *stream = argument;
+  const char *type = uv_handle_type_name(handle->type);
+  fprintf(stream, "%-8s %p active=%d referenced=%d closing=%d\n",
+      type ? type : "<unknown>", (void *)handle, uv_is_active(handle),
+      uv_has_ref(handle), uv_is_closing(handle));
+}
+
+void uv_print_all_handles(uv_loop_t *loop, FILE *stream)
+{
+  if (!stream) {
+    stream = stderr;
+  }
+  if (!loop) {
+    loop = uv_default_loop();
+    if (!loop) {
+      fprintf(stream, "uv_default_loop() failed\n");
+      return;
+    }
+  }
+  uv_walk(loop, print_handle, stream);
 }
 
 int uv_async_init(uv_loop_t *loop, uv_async_t *handle, uv_async_cb callback)
