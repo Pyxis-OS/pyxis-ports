@@ -210,6 +210,13 @@ When the compiler itself is built for Pyxis:
   at the pragma or on a later include requiring comparison produces a diagnostic;
   ordinary include guards still work without an identity cache. Retention uses
   one open stream per once header and existing memory/descriptor limits apply.
+- `http(s)://` includes (`0009-uri-includes.patch`): quoted relative includes
+  inside a fetched file resolve against its final URL by RFC 3986. Only a
+  missing candidate (ENOENT) continues the search; other failures stop with
+  their cause. `#pragma once` compares normalized final URLs, skipping a
+  once-marked URI named again without a request. `-I`, `-isystem`, `-L` and
+  `-B` refuse `http(s)://`. Behaviour and pinning are in Pyxis's
+  `docs/userland/tcc.md#includes-by-uri`.
 - `__DATE__` and `__TIME__` use UTC, with C's month-name date and 24-hour
   time spelling. A missing clock or date outside years 0000–9999 is an error;
   no date is invented. Explicit user macro definitions still work normally.
@@ -222,10 +229,10 @@ debug information. No fd compatibility layer or new libc/kernel API is added.
 ## Source and local changes
 
 Pinned upstream: [TinyCC 3dc99dbc82f8e07308c5d398136803e62f9676df](https://github.com/TinyCC/tinycc/tree/3dc99dbc82f8e07308c5d398136803e62f9676df)
-(`0.9.28rc`). Metadata lists eight ordered patches: the Pyxis object target,
+(`0.9.28rc`). Metadata lists nine ordered patches: the Pyxis object target,
 runtime symbol ownership, FP scratch allocation, native streams/paths, the
-guest driver, native P1F linking, guest clock integration, and native once-header
-identity/lifetime. The P1F writer consumes the SDK format
+guest driver, native P1F linking, guest clock integration, native once-header
+identity/lifetime, and URI includes. The P1F writer consumes the SDK format
 header; the host build uses a quoted include path so it does not import target
 libc headers. The clock patch keeps host clock behavior and upstream floating-point
 benchmark formatting; the guest uses libpyxis monotonic reads and libc UTC

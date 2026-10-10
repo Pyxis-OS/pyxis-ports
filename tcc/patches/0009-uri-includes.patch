@@ -1,0 +1,376 @@
+diff --git a/libtcc.c b/libtcc.c
+index 82a463c..efa7f21 100644
+--- a/libtcc.c
++++ b/libtcc.c
+@@ -601,6 +601,79 @@ ST_FUNC int tcc_rooted_path(const char *path)
+     return p > path && *p == ':' && p[1] == '/' && p[2] == '/';
+ }
+ 
++/* http(s) names are fetched snapshots: they resolve relative includes by
++   RFC 3986 and have no file identity. Every other scheme is a native root. */
++ST_FUNC int tcc_network_uri(const char *path)
++{
++    return !strncasecmp(path, "http://", 7) || !strncasecmp(path, "https://", 8);
++}
++
++/* RFC 3986 section 5.2.4 on a path that starts with '/', in place. */
++static void uri_remove_dot_segments(char *path)
++{
++    char *out = path;
++    const char *in = path;
++
++    while (*in) {
++        const char *segment = in + 1, *end = segment;
++        size_t length;
++
++        while (*end && *end != '/')
++            ++end;
++        length = end - segment;
++        if (length == 1 && segment[0] == '.') {
++            if (!*end)
++                *out++ = '/';
++        } else if (length == 2 && segment[0] == '.' && segment[1] == '.') {
++            while (out > path && *--out != '/')
++                ;
++            if (!*end)
++                *out++ = '/';
++        } else {
++            memmove(out, in, length + 1);
++            out += length + 1;
++        }
++        in = end;
++    }
++    if (out == path)
++        *out++ = '/';
++    *out = '\0';
++}
++
++/* Lower-case scheme and host, drop the default port, remove dot segments,
++   give an empty path "/" and drop the fragment; the query is kept. */
++ST_FUNC char *tcc_uri_normalize(const char *uri)
++{
++    const char *authority = strstr(uri, "://") + 3;
++    size_t authority_length = strcspn(authority, "/?#");
++    const char *path = authority + authority_length;
++    size_t path_length = strcspn(path, "?#");
++    size_t query_length = path[path_length] == '?' ? strcspn(path + path_length, "#") : 0;
++    size_t scheme_length = authority - uri;
++    char *result = tcc_malloc(scheme_length + authority_length + path_length + query_length + 2);
++    char *p = result;
++    size_t i;
++
++    for (i = 0; i < scheme_length + authority_length; ++i)
++        *p++ = uri[i] >= 'A' && uri[i] <= 'Z' ? uri[i] - 'A' + 'a' : uri[i];
++    *p = '\0';
++    if (p - result > 3 && !strcmp(p - 3, ":80") && !strncmp(result, "http:", 5))
++        p -= 3;
++    else if (p - result > 4 && !strcmp(p - 4, ":443") && !strncmp(result, "https:", 6))
++        p -= 4;
++    if (path_length) {
++        memcpy(p, path, path_length);
++        p[path_length] = '\0';
++        uri_remove_dot_segments(p);
++        p += strlen(p);
++    } else {
++        *p++ = '/';
++    }
++    memcpy(p, path + path_length, query_length);
++    p[query_length] = '\0';
++    return result;
++}
++
+ #endif
+ 
+ static void tcc_split_path(TCCState *s, void *p_ary, int *p_nb_ary, const char *in)
+@@ -803,6 +876,9 @@ ST_FUNC void tcc_close(void)
+     }
+     if (bf->true_filename != bf->filename)
+         tcc_free(bf->true_filename);
++#ifdef __pyxis__
++    tcc_free(bf->url);
++#endif
+     file = bf->prev;
+     tok_flags = bf->prev_tok_flags;
+     tcc_free(bf);
+@@ -821,6 +897,40 @@ static FILE *open_input(TCCState *s1, const char *filename)
+     return stream;
+ }
+ 
++#ifdef __pyxis__
++/* Open without reporting: 0, or the errno of the failure. A fetched http(s)
++   snapshot records its final URL for relative includes and #pragma once. */
++ST_FUNC int tcc_open_error(TCCState *s1, const char *filename)
++{
++    struct pyxis_response_info response;
++
++    if (strlen(filename) >= sizeof(file->filename))
++        return ENAMETOOLONG;
++    /* Link the buffer before opening: compile-error unwinding owns it. */
++    tcc_open_bf(s1, filename, 0);
++    file->stream = open_input(s1, filename);
++    if (!file->stream) {
++        int error = errno;
++        tcc_close();
++        return error;
++    }
++    if (file->stream != stdin && !pyxis_stdio_response(file->stream, &response)
++        && (response.flags & PYXIS_RESPONSE_URL) && tcc_network_uri(response.url))
++        file->url = tcc_uri_normalize(response.url);
++    return 0;
++}
++
++ST_FUNC int tcc_open(TCCState *s1, const char *filename)
++{
++    int error = tcc_open_error(s1, filename);
++
++    if (error == ENAMETOOLONG)
++        return tcc_error_noabort("input filename is too long");
++    if (error && error != ENOENT)
++        tcc_error_noabort("could not open '%s': %s", filename, strerror(error));
++    return error ? -1 : 0;
++}
++#else
+ ST_FUNC int tcc_open(TCCState *s1, const char *filename)
+ {
+     if (strlen(filename) >= sizeof(file->filename))
+@@ -837,6 +947,7 @@ ST_FUNC int tcc_open(TCCState *s1, const char *filename)
+     }
+     return 0;
+ }
++#endif
+ 
+ /* compile the file opened in 'file'. Return non zero if errors. */
+ static int tcc_compile(TCCState *s1, int filetype, const char *str, int from_file)
+@@ -2008,6 +2119,15 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
+             break;
+         }
+ 
++#ifdef __pyxis__
++        /* A remote search directory would turn every header search into a
++           request; remote headers are named explicitly in #include. */
++        if ((popt->index == TCC_OPTION_I || popt->index == TCC_OPTION_isystem
++             || popt->index == TCC_OPTION_L || popt->index == TCC_OPTION_B)
++            && tcc_network_uri(optarg))
++            return tcc_error_noabort("search directories must be local, not '%s'; "
++                                     "name remote headers in #include", optarg);
++#endif
+ #ifdef TCC_TARGET_PYXIS
+         /* Keep unsupported host services out even when another option would
+            later override them (for example -run followed by -c). */
+diff --git a/tcc.h b/tcc.h
+index fa9e641..c34462c 100644
+--- a/tcc.h
++++ b/tcc.h
+@@ -39,6 +39,8 @@
+ #include <limits.h>
+ #ifdef __pyxis__
+ #include <sys/stat.h>
++#include <pyxis/stdio.h>
++#include <strings.h>
+ #endif
+ #ifndef __pyxis__
+ #include <fcntl.h>
+@@ -651,6 +653,7 @@ typedef struct BufferedFile {
+     FILE *stream; /* NULL for memory input; stdin is borrowed. */
+ #ifdef __pyxis__
+     int once_owned; /* The translation unit keeps the stream alive. */
++    char *url; /* Normalized final URL of an http(s) snapshot, else NULL. */
+ #endif
+     struct BufferedFile *prev;
+     int line_num;    /* current line number - here to simplify code */
+@@ -719,6 +722,10 @@ typedef struct OnceInclude {
+     FILE *stream;
+     dev_t domain;
+     ino_t object;
++    /* http(s) snapshots have no object ID: they compare by normalized final
++       URL, and the normalized requested URI lets a repeat skip the fetch. */
++    char *url;
++    char *requested;
+     char filename[1];
+ } OnceInclude;
+ #endif
+@@ -1355,6 +1362,9 @@ PUB_FUNC int tcc_fclose(FILE *f);
+ ST_FUNC DLLReference *tcc_add_dllref(TCCState *s1, const char *dllname, int level);
+ #ifdef __pyxis__
+ ST_FUNC int tcc_rooted_path(const char *path);
++ST_FUNC int tcc_network_uri(const char *path);
++ST_FUNC char *tcc_uri_normalize(const char *uri);
++ST_FUNC int tcc_open_error(TCCState *s1, const char *filename);
+ #endif
+ ST_FUNC char *tcc_load_text(FILE *stream);
+ /* for #pragma once */
+diff --git a/tccpp.c b/tccpp.c
+index 9710f74..511eb94 100644
+--- a/tccpp.c
++++ b/tccpp.c
+@@ -1343,29 +1343,85 @@ static int once_include_seen(TCCState *s1, BufferedFile *bf)
+     OnceInclude *once;
+     struct stat identity;
+ 
++    if (bf->url) {
++        for (once = s1->once_includes; once; once = once->next)
++            if (once->url && !strcmp(once->url, bf->url))
++                return 1;
++        return 0;
++    }
++    for (once = s1->once_includes; once && once->url; once = once->next)
++        ;
++    if (!once)
++        return 0;
+     once_identity(bf, &identity);
+     for (once = s1->once_includes; once; once = once->next)
+-        if (once->domain == identity.st_dev && once->object == identity.st_ino)
++        if (!once->url && once->domain == identity.st_dev
++            && once->object == identity.st_ino)
+             return 1;
+     return 0;
+ }
+ 
++/* Resolve a path-relative include name against a normalized http(s) base by
++   RFC 3986 section 5.2: merge with the base path, remove dot segments. */
++static void uri_resolve(const char *base, const char *ref, char *out, size_t size)
++{
++    const char *authority = strstr(base, "://") + 3;
++    const char *path = authority + strcspn(authority, "/?#");
++    const char *last = path;
++    size_t prefix, ref_path = strcspn(ref, "?#");
++    char *merged;
++
++    if (!ref_path)
++        tcc_error("include name '%s' has no path", ref);
++    for (const char *p = path; *p && *p != '?' && *p != '#'; ++p)
++        if (*p == '/')
++            last = p + 1;
++    prefix = last - base;
++    if (prefix + strlen(ref) + 1 >= size)
++        tcc_error("include path is too long");
++    memcpy(out, base, prefix);
++    if (last == path)
++        out[prefix++] = '/'; /* an empty base path merges as "/" */
++    strcpy(out + prefix, ref);
++    merged = tcc_uri_normalize(out);
++    pstrcpy(out, size, merged);
++    tcc_free(merged);
++}
++
++/* A once-marked http(s) header named again is skipped before fetching. */
++static int once_uri_seen(TCCState *s1, const char *uri)
++{
++    OnceInclude *once;
++    char *normal = tcc_uri_normalize(uri);
++
++    for (once = s1->once_includes; once; once = once->next)
++        if ((once->requested && !strcmp(once->requested, normal))
++            || (once->url && !strcmp(once->url, normal)))
++            break;
++    tcc_free(normal);
++    return once != NULL;
++}
++
+ static void once_include_add(TCCState *s1, BufferedFile *bf)
+ {
+     OnceInclude *once;
+-    struct stat identity;
++    struct stat identity = {0};
+ 
+-    if (bf->once_owned)
++    if (bf->once_owned || once_include_seen(s1, bf))
+         return;
+-    once_identity(bf, &identity);
+-    for (once = s1->once_includes; once; once = once->next)
+-        if (once->domain == identity.st_dev && once->object == identity.st_ino)
+-            return;
+-    once = tcc_malloc(sizeof(*once) + strlen(bf->true_filename));
++    if (!bf->url)
++        once_identity(bf, &identity);
++    once = tcc_mallocz(sizeof(*once) + strlen(bf->true_filename));
+     strcpy(once->filename, bf->true_filename);
+     once->stream = bf->stream;
+-    once->domain = identity.st_dev;
+-    once->object = identity.st_ino;
++    if (bf->url) {
++        once->url = tcc_strdup(bf->url);
++        if (tcc_network_uri(bf->true_filename))
++            once->requested = tcc_uri_normalize(bf->true_filename);
++    } else {
++        once->domain = identity.st_dev;
++        once->object = identity.st_ino;
++    }
+     once->next = s1->once_includes;
+     s1->once_includes = once;
+     bf->once_owned = 1;
+@@ -1426,6 +1482,9 @@ static int parse_include(TCCState *s1, int do_next, int test)
+ #endif
+     i = do_next ? file->include_next_index : -1;
+     for (;;) {
++#ifdef __pyxis__
++        int resolved = 0;
++#endif
+         ++i;
+         if (i == 0) {
+             /* check absolute include path */
+@@ -1437,9 +1496,18 @@ static int parse_include(TCCState *s1, int do_next, int test)
+             if (c != '\"')
+                 continue;
+             p = file->true_filename;
++#ifdef __pyxis__
++            if (file->url) {
++                /* Beside a fetched header means against its final URL. */
++                uri_resolve(file->url, name, buf, sizeof buf);
++                resolved = 1;
++            } else
++#endif
++            {
+             if (tcc_basename(p) - p >= sizeof buf)
+                 tcc_error("include directory is too long");
+             pstrncpy(buf, sizeof buf, p, tcc_basename(p) - p);
++            }
+         } else {
+             int j = i - 2, k = j - s1->nb_include_paths;
+             if (k < 0)
+@@ -1455,9 +1523,14 @@ static int parse_include(TCCState *s1, int do_next, int test)
+             pstrcpy(buf, sizeof buf, p);
+             pstrcat(buf, sizeof buf, "/");
+         }
++#ifdef __pyxis__
++        if (!resolved)
++#endif
++        {
+         if (strlen(buf) + strlen(name) >= sizeof buf)
+             tcc_error("include path is too long");
+         pstrcat(buf, sizeof buf, name);
++        }
+         e = search_cached_include(s1, buf, 0);
+         if (e && (define_find(e->ifndef_macro)
+ #ifndef __pyxis__
+@@ -1474,6 +1547,21 @@ static int parse_include(TCCState *s1, int do_next, int test)
+                    (int)(s1->include_stack_ptr - s1->include_stack), "", buf);
+             return 1;
+         }
++#ifdef __pyxis__
++        if (tcc_network_uri(buf)) {
++            /* Only a missing remote header continues the search; any other
++               failure must not let a same-named local header stand in. */
++            int error;
++
++            if (s1->once_includes && once_uri_seen(s1, buf))
++                return 1;
++            error = tcc_open_error(s1, buf);
++            if (!error)
++                break;
++            if (error != ENOENT)
++                tcc_error("could not open '%s': %s", buf, strerror(error));
++        } else
++#endif
+         if (tcc_open(s1, buf) >= 0)
+             break;
+ #ifdef __pyxis__
+@@ -3862,6 +3950,8 @@ ST_FUNC void tccpp_delete(TCCState *s)
+         s->once_includes = once->next;
+         if (once->stream != stdin && fclose(once->stream))
+             tcc_error_noabort("could not close once header '%s'", once->filename);
++        tcc_free(once->url);
++        tcc_free(once->requested);
+         tcc_free(once);
+     }
+ #endif
