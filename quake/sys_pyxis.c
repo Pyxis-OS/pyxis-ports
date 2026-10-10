@@ -128,13 +128,12 @@ int Sys_FileTime(char *path)
  * target and is renamed over it only after every write, the sync and the close
  * succeeded, so any failure leaves the old file untouched.
  *
- * mkstemp reserves the name with native exclusive creation; the stream is then
- * opened on that name because libc has no fdopen. The name is random, so only a
- * writer with access to the same directory could interfere. The rename replaces
- * the target atomically on the same volume, and the filesystem flushes the moved
- * file first. Libc exposes no directory sync, so the new name itself may be lost
- * in a crash; the old contents then remain. A crash before the rename leaves the
- * temporary file behind. */
+ * mkstemp reserves the name with native exclusive creation and fdopen writes
+ * through that same descriptor. The rename replaces the target atomically on
+ * the same volume, and the filesystem flushes the moved file first. Libc
+ * exposes no directory sync, so the new name itself may be lost in a crash;
+ * the old contents then remain. A crash before the rename leaves the temporary
+ * file behind. */
 FILE *Sys_AtomicOpen(char *path)
 {
   struct atomic_file *slot = NULL;
@@ -164,10 +163,10 @@ FILE *Sys_AtomicOpen(char *path)
   FILE *file = NULL;
   int descriptor = mkstemp(temporary);
   if (descriptor >= 0) {
-    close(descriptor);
-    file = fopen(temporary, "wb");
+    file = fdopen(descriptor, "wb");
     if (!file) {
       int error = errno;
+      close(descriptor);
       remove(temporary);
       errno = error;
     }

@@ -51,8 +51,8 @@ Ordered patches:
 3. `0003-atomic-file-replacement.patch`: `config.cfg`, `save` files (also F6
    quicksave and the menus) and screenshots are written through
    `Sys_AtomicOpen`/`Sys_AtomicClose` in `sys_pyxis.c`. `mkstemp` reserves a
-   random `NAME.XXXXXX` beside the target, which is reopened as a stream
-   (libc has no `fdopen`), written, `fsync`ed, closed and renamed over the
+   random `NAME.XXXXXX` beside the target, whose descriptor `fdopen` turns
+   into the stream that is written, `fsync`ed, closed and renamed over the
    target. Any failure removes the temporary file, keeps the old file and
    prints `Couldn't write NAME: reason`; a failed save no longer prints
    `done.` and a failed screenshot no longer prints `Wrote`. Demos stay
