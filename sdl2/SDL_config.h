@@ -9,7 +9,9 @@
 #define SIZEOF_VOIDP 8
 #define HAVE_GCC_ATOMICS 1
 
-/* libc headers and functions; SDL supplies its own versions of the rest. */
+/* libc headers and functions; SDL supplies its own versions of the rest.
+ * SDL_iconv stays SDL's own: libc's iconv lacks the UCS-2, UCS-4 and UTF-32
+ * forms SDL converts text through. */
 #define HAVE_LIBC 1
 #define HAVE_CTYPE_H 1
 #define HAVE_FLOAT_H 1
@@ -31,6 +33,7 @@
 #define HAVE_REALLOC 1
 #define HAVE_FREE 1
 #define HAVE_GETENV 1
+#define HAVE_SETENV 1
 #define HAVE_QSORT 1
 #define HAVE_ABS 1
 #define HAVE_MEMSET 1
@@ -42,6 +45,7 @@
 #define HAVE_STRCHR 1
 #define HAVE_STRRCHR 1
 #define HAVE_STRSTR 1
+#define HAVE_STRTOK_R 1
 #define HAVE_STRTOL 1
 #define HAVE_STRTOUL 1
 #define HAVE_STRTOLL 1
@@ -73,6 +77,7 @@
 #define HAVE_SQRT 1
 #define HAVE_SQRTF 1
 #define HAVE_TAN 1
+#define HAVE_TRUNC 1
 #define HAVE_FSEEKO 1
 #define HAVE_SETJMP 1
 #define HAVE__EXIT 1

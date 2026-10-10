@@ -20,7 +20,10 @@ provides upstream's static target `SDL2::SDL2-static` and the usual
 `SDL2::SDL2` or `SDL2::SDL2main`.
 
 The installed `SDL_config.h` replaces upstream's platform dispatcher, so
-programs see the same configuration the library was built with.
+programs see the same configuration the library was built with. SDL uses
+libc's environment (`getenv`, `setenv`), `strtok_r`, `trunc` and the other
+declared functions, and its own versions of the rest. `SDL_iconv` stays SDL's
+own, because libc's `iconv` lacks the UCS-2, UCS-4 and UTF-32 forms SDL uses.
 A program needs the `display`, `keyboard` and `clock` grants; `pointer` is
 optional, and without it or a mouse the program runs from the keyboard.
 
