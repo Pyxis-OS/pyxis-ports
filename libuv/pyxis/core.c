@@ -625,7 +625,7 @@ void uv_sleep(unsigned milliseconds)
   }
 }
 
-static int copy_string(const char *text, char *buffer, size_t *size)
+int uv__pyxis_copy_string(const char *text, char *buffer, size_t *size)
 {
   if (!buffer || !size) {
     return UV_EINVAL;
@@ -654,7 +654,7 @@ int uv_cwd(char *buffer, size_t *size)
     return uv__pyxis_status(status);
   }
   const char *path = pyxis_working_path();
-  return path ? copy_string(path, buffer, size) : UV_ENOSYS;
+  return path ? uv__pyxis_copy_string(path, buffer, size) : UV_ENOSYS;
 }
 
 int uv_os_getenv(const char *name, char *buffer, size_t *size)
@@ -664,7 +664,7 @@ int uv_os_getenv(const char *name, char *buffer, size_t *size)
   }
   const char *value;
   enum call_status status = pyxis_environment_get(name, &value);
-  return status == CALL_OK ? copy_string(value, buffer, size) : uv__pyxis_status(status);
+  return status == CALL_OK ? uv__pyxis_copy_string(value, buffer, size) : uv__pyxis_status(status);
 }
 
 uv_pid_t uv_os_getpid(void)

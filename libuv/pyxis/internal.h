@@ -9,6 +9,9 @@
 #include <pyxis/descriptor.h>
 
 int uv__pyxis_status(enum call_status status);
+/* Copies TEXT for libuv's buffer/size convention: UV_ENOBUFS with the needed
+ * size, otherwise the length without the NUL. */
+int uv__pyxis_copy_string(const char *text, char *buffer, size_t *size);
 int uv__pyxis_reserve(uv_loop_t *loop, unsigned count);
 void uv__pyxis_release(uv_loop_t *loop, unsigned count);
 void uv__pyxis_stream_init(uv_loop_t *loop, uv_stream_t *stream, uv_handle_type type);

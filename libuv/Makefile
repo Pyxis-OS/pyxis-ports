@@ -1,7 +1,7 @@
 include $(SDK)/share/pyxis.mk
 
 UPSTREAM := timer version uv-data-getter-setters strscpy
-NATIVE := core stream process unsupported fs thread watchers
+NATIVE := core stream process unsupported fs thread watchers os
 OBJECTS := $(addprefix $(BUILD)/upstream-,$(addsuffix .o,$(UPSTREAM))) \
            $(addprefix $(BUILD)/pyxis-,$(addsuffix .o,$(NATIVE)))
 INCLUDES := -I$(RECIPE)/include -I$(RECIPE)/pyxis -I$(SOURCE)/include -I$(SOURCE)/src

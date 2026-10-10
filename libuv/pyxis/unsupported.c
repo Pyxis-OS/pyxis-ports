@@ -486,20 +486,6 @@ int uv_getrusage_thread(uv_rusage_t* rusage)
   return UV_ENOSYS;
 }
 
-int uv_os_homedir(char* buffer, size_t* size)
-{
-  (void)buffer;
-  (void)size;
-  return UV_ENOSYS;
-}
-
-int uv_os_tmpdir(char* buffer, size_t* size)
-{
-  (void)buffer;
-  (void)size;
-  return UV_ENOSYS;
-}
-
 int uv_os_get_passwd(uv_passwd_t* pwd)
 {
   (void)pwd;
@@ -550,19 +536,6 @@ int uv_interface_addresses(uv_interface_address_t** addresses, int* count)
 {
   (void)addresses;
   (void)count;
-  return UV_ENOSYS;
-}
-
-int uv_os_gethostname(char* buffer, size_t* size)
-{
-  (void)buffer;
-  (void)size;
-  return UV_ENOSYS;
-}
-
-int uv_os_uname(uv_utsname_t* buffer)
-{
-  (void)buffer;
   return UV_ENOSYS;
 }
 

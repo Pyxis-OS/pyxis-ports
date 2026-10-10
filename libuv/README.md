@@ -105,6 +105,29 @@ bits. A valid zero value differs from unknown. Domain/object tokens retain the
 native lifetime rules. Unix owners, permissions, link counts and other extra
 metadata remain unknown even though legacy fields are zero-initialized.
 
+## Operating-system queries
+
+Four `uv_os_*` queries answer from native sources; each succeeds or returns a
+negative error and never invents a value.
+
+| Query | Result | Native source |
+| --- | --- | --- |
+| `uv_os_uname` | `sysname` `Pyxis`, `machine` the identity's architecture (`x86_64`), `release` the running kernel's source commit, `version` the kernel name (`Caelum`) | SYSTEM_INFO identity, READ |
+| `uv_os_homedir` | `home://` | the caller's `home` root |
+| `uv_os_tmpdir` | `tmp://` | the caller's `tmp` root |
+| `uv_os_gethostname` | the boot's hostname | SYSTEM_INFO hostname, READ |
+
+Without a SYSTEM_INFO grant `uv_os_uname` still succeeds, because callers index
+its fields: `sysname` and `machine` keep their constants and `release` and
+`version` are empty. A kernel without an embedded revision leaves `release`
+empty too. `uv_os_gethostname` returns `UV_EACCES` without the grant. A program
+that was not given the `home` or `tmp` root gets `UV_ENOENT` from the matching
+query. The directories are scheme roots, not Unix paths, so joining a name with
+a slash produces `home:///name`; callers use the root as a URI prefix.
+`uv_os_get_passwd`, `uv_os_get_passwd2`, `uv_os_get_group` and the priority
+queries have no native meaning (Pyxis has no users, groups or process
+priorities) and return `UV_ENOSYS`.
+
 Workers/pool submissions, thread creation/join, asynchronous filesystem calls,
 sockets/address conversion, signals and dynamic module loading return
 UV_ENOSYS. File watches (`uv_fs_event_*`, `uv_fs_poll_*`) are omitted. Unsupported fs flags remain distinct so open can reject them before
