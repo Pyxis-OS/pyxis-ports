@@ -32,4 +32,8 @@ return function(ctx)
     "profile=native one-thread loop, pipes, console, child observation, timers, synchronous filesystem\n",
     "omitted=Unix/Windows backends, workers, async filesystem, sockets, watches, signals, module loading\n"))
   assert(provenance:close())
+  for _, name in ipairs({ "license", "extra_license", "notice", "provenance" }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.stage .. "/" .. ctx.metadata.outputs[name],
+      ctx.stage .. "/" .. ctx.metadata.outputs["dev_" .. name] })
+  end
 end

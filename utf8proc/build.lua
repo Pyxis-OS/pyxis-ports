@@ -18,4 +18,7 @@ return function(ctx)
     "patches=none\nprofile=static library, shipped Unicode tables\n",
     "omitted=shared library, data regeneration, upstream programs/tests\n"))
   assert(provenance:close())
+  for _, name in ipairs({ "license", "provenance" }) do
+    install(ctx.stage .. "/" .. outputs[name], outputs["dev_" .. name])
+  end
 end

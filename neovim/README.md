@@ -12,16 +12,19 @@ lua build.lua neovim --sdk /path/to/build/sdk \
 
 These development prefixes provide real static Lua 5.1, LPeg, luv, libuv,
 utf8proc and tree-sitter libraries. Encoding conversion uses SDK libc's iconv.
+Their `share/` trees supply notices and source provenance for the bundle.
 The build creates native host PUC Lua 5.1 and `nlua0` with Neovim's mpack/bit
 sources and LPeg. Upstream source, Vim syntax and help-tag generators run on
 the host; the build never executes the target editor. Lua bytecode, LuaJIT,
 gettext, unibilium and Wasmtime are disabled. No compiler container rebuild is
 needed.
 
-The staged bundle runs through the shell's explicit bundle route:
+The staged `bin/nvim.pxb` bundle runs without a catalog on live media and
+installed revisions:
 
 ```text
-boot://share/neovim/nvim.pxb file.c
+nvim file.c
+bin://nvim.pxb file.c
 ```
 
 Its manifest requests memory, clock READ/SLEEP, launcher and pipe CREATE, and
@@ -83,6 +86,8 @@ comparison, the console TUI, core/runtime assumptions, persistent undo, static p
 longer indexes the passwd record Pyxis refuses to supply. Undo
 files are created with libc's 0666 creation mode instead of the edited
 file's permission bits. Exact pins,
-checksums and patch order are in `metadata.lua` and staged
-`share/neovim/source.txt`. See [PORT-NOTICE.md](PORT-NOTICE.md) for licences
+checksums and patch order are in `metadata.lua` and the bundle's
+`app/metadata/source.txt`. Notices for Neovim, its linked dependencies and SDK
+runtime travel under `app/metadata/licenses/`; the port note is beside them.
+See [PORT-NOTICE.md](PORT-NOTICE.md) for licences
 and local-change attribution.

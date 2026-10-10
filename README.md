@@ -81,6 +81,9 @@ explicit child-output relay bundle. It needs a current SDK and declared native
 clock/pipe authority; its first profile runs without worker threads.
 [Lua 5.1 with LPeg and luv](lua51/README.md) builds over it, staging an
 interpreter bundle and the development libraries Neovim links.
+Neovim and Lua 5.1 stage their bundles in `bin/` with application and linked
+dependency notices under `app/metadata/`. The supporting development prefixes
+also carry notices and provenance under `share/` for static-library consumers.
 
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's
 manifest runner. It includes executables, notices and TCC target support, while

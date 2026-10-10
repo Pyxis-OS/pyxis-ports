@@ -21,5 +21,9 @@ return {
     unicode_license = "share/licenses/tree-sitter/unicode-LICENSE",
     notice = "share/licenses/tree-sitter/PORT-NOTICE",
     provenance = "share/tree-sitter/source.txt",
+    dev_license = "dev/share/licenses/tree-sitter/LICENSE",
+    dev_unicode_license = "dev/share/licenses/tree-sitter/unicode-LICENSE",
+    dev_notice = "dev/share/licenses/tree-sitter/PORT-NOTICE",
+    dev_provenance = "dev/share/tree-sitter/source.txt",
   },
 }

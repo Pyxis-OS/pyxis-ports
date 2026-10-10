@@ -12,22 +12,25 @@ lua build.lua lua51 --sdk /path/to/build/sdk --libuv /path/to/libuv/stage/dev
 The recipe downloads only the owner mirrors and verifies each SHA-256 before
 applying patches. It stages:
 
-- `share/lua51/lua5.1.pxb`, the interpreter as a development bundle;
+- `bin/lua5.1.pxb`, the interpreter bundle;
 - `dev/lib/liblua5.1.a`, `liblpeg.a` and `libluv.a` (with compat-5.3's C API),
   headers under `dev/include/lua5.1/` and `dev/include/luv/`, for Neovim;
-- the four licenses under `share/licenses/lua51/` and `share/lua51/source.txt`.
+- notices and source provenance in the bundle's `app/metadata/`, including
+  linked libuv and SDK runtime notices under `licenses/`;
+- independent library notices under `share/licenses/lua51/` and copies with
+  provenance under `dev/share/`, for consumers of the development libraries.
 
 ## Running scripts
 
 libuv's loop needs pipe creation, and spawning needs the launcher, so the
 interpreter is a bundle whose manifest requests memory, clock (read and sleep),
 launcher and pipe creation, with random optional for temporary files. Pyxis
-stages it at `boot://share/lua51/lua5.1.pxb`; it is not in the default command
-catalog. From a local shell:
+stages it at `bin://lua5.1.pxb`. Bare `lua5.1` selects it without a catalog
+on live media and installed revisions. From a local shell:
 
 ```text
-boot://share/lua51/lua5.1.pxb script.lua [args]
-boot://share/lua51/lua5.1.pxb -e 'print(_VERSION)'
+lua5.1 script.lua [args]
+bin://lua5.1.pxb -e 'print(_VERSION)'
 ```
 
 Upstream `lua.c`'s script, `-e`, `-l`, `-v`, `--` and `-` (stdin) options are

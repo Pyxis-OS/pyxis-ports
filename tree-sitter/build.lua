@@ -21,4 +21,7 @@ return function(ctx)
     "profile=static C library, upstream amalgamation, Wasm disabled\n",
     "omitted=parser modules, Wasmtime, shared library, CLI, upstream programs/tests\n"))
   assert(provenance:close())
+  for _, name in ipairs({ "license", "unicode_license", "notice", "provenance" }) do
+    install(ctx.stage .. "/" .. outputs[name], outputs["dev_" .. name])
+  end
 end

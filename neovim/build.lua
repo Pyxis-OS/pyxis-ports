@@ -52,7 +52,7 @@ return function(ctx)
     "-DFETCHCONTENT_FULLY_DISCONNECTED=ON" })
   ctx.run({ "cmake", "--build", ctx.build, "--target", "nvim_bin", "--parallel", "16" })
 
-  local runtime = ctx.stage .. "/share/neovim/nvim.pxb/app/share/nvim/runtime"
+  local runtime = ctx.stage .. "/bin/nvim.pxb/app/share/nvim/runtime"
   ctx.run({ "mkdir", "-p", runtime .. "/syntax/vim" })
   ctx.run({ "cp", "-R", ctx.source .. "/runtime/.", runtime })
   -- Run upstream generators with native host Lua, without executing the editor.
@@ -114,6 +114,32 @@ return function(ctx)
   install("644", ctx.extra.tree_sitter_vimdoc .. "/LICENSE", outputs.tree_sitter_vimdoc_license)
   install("644", ctx.extra.tree_sitter_query .. "/LICENSE", outputs.tree_sitter_query_license)
   install("644", ctx.extra.tree_sitter_markdown .. "/LICENSE", outputs.tree_sitter_markdown_license)
+  for _, dependency in ipairs({
+    { prefix = ctx.lua51, name = "lua51", notices = {
+      "COPYRIGHT", "lpeg.html", "luv-LICENSE.txt", "compat53-LICENSE", "PORT-NOTICE.md" } },
+    { prefix = ctx.libuv, name = "libuv", notices = { "LICENSE", "LICENSE-extra", "PORT-NOTICE" } },
+    { prefix = ctx.utf8proc, name = "utf8proc", notices = { "LICENSE.md" } },
+    { prefix = ctx.tree_sitter, name = "tree-sitter", notices = {
+      "LICENSE", "unicode-LICENSE", "PORT-NOTICE" } },
+  }) do
+    local target = "bin/nvim.pxb/app/metadata/licenses/" .. dependency.name
+    for _, name in ipairs(dependency.notices) do
+      install("644", dependency.prefix .. "/share/licenses/" .. dependency.name .. "/" .. name,
+        target .. "/" .. name)
+    end
+    install("644", dependency.prefix .. "/share/" .. dependency.name .. "/source.txt",
+      target .. "/source.txt")
+  end
+  install("644", ctx.recipe .. "/../LICENSE", outputs.pyxis_license)
+  for _, name in ipairs({ "tlsf.h", "tlsf-upstream.md", "musl-COPYRIGHT",
+    "musl-TRE-COPYRIGHT", "musl-upstream.md" }) do
+    install("644", ctx.sdk .. "/share/licenses/" .. name,
+      "bin/nvim.pxb/app/metadata/licenses/libc/" .. name)
+  end
+  for _, name in ipairs({ "LICENSE.TXT", "llvm-revision" }) do
+    install("644", ctx.sdk .. "/share/toolchain/" .. name,
+      "bin/nvim.pxb/app/metadata/licenses/toolchain/" .. name)
+  end
   local provenance = assert(io.open(ctx.stage .. "/" .. outputs.provenance, "w"))
   assert(provenance:write("source=" .. ctx.metadata.source.archive.url .. "\n",
     "commit=" .. ctx.metadata.source.commit .. "\n",

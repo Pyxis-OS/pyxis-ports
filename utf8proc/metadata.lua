@@ -19,5 +19,7 @@ return {
     header = "dev/include/utf8proc.h",
     license = "share/licenses/utf8proc/LICENSE.md",
     provenance = "share/utf8proc/source.txt",
+    dev_license = "dev/share/licenses/utf8proc/LICENSE.md",
+    dev_provenance = "dev/share/utf8proc/source.txt",
   },
 }

@@ -4,7 +4,8 @@ Neovim 0.12.5 is pinned to commit
 `5885a30e1e1225349079e7a1c4a3848aa8e43e42`. Its release archive has SHA-256
 `314bb8d8695cc2c1c9b69e6c93df8c75108ca66588dfffb81c42369d2f85c90a`.
 The source URLs, owner mirrors and archive hashes are recorded in
-`metadata.lua` and `share/neovim/source.txt`.
+`metadata.lua` and the bundle's `app/metadata/source.txt`. The packaged source
+text records provenance, not a source-code distribution.
 
 Neovim retains Apache-2.0 and Vim terms in upstream `LICENSE.txt`. That notice
 also identifies independently licensed vendored components: xdiff source
@@ -13,20 +14,23 @@ mpack, lua-bitop, lua-cjson, klib, libtermkey and libvterm retain MIT notices.
 Individual runtime files retain their own notices. These terms are not
 replaced by the Pyxis licence.
 
-The separately pinned target dependencies retain their recipe notices: Lua
+The separately pinned target dependencies carry notices and provenance under
+`app/metadata/licenses/`: Lua
 5.1.5, LPeg 1.1.0 and lua-compat-5.3 0.13 are MIT; luv 1.52.1-0 is Apache-2.0;
 libuv 1.52.1 is MIT with its `LICENSE-extra`; utf8proc 2.11.3 retains MIT and
 Unicode data terms; tree-sitter 0.26.13 retains MIT and Unicode-DFS-2016 terms.
 Native libuv adapter files retain their MPL-2.0 notices. Host Lua and LPeg
-build inputs retain MIT and are separate from target archives.
+build inputs retain MIT and are separate from target archives. SDK libc's
+TLSF, musl and TRE notices and compiler-runtime LLVM terms travel there too;
+the independently distributed SDK/library notices remain available.
 
 The statically linked grammars use Neovim 0.12.5's exact dependency pins:
 tree-sitter-c 0.24.1, tree-sitter-lua 0.5.0, tree-sitter-vim 0.8.1 and
 tree-sitter-markdown 0.5.3 retain MIT terms; tree-sitter-vimdoc 4.1.0 and
 tree-sitter-query 0.8.0 retain Apache-2.0 terms. The Markdown archive supplies
 both `markdown` and `markdown_inline`. Each archive's original licence is
-staged separately under `share/licenses/neovim`; its URL, mirror, version,
-licence and SHA-256 are recorded in `share/neovim/source.txt`. Generated C
+staged separately under `app/metadata/licenses/neovim`; its URL, mirror, version,
+licence and SHA-256 are recorded in `app/metadata/source.txt`. Generated C
 parsers and scanners are compiled directly, without fetching or regenerating
 grammars during the target build.
 
@@ -56,7 +60,7 @@ the licences of the files they modify:
    new-name creation and native origin lifetime on rename/save-as.
 
 Original recipe, host wrapper, configuration, colourscheme and documentation
-are MPL-2.0 under the ports repository `LICENSE`. The host help-tag wrapper
+are MPL-2.0 under the packaged `app/metadata/licenses/MPL-2.0` notice. The host help-tag wrapper
 uses real GNU find directory enumeration with NUL-framed names/types, then runs
 the unmodified upstream help-tag generator. Host generation adds no target
 module-loading or Unix compatibility interface.
