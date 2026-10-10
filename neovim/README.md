@@ -26,6 +26,7 @@ boot://share/neovim/nvim.pxb file.c
 
 Its manifest requests memory, clock READ/SLEEP, launcher and pipe CREATE, and
 optionally SYSTEM_INFO READ, which backs `vim.uv.os_uname()` and the hostname.
+The terminal client forwards it to the same-image server.
 It delegates the read-only runtime as `nvim_runtime://`. The terminal client
 launches only its same-image `--embed` server over directional stdio pipes;
 that internal child explicitly receives pipe CREATE and retains the runtime
@@ -63,7 +64,10 @@ configuration can invoke unsupported operations and receive errors: file
 watches (`vim._watch`, LSP file-change registration) and LSP over TCP call luv
 functions that report ENOSYS, `vim.uv.available_parallelism()`, `os_getpid()` and
 `os_homedir()` without `home` return nil where the runtime handles it, and
-`vim.uv.os_get_passwd()` always returns nil. QEMU
+`vim.uv.os_get_passwd()` always returns nil. The client forwards its SYSTEM_INFO
+grant to the embedded server, where Lua runs. `vim.fs.normalize('~')` yields
+`home:/`, and `:checkhealth` stops at E5009 on the runtime scheme path before
+reaching any uv call. QEMU
 qualification covers local editing, highlighting, save and `:cd` with the
 16-colour profile; it does not establish physical-host qualification.
 
