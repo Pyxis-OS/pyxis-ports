@@ -545,7 +545,7 @@ index 6158c53..d22a8c5 100644
    lua_pushliteral(L, LUA_DIRSEP "\n" LUA_PATHSEP "\n" LUA_PATH_MARK "\n"
                       LUA_EXECDIR "\n" LUA_IGMARK);
 diff --git a/src/loslib.c b/src/loslib.c
-index da06a57..a905e59 100644
+index da06a57..87b8388 100644
 --- a/src/loslib.c
 +++ b/src/loslib.c
 @@ -6,7 +6,6 @@
@@ -582,58 +582,7 @@ index da06a57..a905e59 100644
  /*
  ** {======================================================
  ** Time/Date operations
-@@ -97,30 +84,6 @@ static void setboolfield (lua_State *L, const char *key, int value) {
-   lua_setfield(L, -2, key);
- }
- 
--static int getboolfield (lua_State *L, const char *key) {
--  int res;
--  lua_getfield(L, -1, key);
--  res = lua_isnil(L, -1) ? -1 : lua_toboolean(L, -1);
--  lua_pop(L, 1);
--  return res;
--}
--
--
--static int getfield (lua_State *L, const char *key, int d) {
--  int res;
--  lua_getfield(L, -1, key);
--  if (lua_isnumber(L, -1))
--    res = (int)lua_tointeger(L, -1);
--  else {
--    if (d < 0)
--      return luaL_error(L, "field " LUA_QS " missing in date table", key);
--    res = d;
--  }
--  lua_pop(L, 1);
--  return res;
--}
--
--
- static int os_date (lua_State *L) {
-   const char *s = luaL_optstring(L, 1, "%c");
-   time_t t = luaL_opt(L, (time_t)luaL_checknumber, 2, time(NULL));
-@@ -172,17 +135,9 @@ static int os_time (lua_State *L) {
-   if (lua_isnoneornil(L, 1))  /* called without args? */
-     t = time(NULL);  /* get current time */
-   else {
--    struct tm ts;
-+    /* Pyxis: libc has no mktime to convert a calendar table */
-     luaL_checktype(L, 1, LUA_TTABLE);
--    lua_settop(L, 1);  /* make sure table is at the top */
--    ts.tm_sec = getfield(L, "sec", 0);
--    ts.tm_min = getfield(L, "min", 0);
--    ts.tm_hour = getfield(L, "hour", 12);
--    ts.tm_mday = getfield(L, "day", -1);
--    ts.tm_mon = getfield(L, "month", -1) - 1;
--    ts.tm_year = getfield(L, "year", -1) - 1900;
--    ts.tm_isdst = getboolfield(L, "isdst");
--    t = mktime(&ts);
-+    return luaL_error(L, "calendar tables are not supported");
-   }
-   if (t == (time_t)(-1))
-     lua_pushnil(L);
-@@ -201,32 +156,17 @@ static int os_difftime (lua_State *L) {
+@@ -201,32 +188,17 @@ static int os_difftime (lua_State *L) {
  /* }====================================================== */
  
  
@@ -974,16 +923,3 @@ index e2cb261..de21551 100644
  /*
  @@ LUA_DL_* define which dynamic-library system Lua should use.
  ** CHANGE here if Lua has problems choosing the appropriate
-diff --git a/src/lvm.c b/src/lvm.c
-index e0a0cd8..e477aa9 100644
---- a/src/lvm.c
-+++ b/src/lvm.c
-@@ -206,7 +206,7 @@ static int l_strcmp (const TString *ls, const TString *rs) {
-   const char *r = getstr(rs);
-   size_t lr = rs->tsv.len;
-   for (;;) {
--    int temp = strcoll(l, r);
-+    int temp = strcmp(l, r);  /* Pyxis: bytewise; libc has no locales */
-     if (temp != 0) return temp;
-     else {  /* strings are equal up to a `\0' */
-       size_t len = strlen(l);  /* index of first `\0' in both strings */

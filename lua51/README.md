@@ -46,10 +46,13 @@ What libc cannot do is left out or reported, never imitated:
 - **Absent:** `io.popen`, `os.execute`, `os.clock`, `os.setlocale`,
   `file:setvbuf`, `package.loadlib` and the C module searchers, because libc has
   no `popen`, `system`, `clock`, locales, `setvbuf` or dynamic loading.
-- **Rejected:** `os.time(table)` raises "calendar tables are not supported";
-  libc has no `mktime`. `os.time()` and `os.date` work.
-- **Adapted:** strings compare bytewise (no `strcoll`), the decimal point is
-  always `.`, files open in binary mode from the start (no `freopen`), and
+- **Calendar tables:** `os.time(table)` uses libc's `mktime` in the zone `TZ`
+  selects. A wall time skipped by a DST gap, or repeated in a fold without an
+  `isdst` field that settles it, returns `nil`, as upstream does for any
+  `mktime` failure. Otherwise an `isdst` that disagrees with the zone reads the
+  wall time in the requested kind of time, as in standard C.
+- **Adapted:** strings compare in byte order (libc's `strcoll` in the only, C,
+  locale), the decimal point is always `.`, files open in binary mode from the start (no `freopen`), and
   `os.tmpname` reserves an empty exclusive `tmp://lua_XXXXXX` file with
   `mkstemp`, which needs the random grant.
 - **Complete:** the math library, with `asin`, `acos`, `sinh`, `cosh`, `tanh` and
