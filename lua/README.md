@@ -111,9 +111,15 @@ execution group's lifetime.
 removes it. `io.tmpfile` creates and immediately unlinks an exclusive read/write
 file. Both need native clock/random authority; anonymous files also need REMOVE.
 Abrupt death between creation/unlink, or a failed unlink, can leave a named file.
-No stale names are automatically deleted. `os.time()` is wall time; calendar
-tables are rejected. `os.date` uses real C-locale strftime, UTC/TZif names and
-numeric offsets. Native `os.rename` does not replace an existing target.
+No stale names are automatically deleted. `os.time()` is wall time.
+`os.time(table)` converts with libc's `mktime` in the zone `TZ` selects and
+normalizes the table's fields, as upstream does. A wall time skipped by a DST
+gap, or repeated in a fold without an `isdst` field that settles it, makes
+`mktime` fail, and `os.time` raises upstream's "time result cannot be
+represented" error. An `isdst` that disagrees with an unambiguous wall time
+reads it in the requested kind of time, as in standard C. `os.date` uses real
+C-locale strftime, UTC/TZif names and numeric offsets. String comparison uses
+libc's `strcoll`, which compares in byte order in the only, C, locale. Native `os.rename` does not replace an existing target.
 
 Absent functions are `file:setvbuf`, `io.popen`, `os.execute`, `os.clock`,
 `os.setlocale`, `package.loadlib`, C-module searchers, debug and full math.
@@ -132,8 +138,9 @@ arithmetic remain available.
   `freopen` cycle unnecessary. The patch also removes unsupported io/os
   entries and dynamic loading paths, retaining pure-Lua package searchers.
   Failed clock/strftime calls report errors instead of formatting fake time.
+  Calendar tables keep upstream's `mktime` path.
 - `config.h` selects Lua's existing hooks for an integer hook flag (no signals),
-  decimal point `.`, bytewise string collation, reentrant calendar conversion
+  decimal point `.`, reentrant calendar conversion
   and libc mkstemp-backed reserved names. There is no fake locale or
   signal implementation, and Lua's numeric types/recursion limits are unchanged.
 - `main.c` embeds the upstream core through its public API instead of building
