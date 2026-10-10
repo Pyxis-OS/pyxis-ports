@@ -11,6 +11,7 @@ return {
   kilo = "kilo",
   links = "links",
   libpng = "libpng",
+  libuv = "libuv",
   lua = "lua",
   mbedtls = "mbedtls",
   pciids = "pciids",

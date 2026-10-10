@@ -1,0 +1,62 @@
+--- a/include/uv.h
++++ b/include/uv.h
+@@ -64,7 +64,9 @@
+   struct uv__queue* prev;
+ };
+ 
+-#if defined(_WIN32)
++#if defined(__pyxis__)
++# include "uv/pyxis.h"
++#elif defined(_WIN32)
+ # include "uv/win.h"
+ #else
+ # include "uv/unix.h"
+@@ -398,6 +400,10 @@
+   uv_timespec_t st_mtim;
+   uv_timespec_t st_ctim;
+   uv_timespec_t st_birthtim;
++#if defined(__pyxis__)
++  /* Optional native metadata validity; type and size are always known. */
++  uint64_t stat_valid;
++#endif
+ } uv_stat_t;
+ 
+ 
+@@ -1218,6 +1224,7 @@
+   char* name;
+   char phys_addr[6];
+   int is_internal;
++#if !defined(__pyxis__)
+   union {
+     struct sockaddr_in address4;
+     struct sockaddr_in6 address6;
+@@ -1226,6 +1233,7 @@
+     struct sockaddr_in netmask4;
+     struct sockaddr_in6 netmask6;
+   } netmask;
++#endif
+ };
+ 
+ struct uv_passwd_s {
+--- a/include/uv/errno.h
++++ b/include/uv/errno.h
+@@ -23,7 +23,7 @@
+ #define UV_ERRNO_H_
+ 
+ #include <errno.h>
+-#if EDOM > 0
++#if defined(__pyxis__) || EDOM > 0
+ # define UV__ERR(x) (-(x))
+ #else
+ # define UV__ERR(x) (x)
+--- a/src/uv-common.h
++++ b/src/uv-common.h
+@@ -42,7 +42,7 @@
+ # include <stdatomic.h>
+ #endif
+ 
+-#if EDOM > 0
++#if defined(__pyxis__) || EDOM > 0
+ # define UV__ERR(x) (-(x))
+ #else
+ # define UV__ERR(x) (x)

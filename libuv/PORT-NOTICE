@@ -1,0 +1,9 @@
+libuv 1.52.1, commit 1cfa32ff59c076ffb6ed735bbc8c18361558661f.
+Upstream: https://github.com/libuv/libuv/archive/v1.52.1.tar.gz
+Archive SHA-256: 478baf2599bfbc882c355288c9cb6f92e0e7dda435fa04031fa5b607cf3f414c
+
+Upstream libuv is MIT licensed; LICENSE-extra retains its additional notices.
+The Pyxis platform selection patch retains upstream MIT terms.
+Original native adapter, recipe and documentation are MPL-2.0 under the ports
+repository LICENSE. The adapter uses native capabilities and libc descriptors;
+it does not compile the upstream Unix or Windows backends or worker pool.

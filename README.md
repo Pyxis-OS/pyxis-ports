@@ -75,6 +75,10 @@ recipe must keep the build offline, for example with CMake's
 
 Boot-archive inclusion is handled by Pyxis; this repository only stages files.
 
+[Native libuv](libuv/README.md) exports a static development library and an
+explicit child-output relay bundle. It needs a current SDK and declared native
+clock/pipe authority; its first profile runs without worker threads.
+
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's
 manifest runner. It includes executables, notices and TCC target support, while
 excluding the host compiler and intermediate build files.
