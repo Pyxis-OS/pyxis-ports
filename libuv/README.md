@@ -56,6 +56,8 @@ process handle releases observation and never terminates the child. EXITED keeps
 its signed status; FAULTED/TERMINATED report -1 and term_signal zero. The public
 `exit_reason` is the native PROCESS_* result. Numeric pid fields/accessors return
 UV_ENOSYS, already negative; no PID or Unix signal is invented.
+Spawn initializes its inactive process handle before fallible preparation, so a
+caller must close it after a failed spawn as well as after successful observation.
 
 Filesystem calls run only with a null callback. A supplied callback rejects
 before filesystem effects. The adapter exposes ordinary libc operations for

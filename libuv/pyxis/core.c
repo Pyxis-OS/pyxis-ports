@@ -501,9 +501,15 @@ int uv_run(uv_loop_t *loop, uv_run_mode mode)
     return UV_EINVAL;
   }
   int result = 0;
-  while (uv_loop_alive(loop) && !loop->stop_flag) {
+  int alive = uv_loop_alive(loop);
+  if (!alive) {
+    uv_update_time(loop);
+  }
+  if (mode == UV_RUN_DEFAULT && alive && !loop->stop_flag) {
     uv_update_time(loop);
     uv__run_timers(loop);
+  }
+  while (alive && !loop->stop_flag) {
     uv__run_idle(loop);
     uv__run_prepare(loop);
     int timeout = mode == UV_RUN_NOWAIT ? 0 : uv_backend_timeout(loop);
@@ -515,12 +521,13 @@ int uv_run(uv_loop_t *loop, uv_run_mode mode)
     run_closing(loop);
     uv_update_time(loop);
     uv__run_timers(loop);
+    alive = uv_loop_alive(loop);
     if (mode != UV_RUN_DEFAULT) {
       break;
     }
   }
   loop->stop_flag = 0;
-  return result ? result : uv_loop_alive(loop);
+  return result ? result : alive;
 }
 
 void uv_library_shutdown(void)

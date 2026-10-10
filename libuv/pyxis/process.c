@@ -95,7 +95,18 @@ static int grant_same(struct launch_grant *grant, handle_t source)
 
 int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t *options)
 {
-  if (!loop || !process || !options || !options->file || !options->args || !options->args[0] ||
+  if (!loop || !process || !options) {
+    return UV_EINVAL;
+  }
+  /* Spawn callers close this handle after failure too. It owns no native
+   * observer or wait admission until publication succeeds. */
+  uv__handle_init(loop, (uv_handle_t *)process, UV_PROCESS);
+  process->observer = HANDLE_INVALID;
+  process->exit_reason = 0;
+  process->pid = UV_ENOSYS;
+  process->exit_cb = options->exit_cb;
+  process->admitted = 0;
+  if (!options->file || !options->args || !options->args[0] ||
       options->stdio_count < 0 || (options->stdio_count && !options->stdio)) {
     return UV_EINVAL;
   }
@@ -273,11 +284,7 @@ int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t 
     error = uv__pyxis_status(status);
     goto done;
   }
-  uv__handle_init(loop, (uv_handle_t *)process, UV_PROCESS);
   process->observer = observer;
-  process->exit_reason = 0;
-  process->pid = UV_ENOSYS;
-  process->exit_cb = options->exit_cb;
   process->admitted = 1;
   uv__handle_start(process);
   for (size_t i = 0; i < STARTUP_STREAM_COUNT; ++i) {
