@@ -74,9 +74,13 @@ console streams, child processes and synchronous filesystem calls.
 - **Working directory and environment:** `uv.cwd`, `uv.chdir`, `uv.os_getenv`,
   `uv.os_setenv`, `uv.os_unsetenv` and `uv.os_environ` use libc's shared
   stores through libuv.
+- **Operating system:** `uv.os_uname`, `uv.os_homedir`, `uv.os_tmpdir` and
+  `uv.os_gethostname` answer from native sources, listed in the
+  [libuv notes](../libuv/README.md#operating-system-queries).
 - **Unsupported:** TCP, UDP, DNS, file watches, signals, `kill`, thread and work
   queueing, callback-style filesystem calls, user and group IDs, interface
-  addresses, memory/load/CPU/metrics introspection, handle printing, passwd,
+  addresses, memory/load/CPU/metrics introspection, handle printing, passwd and
+  group records, process priorities,
   UTF-16 conversion and pending pipe handles. Each returns
   `nil, err, "ENOSYS"` as luv reports any libuv error. `uv.new_work` still
   creates luv's context; `uv.queue_work` reports ENOSYS.

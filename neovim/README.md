@@ -24,7 +24,8 @@ The staged bundle runs through the shell's explicit bundle route:
 boot://share/neovim/nvim.pxb file.c
 ```
 
-Its manifest requests memory, clock READ/SLEEP, launcher and pipe CREATE.
+Its manifest requests memory, clock READ/SLEEP, launcher and pipe CREATE, and
+optionally SYSTEM_INFO READ, which backs `vim.uv.os_uname()` and the hostname.
 It delegates the read-only runtime as `nvim_runtime://`. The terminal client
 launches only its same-image `--embed` server over directional stdio pipes;
 that internal child explicitly receives pipe CREATE and retains the runtime
@@ -58,12 +59,17 @@ with parsers available to explicit `vim.treesitter.start()`. A start request for
 a language without a built-in parser quietly leaves/restores legacy syntax;
 `language.add()` still returns no parser and its reason. Explicit dynamic paths
 remain unsupported. Arbitrary
-configuration can invoke unsupported operations and receive errors. QEMU
+configuration can invoke unsupported operations and receive errors: file
+watches (`vim._watch`, LSP file-change registration) and LSP over TCP call luv
+functions that report ENOSYS, `vim.uv.available_parallelism()`, `os_getpid()` and
+`os_homedir()` without `home` return nil where the runtime handles it, and
+`vim.uv.os_get_passwd()` always returns nil. QEMU
 qualification covers local editing, highlighting, save and `:cd` with the
 16-colour profile; it does not establish physical-host qualification.
 
 The six ordered patches adapt platform/process APIs, native paths and file
-comparison, the console TUI, core/runtime assumptions, persistent undo and static parser registration. Undo
+comparison, the console TUI, core/runtime assumptions, persistent undo, static parser registration and the swapfile prompt, which no
+longer indexes the passwd record Pyxis refuses to supply. Undo
 files are created with libc's 0666 creation mode instead of the edited
 file's permission bits. Exact pins,
 checksums and patch order are in `metadata.lua` and staged
