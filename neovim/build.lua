@@ -70,6 +70,28 @@ return function(ctx)
   install("644", ctx.recipe .. "/runtime/sysinit.vim", outputs.sysinit)
   install("644", ctx.recipe .. "/runtime/colors/pyxis.vim", outputs.colorscheme)
   install("644", ctx.source .. "/LICENSE.txt", outputs.license)
+  install("644", ctx.recipe .. "/PORT-NOTICE.md", outputs.port_notice)
+  install("644", ctx.source .. "/src/xdiff/COPYING", outputs.xdiff_license)
+  install("644", ctx.source .. "/src/mpack/LICENSE-MIT", outputs.mpack_license)
+  install("644", ctx.source .. "/src/nvim/vterm/LICENSE", outputs.vterm_license)
+  local notices = assert(io.open(ctx.stage .. "/" .. outputs.vendor_notices, "w"))
+  for _, path in ipairs({ "src/bit.c", "src/klib/kvec.h", "src/cjson/lua_cjson.c",
+    "src/cjson/fpconv.c", "src/cjson/strbuf.h", "src/nvim/fuzzy.c",
+    "src/nvim/marktree.c", "src/nvim/tui/terminfo.c" }) do
+    local source = assert(io.open(ctx.source .. "/" .. path, "r"))
+    local text = assert(source:read("a"))
+    assert(source:close())
+    local notice
+    if path == "src/nvim/tui/terminfo.c" then
+      notice = text:match("(// Copyright %(c%) 2009.-)\n// nvim modifications:")
+    elseif path == "src/nvim/fuzzy.c" or path == "src/nvim/marktree.c" then
+      notice = text:match("^(.-)#include")
+    else
+      notice = text:match("/%*.-%*/")
+    end
+    assert(notices:write(path, "\n", assert(notice), "\n\n"))
+  end
+  assert(notices:close())
   install("644", ctx.extra.host_lua .. "/COPYRIGHT", outputs.host_lua_license)
   install("644", host_lpeg .. "/lpeg.html", outputs.host_lpeg_license)
   local provenance = assert(io.open(ctx.stage .. "/" .. outputs.provenance, "w"))

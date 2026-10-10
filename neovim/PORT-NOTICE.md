@@ -1,0 +1,43 @@
+# Neovim port notice
+
+Neovim 0.12.5 is pinned to commit
+`5885a30e1e1225349079e7a1c4a3848aa8e43e42`. Its release archive has SHA-256
+`314bb8d8695cc2c1c9b69e6c93df8c75108ca66588dfffb81c42369d2f85c90a`.
+The source URL, owner mirror and generator-source hashes are recorded in
+`metadata.lua` and `share/neovim/source.txt`.
+
+Neovim retains Apache-2.0 and Vim terms in upstream `LICENSE.txt`. That notice
+also identifies independently licensed vendored components: xdiff source
+headers retain LGPL-2.1-or-later and `src/xdiff/COPYING` contains LGPL-2.1;
+mpack, lua-bitop, lua-cjson, klib, libtermkey and libvterm retain MIT notices.
+Individual runtime files retain their own notices. These terms are not
+replaced by the Pyxis licence.
+
+The separately pinned target dependencies retain their recipe notices: Lua
+5.1.5, LPeg 1.1.0 and lua-compat-5.3 0.13 are MIT; luv 1.52.1-0 is Apache-2.0;
+libuv 1.52.1 is MIT with its `LICENSE-extra`; utf8proc 2.11.3 retains MIT and
+Unicode data terms; tree-sitter 0.26.13 retains MIT and Unicode-DFS-2016 terms.
+Native libuv adapter files retain their MPL-2.0 notices. Host Lua and LPeg
+build inputs retain MIT and are separate from target archives.
+
+Local changes are recorded as four ordered upstream-derived patches, retaining
+the licences of the files they modify:
+
+1. `0001-pyxis-platform.patch`: native process observation/termination, explicit
+   internal child grants, one-thread event loops, and rejected Unix process,
+   socket, signal and PTY paths.
+2. `0002-pyxis-files.patch`: native scheme paths and proved realpath, validity-aware
+   metadata, retained file references and checked overwrite; unavailable
+   swap/backup operations reject explicitly.
+3. `0003-pyxis-tui.patch`: native console streams, RAW passthrough lifetime,
+   generation-based resize, the 16-colour terminal profile and suppressed
+   terminal probes/query waits.
+4. `0004-pyxis-core.patch`: Pyxis build/runtime selection, static Lua module
+   loading, native home/runtime paths, restricted internal channels and omitted
+   automatic listeners and PID metadata.
+
+Original recipe, host wrapper, configuration, colourscheme and documentation
+are MPL-2.0 under the ports repository `LICENSE`. The host help-tag wrapper
+uses real GNU find directory enumeration with NUL-framed names/types, then runs
+the unmodified upstream help-tag generator. Host generation adds no target
+module-loading or Unix compatibility interface.

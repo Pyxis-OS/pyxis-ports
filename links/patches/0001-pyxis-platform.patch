@@ -241,14 +241,13 @@ index c8f9db2..6a71bf1 100644
  #define NO_SIGNAL_HANDLERS
  #endif
  
-@@ -193,6 +193,28 @@ int dos_select(int n, fd_set *rs, fd_set *ws, fd_set *es, struct timeval *t, int
+@@ -193,6 +193,27 @@ int dos_select(int n, fd_set *rs, fd_set *ws, fd_set *es, struct timeval *t, int
  #define select(a, b, c, d, e) dos_select(a, b, c, d, e, 0)
  #endif
  
 +#ifdef PYXIS
 +/* Pyxis libc never reports these: calls are not interrupted and the socket
 + * code that would see the others is unreachable (network.c). */
-+#define EINTR (-1)
 +#define EINPROGRESS (-2)
 +#define EALREADY (-3)
 +#define ECONNRESET (-4)
