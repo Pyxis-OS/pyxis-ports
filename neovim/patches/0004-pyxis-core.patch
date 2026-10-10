@@ -218,6 +218,17 @@ index a28aeb0..614f096 100644
  }
  
  static inline uint32_t splitmix32(uint32_t *const x)
+diff --git a/src/nvim/event/signal.h b/src/nvim/event/signal.h
+index aa3b0c0..91afa9d 100644
+--- a/src/nvim/event/signal.h
++++ b/src/nvim/event/signal.h
+@@ -3,4 +3,6 @@
+ #include "nvim/event/defs.h"  // IWYU pragma: keep
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+ 
++#ifndef __pyxis__
+ #include "event/signal.h.generated.h"
++#endif
 diff --git a/src/nvim/ex_docmd.c b/src/nvim/ex_docmd.c
 index 9f42d9f..f9fc9c8 100644
 --- a/src/nvim/ex_docmd.c
@@ -305,7 +316,7 @@ index 7506d25..311edf5 100644
          file_close(&stdin_dup, false);
          kv_destroy(sb);
 diff --git a/src/nvim/main.c b/src/nvim/main.c
-index bbd8db1..77e4a3e 100644
+index bbd8db1..d1ddafa 100644
 --- a/src/nvim/main.c
 +++ b/src/nvim/main.c
 @@ -256,6 +256,13 @@ int main(int argc, char **argv)
@@ -322,7 +333,31 @@ index bbd8db1..77e4a3e 100644
  
    if (!appname_is_valid()) {
      fprintf(stderr, "$NVIM_APPNAME must be a name or relative path.\n");
-@@ -2041,6 +2048,10 @@ static void exe_commands(mparm_T *parmp)
+@@ -1613,12 +1620,23 @@ static void init_path(const char *exename)
+   FUNC_ATTR_NONNULL_ALL
+ {
+   char exepath[MAXPATHL] = { 0 };
++
++#ifndef __pyxis__
+   size_t exepathlen = MAXPATHL;
++#endif
+   // Make v:progpath absolute.
++#ifdef __pyxis__
++  // The bundle selects this entry; argv[0] may name the .pxb or a catalog command.
++  // The embedded child has no app root and cannot relaunch itself.
++  if (os_realpath("app://bin/nvim.pxe", exepath, sizeof(exepath)) == NULL) {
++    exepath[0] = NUL;
++  }
++#else
+   if (os_exepath(exepath, &exepathlen) != 0) {
+     // Fall back to argv[0]. Missing procfs? #6734
+     path_guess_exepath(exename, exepath, sizeof(exepath));
+   }
++#endif
+   set_vim_var_string(VV_PROGPATH, exepath, -1);
+   set_vim_var_string(VV_PROGNAME, path_tail(exename), -1);
+ 
+@@ -2041,6 +2059,10 @@ static void exe_commands(mparm_T *parmp)
  /// 2. Source system vimrc file from $VIM
  static void do_system_initialization(void)
  {
@@ -333,7 +368,7 @@ index bbd8db1..77e4a3e 100644
    char *const config_dirs = stdpaths_get_xdg_var(kXDGConfigDirs);
    if (config_dirs != NULL) {
      const void *iter = NULL;
-@@ -2053,7 +2064,7 @@ static void do_system_initialization(void)
+@@ -2053,7 +2075,7 @@ static void do_system_initialization(void)
      do {
        const char *dir;
        size_t dir_len;
@@ -342,7 +377,7 @@ index bbd8db1..77e4a3e 100644
        if (dir == NULL || dir_len == 0) {
          break;
        }
-@@ -2139,7 +2150,7 @@ static bool do_user_initialization(void)
+@@ -2139,7 +2161,7 @@ static bool do_user_initialization(void)
      do {
        const char *dir;
        size_t dir_len;
@@ -422,6 +457,20 @@ index beb2b6d..e937d0f 100644
 +struct iovec;  // Optional readv declarations generated from the shared source.
 +
  #include "os/fs.h.generated.h"
+diff --git a/src/nvim/os/os.h b/src/nvim/os/os.h
+index d9677cb..4c9b31f 100644
+--- a/src/nvim/os/os.h
++++ b/src/nvim/os/os.h
+@@ -19,7 +19,9 @@ extern char *default_lib_dir;
+ 
+ // IWYU pragma: begin_exports
+ #include "os/env.h.generated.h"
++#ifndef __pyxis__
+ #include "os/mem.h.generated.h"
++#endif
+ #include "os/stdpaths.h.generated.h"
+ #include "os/users.h.generated.h"
+ // IWYU pragma: end_exports
 diff --git a/src/nvim/os/os_defs.h b/src/nvim/os/os_defs.h
 index ff44138..0117635 100644
 --- a/src/nvim/os/os_defs.h
@@ -441,7 +490,7 @@ index ff44138..0117635 100644
  // Use the system path length if it makes sense.
  #define DEFAULT_MAXPATHL 4096
 diff --git a/src/nvim/os/stdpaths.c b/src/nvim/os/stdpaths.c
-index a05b3c2..0e6cc9d 100644
+index a05b3c2..378bd6b 100644
 --- a/src/nvim/os/stdpaths.c
 +++ b/src/nvim/os/stdpaths.c
 @@ -50,6 +50,14 @@ static const char *const xdg_defaults[] = {
@@ -459,6 +508,18 @@ index a05b3c2..0e6cc9d 100644
  #else
    [kXDGConfigHome] = "~/.config",
    [kXDGDataHome] = "~/.local/share",
+@@ -176,7 +184,11 @@ char *stdpaths_get_xdg_var(const XDGVarType idx)
+     // Special-case: stdpath('run') is defined at startup.
+     ret = vim_gettempdir();
+     if (ret == NULL) {
++#ifdef __pyxis__
++      return NULL;  // No invented run directory after failed native creation.
++#else
+       ret = "/tmp/";
++#endif
+     }
+     size_t len = strlen(ret);
+     ret = xmemdupz(ret, len >= 2 ? len - 1 : 0);  // Trim trailing slash.
 diff --git a/src/nvim/shada.c b/src/nvim/shada.c
 index cb0de73..c0ade79 100644
 --- a/src/nvim/shada.c
@@ -507,7 +568,7 @@ index cb0de73..c0ade79 100644
    if (read_bytes < 0) {
      semsg(_(SERR "System error while reading integer from ShaDa file: %s"),
 diff --git a/src/nvim/ui_client.c b/src/nvim/ui_client.c
-index 0a769cf..7a6e5b6 100644
+index 0a769cf..1c249af 100644
 --- a/src/nvim/ui_client.c
 +++ b/src/nvim/ui_client.c
 @@ -14,6 +14,7 @@
@@ -523,8 +584,8 @@ index 0a769cf..7a6e5b6 100644
  uint64_t ui_client_start_server(const char *exepath, size_t argc, char **argv)
  {
 +#ifdef __pyxis__
-+  if (ui_client_forward_stdin) {
-+    emsg("Redirected stdin on fd 3 is unavailable on Pyxis");
++  if (ui_client_forward_stdin || !exepath || !*exepath) {
++    emsg("Native TUI requires its bundle entry and terminal stdin");
 +    return 0;
 +  }
 +#endif

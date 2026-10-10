@@ -47,7 +47,7 @@ return function(ctx)
   ctx.run({ "cmake", "--build", ctx.build, "--target", "nvim_bin", "--parallel", "16" })
 
   local runtime = ctx.stage .. "/share/neovim/nvim.pxb/app/share/nvim/runtime"
-  ctx.run({ "mkdir", "-p", runtime })
+  ctx.run({ "mkdir", "-p", runtime .. "/syntax/vim" })
   ctx.run({ "cp", "-R", ctx.source .. "/runtime/.", runtime })
   -- Run upstream generators with native host Lua, without executing the editor.
   ctx.run({ lua, ctx.source .. "/src/gen/preload_nlua.lua", ctx.source, host_module,
