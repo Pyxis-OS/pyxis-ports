@@ -86,10 +86,13 @@ actual signed exit status), `dir` (array of name/kind entries) and `sha256`
 consumed SDK; missing authority and native failures raise Lua errors. The
 module is executable-only, leaving configuration embeddings restricted.
 
-`pyxis.run` also resolves native development bundles through the explicit
-`PYXIS_BUNDLE_CATALOG` URI after a bare command's `bin://name.pxe` lookup fails.
-`bin://name` retains an existing file lookup before catalog resolution; a
-`.pxb` path, including a trailing slash, selects that bundle's default entry.
+`pyxis.run` uses libpyxis's shared command lookup: a bare name checks
+`bin://name.pxe`, then `bin://name.pxb`'s default entry, then the optional
+`PYXIS_BUNDLE_CATALOG`, then `boot://name.pxe`. Only an absent candidate permits
+fallback; a denied, malformed or incomplete candidate reports its error.
+Direct hits do not consult the catalog. `bin://name` retains literal FILE
+lookup first, then the same bin candidates and catalog without rescue fallback;
+a `.pxb` path, including a trailing slash, selects that bundle's default entry.
 Catalog lookup reads the shared mutable environment and preserves allocation
 errors. Child launch captures an owned snapshot of the current libc cwd and
 environment, keeping parent mutations separate from launch metadata.

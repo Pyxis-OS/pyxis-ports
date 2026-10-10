@@ -24,6 +24,7 @@
 #include <mbedtls/platform.h>
 #include <path.h>
 #include <process.h>
+#include <program.h>
 #include <psa/crypto.h>
 #include <psa/crypto_extra.h>
 #include <pyxis/stdio.h>
@@ -249,66 +250,43 @@ static enum call_status open_path(const char *path, uint64_t kind, uint64_t righ
   return status;
 }
 
-static enum call_status open_bundle_command(const char *command, struct resources *owned)
-{
-  const char *catalog;
-  enum call_status status = pyxis_environment_get("PYXIS_BUNDLE_CATALOG", &catalog);
-  if (status != CALL_OK) {
-    return status;
-  }
-  const struct path_context *context;
-  status = pyxis_working_context(&context);
-  return status == CALL_OK ? bundle_command_open(context, catalog, command,
-      &owned->bundle) : status;
-}
-
 static enum call_status open_program(const char *command, struct resources *owned)
 {
   if (!*command) {
     return CALL_BAD_REQUEST;
   }
-  size_t length = strlen(command);
-  size_t end = length;
-  while (end && command[end - 1] == '/') {
-    --end;
-  }
-  if (end >= 4 && !memcmp(command + end - 4, ".pxb", 4)) {
-    const struct path_context *context;
-    enum call_status status = pyxis_working_context(&context);
-    return status == CALL_OK ? bundle_open(context, command, &owned->bundle) : status;
-  }
-  if (strchr(command, '/')) {
-    enum call_status status = open_path(command, DIRECTORY_KIND_FILE,
-        FILE_RIGHT_READ, &owned->object);
-    if (status == CALL_NOT_FOUND && !strncmp(command, "bin://", 6) &&
-        command[6] && !strchr(command + 6, '/') &&
-        !(length >= 4 && !strcmp(command + length - 4, ".pxe"))) {
-      status = open_bundle_command(command + 6, owned);
-    }
+  const struct path_context *context;
+  enum call_status status = pyxis_working_context(&context);
+  if (status != CALL_OK) {
     return status;
   }
+  size_t length = strlen(command), depth = context->count;
   if (length > SIZE_MAX - sizeof("boot://.pxe")) {
     return CALL_LIMIT;
   }
-  char *path = malloc(length + sizeof("boot://.pxe"));
-  if (!path) {
+  size_t capacity = length + sizeof("boot://.pxe");
+  if (depth > SIZE_MAX - capacity || depth + capacity > SIZE_MAX / sizeof(handle_t)) {
+    return CALL_LIMIT;
+  }
+  size_t slots = depth + capacity;
+  handle_t *directories = malloc(slots * sizeof(*directories));
+  char *component = malloc(capacity);
+  if (!directories || !component) {
+    free(directories);
+    free(component);
     return CALL_NO_MEMORY;
   }
-  memcpy(path, "bin://", 6);
-  memcpy(path + 6, command, length);
-  memcpy(path + 6 + length, ".pxe", sizeof(".pxe"));
-  enum call_status status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ,
-      &owned->object);
-  if (status == CALL_NOT_FOUND) {
-    status = open_bundle_command(command, owned);
+  struct path_workspace workspace = {
+    .directories = directories, .directory_capacity = slots,
+    .component = component, .component_capacity = capacity,
+  };
+  handle_t image;
+  status = program_open(context, command, &workspace, &image, &owned->bundle);
+  if (status == CALL_OK && !owned->bundle) {
+    owned->object = image;
   }
-  if (status == CALL_NOT_FOUND) {
-    memcpy(path, "boot://", 7);
-    memcpy(path + 7, command, length);
-    memcpy(path + 7 + length, ".pxe", sizeof(".pxe"));
-    status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &owned->object);
-  }
-  free(path);
+  free(directories);
+  free(component);
   return status;
 }
 
