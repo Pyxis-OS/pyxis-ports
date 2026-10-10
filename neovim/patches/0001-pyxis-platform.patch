@@ -23,22 +23,23 @@ index 95a7303..15ba2ec 100644
    uint64_t stopped_time;  // proc_stop() timestamp
    const char *cwd;
 diff --git a/src/nvim/event/libuv_proc.c b/src/nvim/event/libuv_proc.c
-index 50ab55e..5591582 100644
+index 50ab55e..77ef531 100644
 --- a/src/nvim/event/libuv_proc.c
 +++ b/src/nvim/event/libuv_proc.c
-@@ -2,6 +2,11 @@
+@@ -2,6 +2,12 @@
  #include <locale.h>
  #include <stdint.h>
  #include <uv.h>
 +#ifdef __pyxis__
 +# include <abi/pipe.h>
++# include <abi/system_info.h>
 +# include <startup.h>
 +# include <uv/pyxis-native.h>
 +#endif
  
  #include "nvim/eval/typval.h"
  #include "nvim/event/defs.h"
-@@ -32,6 +37,11 @@ static void libuv_proc_stdio(LibuvProc *uvproc, int idx, uv_pipe_t *parent_pipe,
+@@ -32,6 +38,11 @@ static void libuv_proc_stdio(LibuvProc *uvproc, int idx, uv_pipe_t *parent_pipe,
                               bool child_readable, bool overlapped, bool win_create_pipe,
                               int *to_close)
  {
@@ -50,7 +51,7 @@ index 50ab55e..5591582 100644
  #ifdef MSWIN
    if (win_create_pipe) {
      uvproc->uvstdio[idx].flags = UV_CREATE_PIPE
-@@ -70,6 +80,7 @@ static void libuv_proc_stdio(LibuvProc *uvproc, int idx, uv_pipe_t *parent_pipe,
+@@ -70,6 +81,7 @@ static void libuv_proc_stdio(LibuvProc *uvproc, int idx, uv_pipe_t *parent_pipe,
    uvproc->uvstdio[idx].data.fd = child_fd;
    to_close[idx] = child_fd;
    uv_pipe_open(parent_pipe, parent_fd);
@@ -58,7 +59,7 @@ index 50ab55e..5591582 100644
  }
  
  /// @returns zero on success, or negative error code
-@@ -79,6 +90,9 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+@@ -79,6 +91,9 @@ int libuv_proc_spawn(LibuvProc *uvproc)
    Proc *proc = (Proc *)uvproc;
    uvproc->uvopts.file = proc_get_exepath(proc);
    uvproc->uvopts.args = proc->argv;
@@ -68,7 +69,7 @@ index 50ab55e..5591582 100644
    uvproc->uvopts.flags = UV_PROCESS_WINDOWS_HIDE;
  #ifdef MSWIN
    // libuv collapses the argv to a CommandLineToArgvW()-style string. cmd.exe
-@@ -92,6 +106,7 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+@@ -92,6 +107,7 @@ int libuv_proc_spawn(LibuvProc *uvproc)
  #else
    // Always setsid() on unix-likes. #8107
    uvproc->uvopts.flags |= UV_PROCESS_DETACHED;
@@ -76,7 +77,7 @@ index 50ab55e..5591582 100644
  #endif
    uvproc->uvopts.exit_cb = exit_cb;
    uvproc->uvopts.cwd = proc->cwd;
-@@ -137,7 +152,19 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+@@ -137,7 +153,27 @@ int libuv_proc_spawn(LibuvProc *uvproc)
    }
  
    int status;
@@ -84,12 +85,20 @@ index 50ab55e..5591582 100644
 +#ifdef __pyxis__
 +  // Only the explicitly identified internal server gets a loop's pipe factory.
 +  assert(proc->internal_tui && !ui_client_forward_stdin);
-+  const uv_pyxis_resource_t resources[] = {
++  uv_pyxis_resource_t resources[2] = {
 +    { .name = "pipe", .source = startup_resource("pipe"),
 +      .rights = PIPE_SERVICE_RIGHT_CREATE, .transport = 0 },
 +  };
++  size_t resource_count = 1;
++  // The server answers uname and the hostname from SYSTEM_INFO READ, when held.
++  handle_t system_info = startup_resource("system_info");
++  if (system_info != HANDLE_INVALID) {
++    resources[resource_count++] = (uv_pyxis_resource_t){
++      .name = "system_info", .source = system_info,
++      .rights = SYSTEM_INFO_RIGHT_READ, .transport = 0 };
++  }
 +  status = uv_pyxis_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts,
-+                         resources, ARRAY_SIZE(resources));
++                         resources, resource_count);
 +#else
 +  status = uv_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts);
 +#endif
@@ -97,7 +106,7 @@ index 50ab55e..5591582 100644
      ILOG("uv_spawn(%s) failed: %s", uvproc->uvopts.file, uv_strerror(status));
      if (uvproc->uvopts.env) {
        os_free_fullenv(uvproc->uvopts.env);
-@@ -180,7 +207,13 @@ static void exit_cb(uv_process_t *handle, int64_t status, int term_signal)
+@@ -180,7 +216,13 @@ static void exit_cb(uv_process_t *handle, int64_t status, int term_signal)
    // Use stored/expected signal.
    term_signal = proc->exit_signal;
  #endif
