@@ -36,6 +36,22 @@ index b5c0a0f..1ee2f56 100644
    local so_paths = {}
    for _, trail in ipairs(vim._so_trails) do
      local path = 'lua' .. trail:gsub('?', basename) -- so_trails contains a leading slash
+diff --git a/runtime/lua/vim/fs.lua b/runtime/lua/vim/fs.lua
+index ce5d9f4..bc7a048 100644
+--- a/runtime/lua/vim/fs.lua
++++ b/runtime/lua/vim/fs.lua
+@@ -44,9 +44,8 @@ local uv = vim.uv
+ 
+ local M = {}
+ 
+--- Can't use `has('win32')` because the `nvim -ll` test runner doesn't support `vim.fn` yet.
+-local sysname = uv.os_uname().sysname:lower()
+-local iswin = not not (sysname:find('windows') or sysname:find('mingw'))
++-- Lua's compiled path separator also works without a uname operation or editor API.
++local iswin = package.config:sub(1, 1) == '\\'
+ local os_sep = iswin and '\\' or '/'
+ 
+ --- Iterate over all the parents of the given path (not expanded/resolved, the caller must do that).
 diff --git a/src/nvim/CMakeLists.txt b/src/nvim/CMakeLists.txt
 index c87ceb2..df7ec9f 100644
 --- a/src/nvim/CMakeLists.txt
@@ -460,6 +476,24 @@ index 6e9a63a..6f30288 100644
    return true;
 +#endif
  }
+diff --git a/src/nvim/memline.c b/src/nvim/memline.c
+index 63060a2..ac75d0a 100644
+--- a/src/nvim/memline.c
++++ b/src/nvim/memline.c
+@@ -337,11 +337,13 @@ int ml_open(buf_T *buf)
+     b0p->b0_dirty = buf->b_changed ? B0_DIRTY : 0;
+     b0p->b0_flags = (char)(get_fileformat(buf) + 1);
+     set_b0_fname(b0p, buf);
++#ifndef __pyxis__
+     os_get_username(b0p->b0_uname, B0_UNAME_SIZE);
+     b0p->b0_uname[B0_UNAME_SIZE - 1] = NUL;
+     os_get_hostname(b0p->b0_hname, B0_HNAME_SIZE);
+     b0p->b0_hname[B0_HNAME_SIZE - 1] = NUL;
+     long_to_char((long)os_get_pid(), b0p->b0_pid);
++#endif
+   }
+ 
+   // Always sync block number 0 to disk, so we can check the file name in
 diff --git a/src/nvim/msgpack_rpc/server.c b/src/nvim/msgpack_rpc/server.c
 index 2cd7207..13a0946 100644
 --- a/src/nvim/msgpack_rpc/server.c
@@ -527,6 +561,33 @@ index 2cd7207..13a0946 100644
  }
  
  /// Stops listening on the address specified by `endpoint`.
+diff --git a/src/nvim/os/env.c b/src/nvim/os/env.c
+index 550a077..82c3465 100644
+--- a/src/nvim/os/env.c
++++ b/src/nvim/os/env.c
+@@ -454,6 +454,14 @@ void os_hint_priority(void)
+ /// @param size       Size of `hostname`.
+ void os_get_hostname(char *hostname, size_t size)
+ {
++#ifdef __pyxis__
++  if (gethostname(hostname, size) != 0) {
++    if (size) {
++      hostname[0] = NUL;
++    }
++    emsg("Native hostname query failed or lacks authority");
++  }
++#else
+ #ifdef HAVE_SYS_UTSNAME_H
+   struct utsname vutsname;
+ 
+@@ -485,6 +493,7 @@ void os_get_hostname(char *hostname, size_t size)
+   emsg("os_get_hostname failed: missing uname()");
+   *hostname = NUL;
+ #endif
++#endif
+ }
+ 
+ /// The "real" home directory as determined by `init_homedir`.
 diff --git a/src/nvim/os/fileio.c b/src/nvim/os/fileio.c
 index 801483b..3cfe47e 100644
 --- a/src/nvim/os/fileio.c
