@@ -45,8 +45,7 @@ The patch replaces termios, poll and stat:
   timed key read that keeps the key for the next read. Unsupported escape
   sequences are dropped.
 - **Output.** Screen output is buffered and written to the output console
-  before vi waits for input. The screen is cleared on start and exit, since
-  there is no alternate screen.
+  before vi waits for input.
 - **Loading.** Files are read to EOF instead of sized with `fstat`. Opening a
   directory fails with the native error.
 - **Read-only marker.** A file is marked `[Readonly]` when it cannot be opened
@@ -69,6 +68,13 @@ Upstream never clears the per-file read-only bit. After one read-only file,
 every later file opened with `:n` or `:e` also showed `[Readonly]` and refused
 `:w`. Loading a buffer now clears that bit before the new file is checked.
 `-R` uses a separate mode bit and still applies to every file.
+
+## Alternate screen
+
+Patch `0006-alternate-screen.patch` restores upstream vi's `CSI ? 1049 h/l`,
+which 0001 had replaced with clearing the screen, and makes less page on the
+alternate screen too. Both now leave the shell's screen and cursor as they
+found them, in a framebuffer tab and in a multiplexer pane.
 
 ## Saves
 

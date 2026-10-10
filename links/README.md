@@ -53,8 +53,7 @@ to empty units.
   - **No other programs.** `exe` fails, since Links starts no other programs.
     There is no textual working directory, so relative `file://` URLs stay
     relative.
-  - **Exit sequence.** The exit sequence homes the cursor, because the Pyxis
-    terminal has no saved cursor. Mouse-mode sequences are not sent.
+  - **Exit sequence.** Mouse-mode sequences are not sent.
 - **0002 Narrow file metadata.** Libc's `struct stat` has only a type and a
   size. Directory listings leave the date column blank, and the bookmark file
   change check compares sizes only.
@@ -89,6 +88,10 @@ to empty units.
   fetching it again. Aliases do not keep bodies alive indefinitely: after the
   body is evicted, opening a requested URL fetches a new snapshot. Native files
   and inherited streams have no response metadata and retain their behavior.
+- **0006 Alternate screen.** Pyxis terminals have the alternate screen and saved
+  cursor, so Links uses upstream's xterm path whatever `TERM` says: it enters the
+  alternate screen at startup and leaves it on exit, restoring the shell's
+  screen. Patch 0001's override of the exit sequence is removed.
 - **Downloads.** Patch 0001 no longer defines an unsupported `O_EXCL`: libc
   now has exclusive creation, so Links' download path works. The save dialog
   takes any path the program's roots allow, relative to the inherited working

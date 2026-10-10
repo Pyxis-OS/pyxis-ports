@@ -20,6 +20,7 @@ return {
     "patches/0003-load-pages-through-libc.patch",
     "patches/0004-save-configuration-under-home.patch",
     "patches/0005-adopt-provider-redirect-snapshots.patch",
+    "patches/0006-alternate-screen.patch",
   },
   outputs = {
     executable = "bin/links.pxe",

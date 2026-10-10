@@ -1,0 +1,25 @@
+diff --git a/kilo.c b/kilo.c
+index ddb4cbb..3a8115f 100644
+--- a/kilo.c
++++ b/kilo.c
+@@ -203,8 +203,9 @@ static int terminal_ready;
+ static void restore_terminal(void) {
+     if (!terminal_ready) return;
+     term_reset_style(&terminal);
+-    term_clear(&terminal);
+     term_cursor_visible(&terminal, true);
++    /* Leaving the alternate screen restores the shell's screen and cursor. */
++    term_alternate_screen(&terminal, false);
+     terminal_ready = 0;
+ }
+ 
+@@ -1312,7 +1313,8 @@ int main(int argc, char **argv) {
+     if (term_passthrough(&terminal,&passthrough) != CALL_OK)
+         fail("cannot keep Ctrl+C as editor input");
+     terminal_ready = 1;
+-    if (term_reset_style(&terminal) != CALL_OK || term_clear(&terminal) != CALL_OK)
++    if (term_reset_style(&terminal) != CALL_OK ||
++        term_alternate_screen(&terminal, true) != CALL_OK)
+         fail("cannot initialize terminal");
+     initEditor();
+     editorSelectSyntaxHighlight(argv[1]);

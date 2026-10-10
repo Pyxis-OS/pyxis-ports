@@ -55,6 +55,10 @@ Partial Escape/CSI sequences retain their decoder state and byte deadline across
 resize redraws. The existing minimum of two columns and three rows still applies;
 smaller dimensions report an error rather than continuing with an invalid layout.
 
+`0008` edits on the alternate screen through libterm's `term_alternate_screen`,
+instead of clearing the screen at start and exit, so quitting returns to the
+shell's screen and cursor as they were. It needs the matching SDK.
+
 This is an ASCII text editor. It reads LF and CRLF, rejects NUL bytes, and
 saves LF with a final newline for each row. Saves use create/truncate/write;
 an error can leave a partial file. Read-only files can be viewed but not saved.

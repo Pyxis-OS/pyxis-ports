@@ -17,6 +17,7 @@ return {
     "patches/0005-page-navigation-bounds.patch",
     "patches/0006-ctrl-c-passthrough.patch",
     "patches/0007-terminal-resize.patch",
+    "patches/0008-alternate-screen.patch",
   },
   outputs = {
     executable = "bin/kilo.pxe",

@@ -1,0 +1,31 @@
+diff --git a/kbd.c b/kbd.c
+index bb1c348..5fe4a2a 100644
+--- a/kbd.c
++++ b/kbd.c
+@@ -130,21 +130,20 @@ unsigned char init_seq[] = "\033)0\0337";
+ unsigned char init_seq_x_mouse[] = "\033[?1000h\033[?1002h\033[?1005l\033[?1015l\033[?1006h\033[?2004h";
+ unsigned char init_seq_tw_mouse[] = "\033[?9h";
+ unsigned char init_seq_xterm[] = "\033[?1049h";
+-#ifdef PYXIS
+-/* Pyxis terminals have no saved cursor, so leave the cleared screen with the
+-   cursor at the top for the shell. */
+-unsigned char term_seq[] = "\033[2J\033[H";
+-#else
+ unsigned char term_seq[] = "\033[2J\0338\r \b";
+-#endif
+ unsigned char term_seq_x_mouse[] = "\033[?1000l\r       \r\033[?1002l\r       \r\033[?1006l\r       \r\033[?2004l\r       \r";
+ unsigned char term_seq_tw_mouse[] = "\033[?9l";
+ unsigned char term_seq_xterm[] = "\033[?1049l";
+ 
+ static int use_xterm_save_restore(void)
+ {
++#ifdef PYXIS
++	/* Pyxis terminals have the alternate screen, whatever TERM says. */
++	return 1;
++#else
+ 	unsigned char *e;
+ 	return (e = cast_uchar getenv("TERM")) && !casecmp(e, cast_uchar "xterm", 5);
++#endif
+ }
+ 
+ static void send_init_sequence(int h, int flags)
