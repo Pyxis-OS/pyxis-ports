@@ -39,6 +39,7 @@ static struct pending_key pending[PENDING_CAPACITY];
 static size_t pending_head, pending_count;
 static uint32_t pointer_buttons, ordinary_buttons;
 static int64_t motion_x, motion_y;
+static int32_t scroll_remainder;
 
 static const unsigned char keymap[KEY_COUNT] = {
   [KEY_ESCAPE] = K_ESCAPE, [KEY_ENTER] = K_ENTER, [KEY_KP_ENTER] = K_ENTER,
@@ -127,6 +128,7 @@ static void reset_input(void)
   pointer_buttons = 0;
   ordinary_buttons = 0;
   motion_x = motion_y = 0;
+  scroll_remainder = 0;
   pending_head = pending_count = 0;
   releasing_keys = true;
 }
@@ -141,6 +143,7 @@ static void reset_pointer_input(void)
 {
   pointer_buttons = 0;
   motion_x = motion_y = 0;
+  scroll_remainder = 0;
 
   size_t kept = 0;
   for (size_t i = 0; i < pending_count; ++i) {
@@ -220,6 +223,7 @@ static void handle_pointer_event(const struct pointer_event *event)
   }
   pointer_locked = locked;
   if (event->type != POINTER_INPUT) {
+    scroll_remainder = 0;
     /* Same-session resize keeps the lock and accepted device buttons. */
     if (event->type == POINTER_GEOMETRY_CHANGED && pointer_locked) {
       return;
@@ -251,9 +255,13 @@ static void handle_pointer_event(const struct pointer_event *event)
   }
   pointer_buttons = event->buttons;
 
-  /* Positive wheel counts scroll toward the user, which Quake calls down. */
-  int key = event->wheel > 0 ? K_MWHEELDOWN : K_MWHEELUP;
-  int64_t steps = event->wheel > 0 ? event->wheel : -(int64_t)event->wheel;
+  int64_t total = (int64_t)scroll_remainder + event->scroll_y;
+  int64_t steps = total / POINTER_SCROLL_UNITS_PER_DETENT;
+  scroll_remainder = total % POINTER_SCROLL_UNITS_PER_DETENT;
+  int key = steps > 0 ? K_MWHEELDOWN : K_MWHEELUP;
+  if (steps < 0) {
+    steps = -steps;
+  }
   if (steps > WHEEL_STEPS_PER_EVENT) {
     steps = WHEEL_STEPS_PER_EVENT;
   }

@@ -63,8 +63,14 @@ The files in `pyxis/` are the platform layer:
     enter events restore the parked position without requiring device movement.
     A fresh consumed surface
     click permits a new explicit relative-mode request; the adapter does not
-    automatically relock. Locked resize keeps held buttons. The wheel follows
-    SDL's sign: toward the user is negative.
+    automatically relock. Button usages 1–32 produce SDL button events; native
+    right/middle numbering is converted to SDL's order. Locked resize keeps held
+    buttons. Both scroll axes reach SDL's precise wheel fields in detents, with
+    positive right/up axes. Kernel source direction policy is already applied;
+    the adapter only converts the vertical coordinate and uses NORMAL direction.
+    Signed fractional wheel increments cancel across reports. Focus, boundary,
+    reset, lock and geometry changes clear wheel residue and pending wheel events,
+    including locked resize while held buttons and relative motion survive.
   - **Cursor.** SDL bitmap and color cursors copy straight-alpha BGRA pixels to
     the native surface cursor, with dimensions 1..64 and an in-image hotspot.
     The default is the native arrow. `SDL_ShowCursor` controls native saved

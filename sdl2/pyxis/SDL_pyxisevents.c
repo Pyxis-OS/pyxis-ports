@@ -21,6 +21,7 @@
 #define ASCII_LAST_PRINTABLE '~'
 #define NANOSECONDS_PER_MILLISECOND UINT64_C(1000000)
 #define INPUT_WAIT_CAPACITY 3
+#define POINTER_BUTTON_COUNT 32
 
 static bool keyboard_focused;
 static bool shared_c_held;
@@ -80,23 +81,31 @@ static const SDL_Scancode scancodes[KEY_COUNT] = {
   [KEY_KP_PERIOD] = SDL_SCANCODE_KP_PERIOD, [KEY_KP_ENTER] = SDL_SCANCODE_KP_ENTER,
 };
 
-static const struct {
-  uint32_t pyxis;
-  Uint8 sdl;
-} buttons[] = {
-  {POINTER_BUTTON_LEFT, SDL_BUTTON_LEFT},
-  {POINTER_BUTTON_RIGHT, SDL_BUTTON_RIGHT},
-  {POINTER_BUTTON_MIDDLE, SDL_BUTTON_MIDDLE},
-};
+static Uint8 sdl_button(unsigned usage)
+{
+  switch (usage) {
+    case 1: return SDL_BUTTON_LEFT;
+    case 2: return SDL_BUTTON_RIGHT;
+    case 3: return SDL_BUTTON_MIDDLE;
+    default: return (Uint8)usage;
+  }
+}
 
 static void release_buttons(void)
 {
-  for (size_t i = 0; i < SDL_arraysize(buttons); ++i) {
-    if (held_buttons & buttons[i].pyxis) {
-      SDL_SendMouseButton(pyxis_video.window, 0, SDL_RELEASED, buttons[i].sdl);
+  for (unsigned usage = 1; usage <= POINTER_BUTTON_COUNT; ++usage) {
+    if (held_buttons & (UINT32_C(1) << (usage - 1))) {
+      SDL_SendMouseButton(pyxis_video.window, 0, SDL_RELEASED, sdl_button(usage));
     }
   }
   held_buttons = 0;
+}
+
+static void reset_scroll(void)
+{
+  SDL_Mouse *mouse = SDL_GetMouse();
+  mouse->accumulated_wheel_x = mouse->accumulated_wheel_y = 0.0f;
+  SDL_FlushEvent(SDL_MOUSEWHEEL);
 }
 
 void PYXIS_ResetInput(void)
@@ -106,6 +115,7 @@ void PYXIS_ResetInput(void)
   shared_c_held = shared_v_held = false;
   SDL_ResetKeyboard();
   release_buttons();
+  reset_scroll();
   keyboard_focused = false;
   pointer_focused = false;
   pointer_inside = false;
@@ -202,7 +212,7 @@ static void update_pointer_state(uint64_t flags, bool reset)
     mouse->scale_accum_x = mouse->scale_accum_y = 0.0f;
     mouse->has_position = SDL_FALSE;
     SDL_FlushEvent(SDL_MOUSEMOTION);
-    SDL_FlushEvent(SDL_MOUSEWHEEL);
+    reset_scroll();
   }
   if (!locked && mouse->relative_mode) {
     /* The kernel already revoked it. SDL's setter would warp on exit. */
@@ -258,6 +268,7 @@ static void handle_pointer(const struct pointer_event *event)
     pointer_inside = false;
   }
   if (event->type != POINTER_INPUT) {
+    reset_scroll();
     bool keep_buttons = locked && event->type == POINTER_GEOMETRY_CHANGED;
     update_pointer_state(event->flags, !keep_buttons);
     if (!locked && (event->type == POINTER_ENTER ||
@@ -281,24 +292,27 @@ static void handle_pointer(const struct pointer_event *event)
   } else {
     struct pointer_geometry geometry;
     if (!ordinary_geometry(event, &geometry)) {
+      reset_scroll();
       return;
     }
     pointer_inside = true;
     SDL_SetMouseFocus(pyxis_video.window);
     send_ordinary_position(event);
   }
-  for (size_t i = 0; i < SDL_arraysize(buttons); ++i) {
-    uint32_t button = buttons[i].pyxis;
+  for (unsigned usage = 1; usage <= POINTER_BUTTON_COUNT; ++usage) {
+    uint32_t button = UINT32_C(1) << (usage - 1);
     if ((event->buttons ^ held_buttons) & button) {
       bool pressed = (event->buttons & button) != 0;
       SDL_SendMouseButton(pyxis_video.window, 0, pressed ? SDL_PRESSED : SDL_RELEASED,
-          buttons[i].sdl);
+          sdl_button(usage));
       held_buttons ^= button;
     }
   }
-  /* Pyxis counts toward the user as positive; SDL counts away from the user. */
-  if (event->wheel) {
-    SDL_SendMouseWheel(pyxis_video.window, 0, 0.0f, -(float)event->wheel,
+  /* Direction policy is already applied; SDL's vertical axis is positive up. */
+  if (event->scroll_x || event->scroll_y) {
+    SDL_SendMouseWheel(pyxis_video.window, 0,
+        (float)event->scroll_x / POINTER_SCROLL_UNITS_PER_DETENT,
+        -(float)event->scroll_y / POINTER_SCROLL_UNITS_PER_DETENT,
         SDL_MOUSEWHEEL_NORMAL);
   }
 }

@@ -17,6 +17,7 @@ return {
     "patches/0004-native-pyxis-pointer-authority.patch",
     "patches/0005-blocking-wait-without-thread-wakeup.patch",
     "patches/0006-private-pyxis-clipboard-command-identity.patch",
+    "patches/0007-pyxis-scroll-residue-and-32-buttons.patch",
   },
   outputs = {
     library = "dev/lib/libSDL2.a",

@@ -23,7 +23,8 @@ while its graphics layer is hidden or another space is selected. Explicit game
 pause remains available. Keyboard focus changes and resets release every held
 input; pointer focus, reset and lock changes release held mouse buttons and
 discard pending mouse input while preserving keyboard play. Fresh presses are
-required. Geometry changes preserve locked mouse input.
+required. Geometry changes preserve locked buttons and relative motion, while
+clearing fractional scroll residue.
 The optional pointer session is an ordinary surface subscription. Quake requests
 lock once after its first successful presentation and applies device-relative
 motion, buttons and wheel only while locked. A refused or revoked lock leaves
@@ -33,6 +34,13 @@ allows Quake to request lock again. Focus gain alone never requests lock.
 If the initial request was refused while the space was inactive, a fresh ordinary
 left-button press also requests lock and is not applied as a shot. A held button
 or motion cannot repeat that request.
+Vertical scroll keeps signed fractional residue until a complete 120-unit detent
+can produce a wheel key press/release pair; positive viewport movement produces
+MWHEELDOWN, negative produces MWHEELUP. Opposite partial increments cancel.
+Focus, reset, lock and geometry changes clear residue. Translation retains its
+limit of eight wheel pairs per pointer event and discards excess complete steps.
+Only the first three buttons have engine bindings; extra buttons and horizontal
+scroll have no action.
 `+mlook` is queued at every start, and a first run without `config.cfg` binds
 the middle button to `impulse 10`.
 Defaults are `-basedir boot://share/quake` and `-writedir home://quake`, inserted
