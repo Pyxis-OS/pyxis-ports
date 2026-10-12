@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "org.pyxis.lua",
+  "entry": "bin/lua.pxe",
+  "commands": {"lua": "bin/lua.pxe"},
+  "resource_dirs": {},
+  "grants": [
+    {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
+    {"name": "clock", "resource": "clock", "rights": ["read", "sleep"], "required": false},
+    {"name": "random", "resource": "random", "rights": ["read"], "required": false},
+    {"name": "threads", "resource": "threads", "rights": ["manage"], "required": false},
+    {"name": "launcher", "resource": "launcher", "rights": ["launch"], "required": false},
+    {"name": "pipe", "resource": "pipe", "rights": ["create"], "required": false},
+    {"name": "job_work", "resource": "job_work", "rights": ["create", "remove", "read-files", "write-files"], "required": false},
+    {"name": "system_info", "resource": "system_info", "rights": ["read"], "required": false},
+    {"name": "echo", "resource": "echo", "rights": ["send"], "required": false},
+    {"name": "tcp", "resource": "tcp", "rights": ["connect"], "required": false},
+    {"name": "udp", "resource": "udp", "rights": ["open"], "required": false},
+    {"name": "display", "resource": "display", "rights": ["draw"], "required": false},
+    {"name": "profile", "resource": "profile", "rights": ["memory", "host"], "required": false},
+    {"name": "input", "resource": "input", "rights": ["read"], "required": false},
+    {"name": "output", "resource": "output", "rights": ["write"], "required": false},
+    {"name": "keyboard", "resource": "keyboard", "rights": ["input"], "required": false},
+    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false}
+  ]
+}

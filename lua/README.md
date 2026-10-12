@@ -23,7 +23,10 @@ same SDK used to build the archive. This does not provide `luaL_openlibs`,
 debug or the full math library. The standalone interpreter additionally links
 Mbed TLS PSA for its native SHA-256 helper; liblua itself does not link crypto.
 
-The guest executable is `bin/lua.pxe`; Pyxis installs it at `bin://lua.pxe`.
+The guest command is `bin/lua.pxb`, with its executable inside `app/bin/`.
+The declaration preserves Lua's ordinary resources and requests optional
+`job_work`, LAUNCH and PIPE context. Normal `lua` command lookup selects the
+bundle. Pure Lua still starts when the optional job context is absent.
 From the guest shell:
 
 ```text
@@ -85,6 +88,90 @@ actual signed exit status), `dir` (array of name/kind entries) and `sha256`
 (streaming lowercase hex digest through PSA). Paths and grants use only the
 consumed SDK; missing authority and native failures raise Lua errors. The
 module is executable-only, leaving configuration embeddings restricted.
+
+## Owned native jobs
+
+`pyxis.job(argv, options)` captures one native command;
+`pyxis.pipeline({argv1, argv2, ...}, options)` uses the same core for several
+stages. Both return `job, status`, including an owned job with a nonzero native
+start status when cleanup remains unresolved. They need the declared private
+RAM `job_work`, clock, pipe and launcher grants. Missing context returns
+`nil, CALL_UNAVAILABLE` before admission. No shared temporary-directory fallback
+or bundle/catalog/shebang expansion is used by these entry points.
+
+```lua
+local job, status = pyxis.job({"echo", "captured"}, {timeout_ms = 1000})
+if job then
+  local result, wait_status = job:wait()
+  if result.complete then
+    local bytes, read_status = job:read("stdout", 0, pyxis.READ_MAX_BYTES)
+    local close_status = job:close()
+  end
+end
+```
+
+`timeout_ms` is required and positive. It becomes one absolute monotonic deadline
+before argument/context preparation; progress does not extend it. Retirement
+after stop may take longer than this deadline. Other options are binary `input`
+(nil omits stdin; `""` supplies EOF), `stdout_limit`, `stderr_limit`, exact
+`resources`, `roots`, `cwd`, `environment` and boolean `namespace`. Zero/omitted
+output limits select the core's 1 MiB caps and polled stopping triggers; these
+are not hard backing quotas.
+
+Omitted resources select the present `memory`, `threads`, `clock` and `random`
+roles. An explicit dense list selects only its named held grants; supported
+names also include `tcp`, `udp`, `pipe` and `system_info`. Missing explicit
+selections fail. Omitted roots/cwd/environment take owned current snapshots.
+An explicit root list uses `{name="home", access="read"}` or `"read-write"`;
+rights intersect held authority, and read access strips mutations. The cwd
+chain is rebuilt under these roots before admission. An incompatible or
+unspelled cwd fails; `cwd=false` deliberately supplies no cwd. An explicit
+environment is an exact string map, including an empty table for no variables.
+Namespace defaults to absent; `namespace=true` explicitly selects held LOOKUP.
+Text rejects NUL; finite stdin and captured output remain binary.
+
+Image lookup uses the caller's held native path context, independently of child
+roots/cwd. Bare names select `bin://name.pxe`, then `boot://name.pxe` only on
+absence; explicit FILE paths resolve from the caller's cwd. Thus `roots={}` and
+`cwd=false` can select a held image without passing its content roots to the
+child. Captured stages never inherit terminal/display, launcher or `job_work`.
+The caller must keep private-tree, namespace/provider and credential reachability
+consistent with the core's capture audit for the job's lifetime.
+
+`job:step()` and `job:wait()` return `result, status`; `cancel()` returns a
+status without waiting. Result field names mirror `pyxis_pipeline_result`,
+including `stage_valid`, `stages[i].kind/exit_status`, `stdout_output` and
+`stderr_output`. Nonzero child exits are data. Native kind constants are
+`PROCESS_EXITED`, `PROCESS_FAULTED`, `PROCESS_TERMINATED`; `LAUNCH_NO_STAGE`
+is exposed as `-1`; refused `failed_stage` indices remain native and zero-based.
+Reads require confirmed cleanup and accept explicit offset/count with at most
+`READ_MAX_BYTES` per call. Completed snapshots are
+repeatable. Close consumes once even on a release error; BUSY preserves ownership.
+
+A strong registry retains jobs through lost variables, GC and protected Lua
+errors. `pyxis.jobs()` returns those userdata records for explicit recovery;
+there is no implicit GC wait, background pump or refreshed deadline. Explicit
+cancel/wait/close owns retirement. Process/session teardown remains the fallback
+when the caller exits; there is no per-job caller-death stop guarantee. Lua's
+ordinary `pyxis.run` never forwards the private leaf or its provisioning ancestor.
+
+The staged pure Lua module `require "pyxis.commands"` provides:
+
+```lua
+result, status, job = commands.run(argv, options)
+stdout, stderr, result, status, job = commands.capture(argv, options)
+stdout, stderr, result, status, job = commands.pipeline(stages, options)
+```
+
+These wait, read capped binary streams and close after confirmed cleanup.
+The optional final job remains owned only when cleanup is unresolved. `run`
+replays to current `io.stdout`/`io.stderr`, or open Lua FILEs selected with
+`options.stdout`/`options.stderr`, then flushes. Output errors retain the actual
+native results and add `operation_error`; `delivery` records accepted bytes,
+flush confirmation and uncertainty. A failed write reports unknown acceptance,
+and failed writes/flushes are never replayed. `capture`/`pipeline` return partial
+known bytes on read failure, without trimming. Explicit `LUA_PATH` still controls
+file module search, including this module.
 
 `pyxis.run` uses libpyxis's shared command lookup: a bare name checks
 `bin://name.pxe`, then `bin://name.pxb`'s default entry, then the optional

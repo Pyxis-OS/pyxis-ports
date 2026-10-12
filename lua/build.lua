@@ -5,6 +5,10 @@ return function(ctx)
     "MBEDTLS=" .. ctx.mbedtls })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/lua.pxe",
     ctx.stage .. "/" .. ctx.metadata.outputs.executable })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/manifest.json",
+    ctx.stage .. "/" .. ctx.metadata.outputs.manifest })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/commands.lua",
+    ctx.stage .. "/" .. ctx.metadata.outputs.commands })
   -- The pinned mirror carries its complete MIT notice in lua.h.
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/lua.h",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })

@@ -15,7 +15,9 @@ return {
     "patches/0002-pyxis-runtime.patch",
   },
   outputs = {
-    executable = "bin/lua.pxe",
+    executable = "bin/lua.pxb/app/bin/lua.pxe",
+    manifest = "bin/lua.pxb/manifest.json",
+    commands = "share/lua/pyxis/commands.lua",
     license = "share/licenses/lua/lua.h",
     library = "dev/lib/liblua.a",
     api_header = "dev/include/lua.h",

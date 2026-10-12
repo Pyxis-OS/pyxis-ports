@@ -1,4 +1,5 @@
 #include "pyxis.h"
+#include "jobs.h"
 #include "lauxlib.h"
 #include <abi/clock.h>
 #include <abi/console.h>
@@ -488,6 +489,7 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
   static const char *names[] = {
     "input", "output", "memory", "display", "clock", "system_info", "echo",
     "udp", "tcp", "random", "profile", "launcher", "audio", "screen_capture",
+    "threads", "pipe", "keyboard", "pointer",
   };
   struct bundle_authority inventory[sizeof(names) / sizeof(names[0])];
   size_t count = 0;
@@ -717,5 +719,6 @@ int luaopen_pyxis(lua_State *state)
     {"run", run_program}, {"dir", list_directory}, {"sha256", hash_file}, {NULL, NULL},
   };
   luaL_newlib(state, functions);
+  pyxis_jobs_register(state);
   return 1;
 }
