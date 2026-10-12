@@ -424,17 +424,17 @@ static enum call_status native_program(const struct path_context *context,
   enum call_status status;
   if (strchr(command, '/') || strchr(command, ':') ||
       (length >= 4 && !strcmp(command + length - 4, ".pxe"))) {
-    status = path_resolve_native(context, command, DIRECTORY_KIND_FILE, 0, &workspace, image);
+    status = path_resolve_native(context, command, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
   } else {
     memcpy(path, "bin://", 6);
     memcpy(path + 6, command, length);
     memcpy(path + 6 + length, ".pxe", 5);
-    status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, 0, &workspace, image);
+    status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
     if (status == CALL_NOT_FOUND) {
       memcpy(path, "boot://", 7);
       memcpy(path + 7, command, length);
       memcpy(path + 7 + length, ".pxe", 5);
-      status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, 0, &workspace, image);
+      status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
     }
   }
   free(workspace.directories);
