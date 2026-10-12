@@ -21,6 +21,8 @@
     {"name": "input", "resource": "input", "rights": ["read"], "required": false},
     {"name": "output", "resource": "output", "rights": ["write"], "required": false},
     {"name": "keyboard", "resource": "keyboard", "rights": ["input"], "required": false},
-    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false}
+    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false},
+    {"name": "audio", "resource": "audio", "rights": ["create"], "required": false},
+    {"name": "screen_capture", "resource": "screen_capture", "rights": ["capture"], "required": false}
   ]
 }
