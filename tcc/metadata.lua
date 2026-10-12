@@ -8,6 +8,7 @@ local patches = {
   "patches/0007-guest-clocks.patch",
   "patches/0008-native-once-file-identity.patch",
   "patches/0009-uri-includes.patch",
+  "patches/0010-empty-tls-template.patch",
 }
 
 -- Everything the recipe stages, so the Pyxis build can derive its dependencies from here.

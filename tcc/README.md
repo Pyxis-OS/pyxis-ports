@@ -229,10 +229,13 @@ debug information. No fd compatibility layer or new libc/kernel API is added.
 ## Source and local changes
 
 Pinned upstream: [TinyCC 3dc99dbc82f8e07308c5d398136803e62f9676df](https://github.com/TinyCC/tinycc/tree/3dc99dbc82f8e07308c5d398136803e62f9676df)
-(`0.9.28rc`). Metadata lists nine ordered patches: the Pyxis object target,
+(`0.9.28rc`). Metadata lists ten ordered patches: the Pyxis object target,
 runtime symbol ownership, FP scratch allocation, native streams/paths, the
 guest driver, native P1F linking, guest clock integration, native once-header
-identity/lifetime, and URI includes. The P1F writer consumes the SDK format
+identity/lifetime, URI includes, and the empty TLS-template bounds required by
+libc's FS bootstrap. TCC still rejects TLS sections, symbols and relocations;
+its custom linker defines absolute zero template bounds and alignment one only
+after that validation. The P1F writer consumes the SDK format
 header; the host build uses a quoted include path so it does not import target
 libc headers. The clock patch keeps host clock behavior and upstream floating-point
 benchmark formatting; the guest uses libpyxis monotonic reads and libc UTC

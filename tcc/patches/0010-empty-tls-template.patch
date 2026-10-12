@@ -1,0 +1,21 @@
+diff --git a/tccp1f.c b/tccp1f.c
+--- a/tccp1f.c
++++ b/tccp1f.c
+@@ -43,6 +43,17 @@ static int p1f_check_sections(TCCState *s1)
+             }
+         }
+     }
++    /* This writer does not use the SDK linker script. Actual TLS was refused
++       above; supply its empty-template contract for libc's FS bootstrap.
++       Use SHN_ABS explicitly: set_global_sym with a zero value means UNDEF. */
++    set_elf_sym(symtab_section, 0, 0,
++        ELFW(ST_INFO)(STB_GLOBAL, STT_NOTYPE), 0, SHN_ABS, "__tls_template_start");
++    set_elf_sym(symtab_section, 0, 0,
++        ELFW(ST_INFO)(STB_GLOBAL, STT_NOTYPE), 0, SHN_ABS, "__tls_template_init_end");
++    set_elf_sym(symtab_section, 0, 0,
++        ELFW(ST_INFO)(STB_GLOBAL, STT_NOTYPE), 0, SHN_ABS, "__tls_template_end");
++    set_elf_sym(symtab_section, 1, 0,
++        ELFW(ST_INFO)(STB_GLOBAL, STT_NOTYPE), 0, SHN_ABS, "__tls_alignment");
+     return 0;
+ }
+ 
