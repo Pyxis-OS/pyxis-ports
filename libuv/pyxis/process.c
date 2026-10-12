@@ -15,6 +15,7 @@
 #include <process.h>
 #include <provider.h>
 #include <pyxis/environment.h>
+#include <pyxis/job.h>
 #include <pyxis/working_path.h>
 #include <startup.h>
 #include <stdlib.h>
@@ -432,6 +433,35 @@ done:
   uv__free(grants);
   uv__pyxis_release(loop, needed);
   return error;
+}
+
+int uv_pyxis_spawn_job(uv_loop_t *loop, uv_process_t *process,
+    handle_t launcher, const struct pyxis_job_options *command,
+    uv_exit_cb exit_cb)
+{
+  if (!loop || !process || !command) {
+    return UV_EINVAL;
+  }
+  uv__handle_init(loop, (uv_handle_t *)process, UV_PROCESS);
+  process->observer = HANDLE_INVALID;
+  process->exit_reason = 0;
+  process->pid = UV_ENOSYS;
+  process->exit_cb = exit_cb;
+  process->admitted = 0;
+  int error = uv__pyxis_reserve(loop, 1);
+  if (error) {
+    return error;
+  }
+  handle_t observer = HANDLE_INVALID;
+  enum call_status status = pyxis_job_launch_observer(launcher, command, &observer);
+  if (status != CALL_OK) {
+    uv__pyxis_release(loop, 1);
+    return uv__pyxis_status(status);
+  }
+  process->observer = observer;
+  process->admitted = 1;
+  uv__handle_start(process);
+  return 0;
 }
 
 int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t *options)

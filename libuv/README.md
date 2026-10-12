@@ -85,6 +85,26 @@ capture in the parent. Ordinary `uv_spawn` continues to delegate no pipe/create
 resource. Neovim selects that resource only for its same-image internal `--embed`
 server, allowing both event loops to create their own wake pipes.
 
+`uv_pyxis_spawn_job(loop, process, launcher, command, exit_cb)` selects the exact
+native inventory in `struct pyxis_job_options` from the SDK's `pyxis/job.h`.
+It adds no inherited resources. The supplied image, argv, grants, resource/root
+bindings, namespace, cwd and environment follow libc's direct-job preparation
+and final grant audit, including rejection of known descendant launch authority.
+The caller audits namespace/provider behavior for the child's lifetime.
+The three live descriptor slots can select native FILE, PIPE or CONSOLE streams,
+or `-1` for absence. Libc flushes selected buffered outputs before launch; FILE
+children start with independent cursors at offset zero and no parent read-ahead.
+Source grants and descriptors survive all outcomes. The caller prepares PIPE
+endpoints and registers any parent endpoints with the loop separately.
+
+This opt-in reserves one loop wait interest before preparation or publication.
+Success transfers the WAIT/TERMINATE observer to the process handle; completion
+uses the existing native `exit_reason` and exit callback. Failure leaves an
+inactive process handle that still requires `uv_close`. Native uncertain
+admission maps to `UV_EIO`; launch errors must not cause automatic replay.
+Close releases observation without terminating or waiting for the child.
+Ordinary `uv_spawn` and additive `uv_pyxis_spawn` retain their existing behavior.
+
 `uv_pyxis_process_terminate` requests termination using the process handle's
 held native observer and its TERMINATE authority. It does not wait for cleanup,
 invent a numeric PID or translate Unix signals. Completion still arrives through
