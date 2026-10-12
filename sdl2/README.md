@@ -158,6 +158,10 @@ editor is the in-tree Set and Has-then-Get consumer.
    mutation, filtering, discard and ambiguous batches cannot rearm it. The
    Pyxis native keyboard helper translates a shared command's event modifiers
    without modifying global keyboard state. Other drivers keep upstream behavior.
+7. `0007` makes `SDL_BUTTON` unsigned so button masks up to 32 are defined, and
+   stops SDL's mouse core from resetting wheel residue on a direction change when
+   the Pyxis pointer is in use, so signed fractional increments cancel. Other
+   drivers keep upstream behavior.
 
 ## Not built
 
