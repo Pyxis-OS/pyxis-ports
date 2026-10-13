@@ -493,15 +493,27 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
     "udp", "tcp", "random", "profile", "launcher", "audio", "screen_capture",
     "threads", "pipe", "keyboard", "pointer",
   };
-  struct bundle_authority inventory[sizeof(names) / sizeof(names[0])];
+  struct bundle_authority inventory[sizeof(names) / sizeof(names[0]) + BUNDLE_SOURCE_LIMIT];
   size_t count = 0;
   for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
     handle_t source = startup_resource(names[i]);
     if (source != HANDLE_INVALID) {
-      inventory[count++] = (struct bundle_authority){names[i], source};
+      struct handle_info info;
+      enum call_status status = handle_query(source, &info);
+      if (status != CALL_OK) {
+        return status;
+      }
+      inventory[count++] = (struct bundle_authority){names[i], source, info.protocol};
     }
   }
-  return bundle_launch_prepare(owned->bundle, request, inventory, count, &owned->launch);
+  size_t source_count;
+  enum call_status status = bundle_sources_from_startup(inventory + count,
+      BUNDLE_SOURCE_LIMIT, &source_count);
+  if (status != CALL_OK) {
+    return status;
+  }
+  return bundle_launch_prepare(owned->bundle, request, inventory, count + source_count,
+      &owned->launch);
 }
 
 static int run_program(lua_State *state)
