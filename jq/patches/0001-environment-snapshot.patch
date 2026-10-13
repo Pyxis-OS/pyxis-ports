@@ -1,0 +1,109 @@
+diff --git a/src/builtin.c b/src/builtin.c
+index 902490d..11651d5 100644
+--- a/src/builtin.c
++++ b/src/builtin.c
+@@ -1148,6 +1148,12 @@ static jv f_error(jq_state *jq, jv input) {
+ }
+ 
+ // FIXME Should autoconf check for this!
++#ifdef PYXIS
++static jv f_env(jq_state *jq, jv input) {
++  jv_free(input);
++  return jq_environment_object();
++}
++#else
+ #ifndef WIN32
+ extern char **environ;
+ #endif
+@@ -1166,6 +1172,7 @@ static jv f_env(jq_state *jq, jv input) {
+   }
+   return env;
+ }
++#endif
+ 
+ static jv f_halt(jq_state *jq, jv input) {
+   jv_free(input);
+diff --git a/src/compile.c b/src/compile.c
+index e5e65f2..4a62f75 100644
+--- a/src/compile.c
++++ b/src/compile.c
+@@ -8,6 +8,7 @@
+ #include "locfile.h"
+ #include "jv_alloc.h"
+ #include "linker.h"
++#include "util.h"
+ 
+ /*
+   The intermediate representation for jq filters is as a sequence of
+@@ -1118,6 +1119,20 @@ static int count_cfunctions(block b) {
+   return n;
+ }
+ 
++#ifdef PYXIS
++static jv
++make_env(jv env)
++{
++  if (jv_is_valid(env))
++    return jv_copy(env);
++  jv r = jq_environment_object();
++  if (!jv_is_valid(r)) {
++    fprintf(stderr, "jq: error: %s\n", jv_string_value(jv_invalid_get_msg(r)));
++    return jv_object();
++  }
++  return jv_copy(r);
++}
++#else
+ #ifndef WIN32
+ extern char **environ;
+ #endif
+@@ -1140,6 +1155,7 @@ make_env(jv env)
+   }
+   return jv_copy(r);
+ }
++#endif
+ 
+ // Expands call instructions into a calling sequence
+ static int expand_call_arglist(block* b, jv args, jv *env) {
+diff --git a/src/util.c b/src/util.c
+index de44fa6..36e0ce6 100644
+--- a/src/util.c
++++ b/src/util.c
+@@ -1256,3 +1256,24 @@ find_string(const unsigned char *bp, int *tgt, const char * const *n1,
+     return NULL;
+ }
+ #endif
++
++#ifdef PYXIS
++#include <pyxis/environment.h>
++#include <stdint.h>
++
++/* Pyxis has no global environ array. Copy the process environment through
++ * libc's snapshot, which already holds consistent name and value strings. */
++jv jq_environment_object(void) {
++  struct pyxis_environment_snapshot snapshot;
++  if (pyxis_environment_snapshot_init(&snapshot) != CALL_OK)
++    return jv_invalid_with_msg(jv_string("cannot read the environment"));
++  jv env = jv_object();
++  for (size_t i = 0; i < snapshot.count; i++) {
++    const char *name = (const char *)(uintptr_t)snapshot.variables[i].name;
++    const char *value = (const char *)(uintptr_t)snapshot.variables[i].value;
++    env = jv_object_set(env, jv_string(name), jv_string(value));
++  }
++  pyxis_environment_snapshot_close(&snapshot);
++  return env;
++}
++#endif
+diff --git a/src/util.h b/src/util.h
+index 562ac19..b8b0516 100644
+--- a/src/util.h
++++ b/src/util.h
+@@ -16,6 +16,9 @@
+ jv expand_path(jv);
+ jv get_home(void);
+ jv jq_realpath(jv);
++#ifdef PYXIS
++jv jq_environment_object(void);
++#endif
+ 
+ /*
+  * The Windows CRT and console are something else.  In order for the

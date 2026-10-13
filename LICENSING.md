@@ -24,10 +24,14 @@ those recipes fetch, adapt or package.
 - `libuv/patches/` and `libuv/pyxis/watchers.c` retain upstream libuv's MIT
   license. Its other native platform files, recipe and documentation are original
   MPL-2.0 material; see `libuv/PORT-NOTICE`.
-- Upstream-derived files and patches, including `busybox/patches/`, `doom/patches/`, `kilo/patches/`,
-  `links/patches/`, `lua/patches/`, `sbase/patches/`, `fastfetch/patches/`, `tcc/patches/`,
+- Upstream-derived files and patches, including `busybox/patches/`, `doom/patches/`, `jq/patches/`,
+  `kilo/patches/`, `links/patches/`, `lua/patches/`, `sbase/patches/`, `fastfetch/patches/`, `tcc/patches/`,
   `quake/patches/` and `sdl2/patches/`, retain the licenses of the upstream files they modify. This
   includes applicable runtime exceptions.
+- jq's `COPYING` is staged unmodified. It states jq's MIT terms, David Gay's dtoa
+  notice (a permissive Lucent grant) and decNumber's ICU License, which cover the
+  compiled sources; see [jq/PORT-NOTICE](jq/PORT-NOTICE). The recipe, `Makefile`
+  and README are original MPL-2.0 material.
 - `quake/sys_pyxis.c` derives from quakegeneric's `sys_null.c` and keeps its
   GPL-2.0-or-later notice.
 - `busybox/libbb.h`, `busybox/*_config.h`, `busybox/*_support.h`,

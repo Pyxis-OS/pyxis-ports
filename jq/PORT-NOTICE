@@ -1,0 +1,15 @@
+jq is copyright (C) 2012 Stephen Dolan and its contributors, under the MIT
+license. The complete upstream notice is retained in COPYING, which also
+carries the notices for David Gay's dtoa.c and g_fmt.c (Lucent Technologies)
+and for IBM's decNumber library (ICU License), both compiled into jq.
+COPYING's Kungliga Tekniska Hogskolan BSD-3-Clause notice covers Windows-only
+code that this build does not compile; its Creative Commons notice covers
+documentation that this build does not install.
+
+The exact release archive and checksum are recorded in share/jq/source.txt.
+
+Pyxis builds the unmodified jq 1.7.1 release sources as one static program,
+with decNumber (number literals keep their precision) and without Oniguruma,
+so the regular-expression builtins are unavailable. See the recipe README for
+the functions and builtins Pyxis libc does not provide. No host libc, source
+patches or compatibility stubs are included.

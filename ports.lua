@@ -9,6 +9,7 @@ return {
   fastfetch = "fastfetch",
   fmt = "fmt",
   kilo = "kilo",
+  jq = "jq",
   links = "links",
   libpng = "libpng",
   libuv = "libuv",
