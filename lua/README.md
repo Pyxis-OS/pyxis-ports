@@ -105,6 +105,7 @@ The global/preloaded `pyxis` module supplies explicit preparation and control:
 local request = assert(pyxis.http_prepare("https://example.com/submit", "w+", {
   headers = "Content-Type: application/json\r\n",
   flags = pyxis.HTTP_PREPARE_JSON,
+  deadline_ns = pyxis.monotonic_ns() + 120000000000,
 }))
 assert(request:write('{"message":"hello"}'))
 local response = assert(pyxis.http_commit(request))
@@ -322,3 +323,7 @@ call. There is no signal-driven cooperative interruption: the parent shell can
 terminate Lua while a chunk runs, while REPL line cancellation applies only
 while reading input. Session configuration
 is evaluated by the separate userland launcher, using the exported Lua library.
+
+`pyxis.monotonic_ns()` reads the declared CLOCK READ grant and returns an exact
+Lua integer for absolute request deadlines. Missing authority or an unrepresentable
+reading raises an error; it never substitutes a clock value.

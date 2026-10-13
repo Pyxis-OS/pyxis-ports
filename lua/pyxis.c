@@ -734,6 +734,20 @@ static luaL_Stream *new_http_file(lua_State *state)
   return stream;
 }
 
+static int monotonic_ns(lua_State *state)
+{
+  uint64_t value;
+  enum call_status status = clock_now(startup_resource("clock"), &value);
+  if (status != CALL_OK) {
+    return luaL_error(state, "pyxis.monotonic_ns: native clock read failed (status %d)", status);
+  }
+  if (value > (uint64_t)LUA_MAXINTEGER) {
+    return luaL_error(state, "pyxis.monotonic_ns: timestamp does not fit a Lua integer");
+  }
+  lua_pushinteger(state, (lua_Integer)value);
+  return 1;
+}
+
 static int http_prepare(lua_State *state)
 {
   size_t uri_size, mode_size;
@@ -882,6 +896,7 @@ int luaopen_pyxis(lua_State *state)
   lua_pop(state, 1);
   const luaL_Reg functions[] = {
     {"run", run_program}, {"dir", list_directory}, {"sha256", hash_file},
+    {"monotonic_ns", monotonic_ns},
     {"http_prepare", http_prepare}, {"http_commit", http_commit},
     {"http_status", http_status}, {"http_abort", http_abort}, {NULL, NULL},
   };
