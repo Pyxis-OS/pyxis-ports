@@ -10,6 +10,11 @@ The executable also contains, with their licenses staged beside this notice:
 - libsmackerdec, under the GNU LGPL version 2.1 (libsmackerdec-COPYING);
 - bzip2 (bzip2-LICENSE), SimpleIni under MIT (simpleini-LICENCE.txt) and
   SDL_image 2.0.5's PNG loader under zlib (SDL_image-COPYING.txt);
+- SDL_audiolib under the GNU LGPL version 3 or later
+  (SDL_audiolib-COPYING.LESSER, with the GPL 3 text it builds on in
+  SDL_audiolib-COPYING), including the Opus resampler under a BSD licence
+  (SDL_audiolib-speex_resampler-README) and the dr_wav and dr_mp3 decoders,
+  public domain or MIT-0;
 - SDL 2.32.10 with the Pyxis backend (SDL2-LICENSE.txt, SDL2-PORT-NOTICE) and
   fmt under MIT (fmt-LICENSE); zlib and libpng are staged by their own ports;
 - from DevilutionX's own tree: Bjoern Hoehrmann's UTF-8 decoder (the BSD
@@ -24,5 +29,6 @@ must not be shared, for example as a published PXE or installation image.
 Pyxis builds it only on request, with local game data; CI and ordinary images
 never contain it.
 
-The five patches modify DevilutionX and remain under its license. The recipe
+The five patches modify DevilutionX and remain under its license, and the
+SDL_audiolib patch under SDL_audiolib's. The recipe
 files are original Pyxis material under MPL-2.0. No game data is included.

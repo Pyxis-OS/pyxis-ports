@@ -1,0 +1,14 @@
+diff --git a/src/aulib_log.h b/src/aulib_log.h
+index b87ee7d..e49293b 100644
+--- a/src/aulib_log.h
++++ b/src/aulib_log.h
+@@ -1,7 +1,8 @@
+ // This is copyrighted software. More information is at the end of this file.
+ #pragma once
+ #include "aulib_config.h"
+-#include <fmt/core.h>
++// fmt 12 declares fmt::format in <fmt/format.h>, not <fmt/core.h>.
++#include <fmt/format.h>
+ 
+ namespace aulib {
+ namespace log {

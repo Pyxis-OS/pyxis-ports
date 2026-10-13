@@ -22,38 +22,59 @@ through CMake's own modules, fmt and SDL2 through their packages.
 
 ## Dependencies
 
-DevilutionX builds five more dependencies from source, at the commits it pins
+DevilutionX builds six more dependencies from source, at the commits it pins
 itself. They are this recipe's `source.extra` entries:
 
 - bzip2 1.0.8;
 - libmpq and libsmackerdec, DevilutionX's forks;
 - SimpleIni;
 - SDL_image 2.0.5, of which only the PNG loader is built, from its release
-  archive.
+  archive;
+- SDL_audiolib at commit `cc1bb6af8d4cf5e200259072bde1edd1c8c5137e`, the
+  archive upstream pins by MD5, here by SHA-256 through the download cache,
+  with only its WAV and MP3 decoders. `sdl_audiolib-0001-fmt12` includes
+  `<fmt/format.h>`, where fmt 12 declares `fmt::format`.
 
 The build uses CMake's FetchContent with downloads turned off
 (`FETCHCONTENT_FULLY_DISCONNECTED`), pointed at those directories.
+
+## Bundle and grants
+
+`devilutionx` selects the program bundle `devilutionx.pxb`, as `lua` selects
+`lua.pxb`. Its manifest declares the grants the game uses; nothing is obtained
+at runtime:
+
+- required: `memory/manage`, `clock` read and sleep, `display/draw` and
+  `keyboard/input`;
+- optional: `pointer/input`; for sound `audio/create`, `threads/manage`
+  (SDL's audio callback thread) and `pipe/create` (SDL's cross-thread event
+  wakeup); and `clipboard_local` and `clipboard_shared` (`publish`, `paste`)
+  for the text editor's Copy and Paste.
+
+Sound uses SDL_audiolib through the SDL2 port's audio backend. Without the
+optional sound grants, or when the executable is launched directly by its
+`app/bin` path, `Aulib::init` fails with "Couldn't create audio thread" and
+the game runs silent. Without a clipboard grant, Copy and Paste refuse.
 
 ## Patches
 
 1. `0001-pyxis-platform` adds `CMake/platforms/pyxis.cmake`, selected when
    `CMAKE_SYSTEM_NAME` is `Pyxis`:
-   - single player only, no sound, no tests;
+   - single player only, no tests;
    - loose assets, because there is no `smpq` host tool;
    - no post-link strip, because `llvm-strip` cannot read P1F executables;
    - no link-time optimization;
-   - the threads stub, with `DVL_NO_FILESYSTEM`.
+   - upstream's threads stub, because threads are part of libc, with
+     `DVL_NO_FILESYSTEM`.
 
    It also keeps `_POSIX_C_SOURCE` off, since Pyxis libc is not POSIX.
 2. `0002-pyxis-file-checks` gives `file_util.cpp` Pyxis branches:
    - file and directory existence use `stat`, so read-only `boot://` data
      counts as present;
    - resizing a save uses `ftruncate`.
-3. `0003-libcxx-fmt12-and-no-tls` makes the build fixes for libc++ and fmt 12:
+3. `0003-libcxx-fmt12` makes the build fixes for libc++ and fmt 12:
    `<new>` for `std::launder`, `<cstdlib>` for `std::getenv`, and
-   `<fmt/format.h>` in `xpbar.cpp`. The one `thread_local` becomes an ordinary
-   global, because Pyxis has no thread-local storage and single player runs on
-   one thread.
+   `<fmt/format.h>` in `xpbar.cpp`.
 4. `0004-pyxis-paths-and-defaults` sets Pyxis paths and defaults:
    - **Paths:** data in `boot://share/diablo/` unless `--data-dir` says
      otherwise. Assets come from `boot://share/devilutionx/assets/`, or, when
@@ -91,7 +112,8 @@ The game data and asset inputs stay unchanged.
 
 | Path | Contents |
 | --- | --- |
-| `bin/devilutionx.pxe` | the game |
+| `bin/devilutionx.pxb/manifest.json` | the bundle manifest |
+| `bin/devilutionx.pxb/app/bin/devilutionx.pxe` | the game |
 | `share/devilutionx/assets/` | DevilutionX's own assets |
 | `share/devilutionx/source.txt` | commit, patches and dependency pins |
 | `share/licenses/devilutionx/` | the notice and every licence of the code linked in |

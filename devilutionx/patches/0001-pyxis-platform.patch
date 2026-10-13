@@ -30,17 +30,16 @@ index 0ba57e2..d65d89a 100644
    endif()
 diff --git a/CMake/platforms/pyxis.cmake b/CMake/platforms/pyxis.cmake
 new file mode 100644
-index 0000000..7ea8a71
+index 0000000..7a3e24e
 --- /dev/null
 +++ b/CMake/platforms/pyxis.cmake
-@@ -0,0 +1,24 @@
-+# Pyxis: single player without sound. The SDK's libc++ has no threads or
-+# <filesystem>, and executables are P1F files the linker writes directly.
+@@ -0,0 +1,22 @@
++# Pyxis: single player. The SDK's libc++ has no <filesystem>, and executables
++# are P1F files the linker writes directly.
 +set(ASAN OFF)
 +set(UBSAN OFF)
 +set(BUILD_TESTING OFF)
 +set(NONET ON)
-+set(NOSOUND ON)
 +
 +# The game data is loose assets; there is no smpq host tool to pack them.
 +set(BUILD_ASSETS_MPQ OFF)
@@ -52,8 +51,7 @@ index 0000000..7ea8a71
 +# Keep link-time optimization out of the first port.
 +set(DISABLE_LTO ON)
 +
-+# There is no system threads library. Single player starts no threads, and
-+# SDL reports thread creation as unsupported.
++# Threads are part of libc; there is no separate threads library to link.
 +list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/threads-stub")
 +
 +# file_util.cpp falls back to stdio and stat without <filesystem>.
