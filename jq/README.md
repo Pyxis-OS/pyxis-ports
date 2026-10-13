@@ -43,12 +43,7 @@ earns. The generated `parser.c` and `lexer.c` ship in the archive, and
 1. `0001-environment-snapshot.patch` (under `PYXIS`): `$ENV` and `env` build
    their object from `pyxis_environment_snapshot_init` instead of `environ`,
    which libc deliberately does not provide.
-2. `0002-zero-size-allocations.patch` (under `PYXIS`): jq's allocator wrappers
-   read a NULL return as out of memory. ISO C lets `malloc(0)`, `calloc(0, n)`
-   and `realloc(p, 0)` return NULL, as Pyxis libc does, so the wrappers ask for
-   one byte instead. Without it every non-trivial input failed with "cannot
-   allocate memory".
-3. `0003-buffer-stdout.patch` (under `PYXIS`): `main` calls `setvbuf` on stdout,
+2. `0002-buffer-stdout.patch` (under `PYXIS`): `main` calls `setvbuf` on stdout,
    line buffered on a terminal and fully buffered otherwise.
 
 ## libc additions
@@ -56,7 +51,8 @@ earns. The generated `parser.c` and `lexer.c` ship in the archive, and
 jq needed these from libc, which the Pyxis userland repository now provides
 rather than the recipe working around them: `<signal.h>` (`raise`, which
 decNumber calls on a trap jq disables), `<sys/time.h>`, `<libgen.h>` `dirname`,
-a C-locale `strptime`, `isnormal`, and the ISO C double math functions
+a C-locale `strptime`, `isnormal`, a non-NULL result from `malloc(0)` (which jq
+reads as out of memory), and the ISO C double math functions
 `acosh asinh atanh cbrt copysign fdim fma fmax fmin hypot lgamma nearbyint
 nextafter nexttoward remainder scalbln tgamma`.
 
