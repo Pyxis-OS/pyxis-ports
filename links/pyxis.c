@@ -6,6 +6,7 @@
  * (see COPYING in the Links source). */
 #include "links.h"
 #include "pyxis_console.h"
+#include <pyxis/http.h>
 #include <pyxis/stdio.h>
 
 #define VIRTUAL_PIPE_SIZE	512
@@ -269,8 +270,8 @@ static int looks_like_html(unsigned char *data, int len)
 	return 0;
 }
 
-/* Read one provider snapshot to its end. Redirects have already been fetched
- * by libc; the requested cache entry aliases the final snapshot. */
+/* Materialize the forward response into Links' own cache. Libc has already
+ * followed redirects; the requested cache entry aliases the final body. */
 static void provider_func(struct connection *c)
 {
 	struct cache_entry *e;
@@ -322,6 +323,24 @@ static void provider_func(struct connection *c)
 			return;
 		}
 		break;
+	}
+	{
+		struct http_transaction_status final;
+		int er = 0;
+		if (pyxis_http_status(f, &final)) {
+			if (errno != ENOTSUP || (response.flags & PYXIS_RESPONSE_HTTP))
+				er = errno ? errno : EIO;
+		} else if (final.phase != HTTP_TRANSACTION_COMPLETE ||
+		           final.framing != HTTP_FRAMING_COMPLETE || final.status != CALL_OK) {
+			er = EIO;
+		}
+		if (er) {
+			mem_free(data);
+			fclose(f);
+			setcstate(c, get_error_from_errno(er));
+			abort_connection(c);
+			return;
+		}
 	}
 	fclose(f);
 

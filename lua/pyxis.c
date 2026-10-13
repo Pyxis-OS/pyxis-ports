@@ -28,11 +28,13 @@
 #include <program.h>
 #include <psa/crypto.h>
 #include <psa/crypto_extra.h>
+#include <pyxis/http.h>
 #include <pyxis/stdio.h>
 #include <pyxis/environment.h>
 #include <pyxis/working_path.h>
 #include <random.h>
 #include <startup.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -706,6 +708,167 @@ static int hash_file(lua_State *state)
   return 1;
 }
 
+static luaL_Stream *http_file(lua_State *state)
+{
+  luaL_Stream *stream = luaL_checkudata(state, 1, LUA_FILEHANDLE);
+  if (!stream->closef || !stream->f) {
+    luaL_error(state, "attempt to use a closed file");
+  }
+  return stream;
+}
+
+static int http_file_close(lua_State *state)
+{
+  luaL_Stream *stream = luaL_checkudata(state, 1, LUA_FILEHANDLE);
+  errno = 0;
+  return luaL_fileresult(state, fclose(stream->f) == 0, NULL);
+}
+
+/* Allocate before acquiring a FILE, so a Lua allocation error cannot strand it. */
+static luaL_Stream *new_http_file(lua_State *state)
+{
+  luaL_Stream *stream = lua_newuserdatauv(state, sizeof(*stream), 0);
+  stream->f = NULL;
+  stream->closef = NULL;
+  luaL_setmetatable(state, LUA_FILEHANDLE);
+  return stream;
+}
+
+static int http_prepare(lua_State *state)
+{
+  size_t uri_size, mode_size;
+  const char *uri = luaL_checklstring(state, 1, &uri_size);
+  const char *mode = luaL_optlstring(state, 2, "r", &mode_size);
+  luaL_argcheck(state, !memchr(uri, 0, uri_size), 1, "URI contains NUL");
+  luaL_argcheck(state, !memchr(mode, 0, mode_size), 2, "mode contains NUL");
+  struct pyxis_http_options options = {0};
+  if (!lua_isnoneornil(state, 3)) {
+    luaL_checktype(state, 3, LUA_TTABLE);
+    lua_getfield(state, 3, "headers");
+    if (!lua_isnil(state, -1)) {
+      options.headers = luaL_checklstring(state, -1, &options.headers_size);
+      luaL_argcheck(state, !memchr(options.headers, 0, options.headers_size),
+          3, "headers contain NUL");
+    }
+    lua_getfield(state, 3, "deadline_ns");
+    if (!lua_isnil(state, -1)) {
+      lua_Integer deadline = luaL_checkinteger(state, -1);
+      luaL_argcheck(state, deadline >= 0, 3, "deadline_ns must be nonnegative");
+      options.deadline_ns = (uint64_t)deadline;
+    }
+    lua_pop(state, 1);
+    lua_getfield(state, 3, "flags");
+    if (!lua_isnil(state, -1)) {
+      lua_Integer flags = luaL_checkinteger(state, -1);
+      luaL_argcheck(state, flags >= 0 && !((uint64_t)flags & ~HTTP_PREPARE_FLAGS),
+          3, "unsupported HTTP flags");
+      options.flags = (uint64_t)flags;
+    }
+    lua_pop(state, 1);
+    /* Keep the exact header string rooted until libc has copied it. */
+  }
+  luaL_Stream *stream = new_http_file(state);
+  stream->f = pyxis_http_prepare(uri, mode, &options);
+  if (!stream->f) {
+    return luaL_fileresult(state, 0, uri);
+  }
+  stream->closef = http_file_close;
+  return 1;
+}
+
+static int http_commit(lua_State *state)
+{
+  luaL_Stream *request = http_file(state);
+  luaL_Stream *response = new_http_file(state);
+  FILE *file = pyxis_http_commit(request->f);
+  if (!file) {
+    return luaL_fileresult(state, 0, NULL);
+  }
+  if (file == request->f) {
+    lua_pushvalue(state, 1);
+  } else {
+    response->f = file;
+    response->closef = http_file_close;
+  }
+  return 1;
+}
+
+static void http_integer_field(lua_State *state, const char *name, uint64_t value)
+{
+  if (value <= (uint64_t)LUA_MAXINTEGER) {
+    lua_pushinteger(state, (lua_Integer)value);
+  } else {
+    char decimal[21];
+    snprintf(decimal, sizeof(decimal), "%llu", (unsigned long long)value);
+    lua_pushstring(state, decimal);
+  }
+  lua_setfield(state, -2, name);
+}
+
+static int http_status(lua_State *state)
+{
+  luaL_Stream *stream = http_file(state);
+  struct http_transaction_status result;
+  if (pyxis_http_status(stream->f, &result)) {
+    return luaL_fileresult(state, 0, NULL);
+  }
+  lua_createtable(state, 0, 16);
+  http_integer_field(state, "phase", result.phase);
+  http_integer_field(state, "submission", result.submission);
+  http_integer_field(state, "http_status", result.http_status);
+  http_integer_field(state, "framing", result.framing);
+  http_integer_field(state, "status", result.status);
+  http_integer_field(state, "source_status", result.source_status);
+  http_integer_field(state, "cleanup_status", result.cleanup_status);
+  http_integer_field(state, "uploaded", result.uploaded);
+  http_integer_field(state, "received", result.received);
+  http_integer_field(state, "consumed", result.consumed);
+  http_integer_field(state, "deadline_ns", result.deadline_ns);
+  http_integer_field(state, "tls_error", result.tls_error);
+  http_integer_field(state, "tls_native_status", result.tls_native_status);
+  http_integer_field(state, "tls_cleanup_attempted", result.tls_cleanup_attempted);
+  lua_pushstring(state, result.media_type);
+  lua_setfield(state, -2, "media_type");
+  lua_pushstring(state, result.location);
+  lua_setfield(state, -2, "location");
+  return 1;
+}
+
+static int http_abort(lua_State *state)
+{
+  luaL_Stream *stream = http_file(state);
+  int result = pyxis_http_abort(stream->f);
+  return luaL_fileresult(state, result == 0, NULL);
+}
+
+static void http_constants(lua_State *state)
+{
+  const struct {
+    const char *name;
+    lua_Integer value;
+  } constants[] = {
+    {"HTTP_PREPARE_CREDENTIALS", HTTP_PREPARE_CREDENTIALS},
+    {"HTTP_PREPARE_JSON", HTTP_PREPARE_JSON},
+    {"HTTP_TRANSACTION_PREPARING", HTTP_TRANSACTION_PREPARING},
+    {"HTTP_TRANSACTION_STAGING", HTTP_TRANSACTION_STAGING},
+    {"HTTP_TRANSACTION_OPENING", HTTP_TRANSACTION_OPENING},
+    {"HTTP_TRANSACTION_READING", HTTP_TRANSACTION_READING},
+    {"HTTP_TRANSACTION_COMPLETE", HTTP_TRANSACTION_COMPLETE},
+    {"HTTP_TRANSACTION_FAILED", HTTP_TRANSACTION_FAILED},
+    {"HTTP_TRANSACTION_ABORTED", HTTP_TRANSACTION_ABORTED},
+    {"HTTP_SUBMISSION_NOT_STARTED", HTTP_SUBMISSION_NOT_STARTED},
+    {"HTTP_SUBMISSION_ATTEMPTED", HTTP_SUBMISSION_ATTEMPTED},
+    {"HTTP_SUBMISSION_SENT", HTTP_SUBMISSION_SENT},
+    {"HTTP_FRAMING_PENDING", HTTP_FRAMING_PENDING},
+    {"HTTP_FRAMING_COMPLETE", HTTP_FRAMING_COMPLETE},
+    {"HTTP_FRAMING_FAILED", HTTP_FRAMING_FAILED},
+  };
+  for (size_t i = 0; i < sizeof(constants) / sizeof(constants[0]); ++i) {
+    lua_pushinteger(state, constants[i].value);
+    lua_setfield(state, -2, constants[i].name);
+  }
+}
+
 int luaopen_pyxis(lua_State *state)
 {
   if (luaL_newmetatable(state, GUARD_METATABLE)) {
@@ -716,9 +879,12 @@ int luaopen_pyxis(lua_State *state)
   }
   lua_pop(state, 1);
   const luaL_Reg functions[] = {
-    {"run", run_program}, {"dir", list_directory}, {"sha256", hash_file}, {NULL, NULL},
+    {"run", run_program}, {"dir", list_directory}, {"sha256", hash_file},
+    {"http_prepare", http_prepare}, {"http_commit", http_commit},
+    {"http_status", http_status}, {"http_abort", http_abort}, {NULL, NULL},
   };
   luaL_newlib(state, functions);
+  http_constants(state);
   pyxis_jobs_register(state);
   return 1;
 }

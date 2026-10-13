@@ -66,7 +66,11 @@ to empty units.
     tree. It loads through `file.c` with libc `stat`, `open` and
     `opendir`/`readdir`, including Links' directory listings.
   - **Providers.** Any other scheme is a namespace provider, read to its end
-    with `fopen`. Response metadata supplies Content-Type when present. Without
+    with `fopen`. HTTP is consumed sequentially into Links' own cache and its
+    final phase, framing and native status are checked before cache publication.
+    A missing or failed HTTP observation fails the load. Local providers without
+    an HTTP observation retain their behavior. Response metadata supplies
+    Content-Type when present. Without
     it, a page that starts like HTML (`<!doctype html`, `<html`, `<head`,
     `<body`, `<title` or `<!--`) is marked as HTML. Anything else is typed by
     its extension, as for local files.
@@ -80,14 +84,14 @@ to empty units.
   failure reports the error of the failing call. There is no directory sync
   (libc cannot open a directory), so after a crash the new name may be lost
   and the old file remains.
-- **0005 Adopt provider redirect snapshots.** Libc follows HTTP redirects before
+- **0005 Adopt provider redirects.** Libc follows HTTP redirects before
   returning the FILE. Links copies its response metadata before closing the
   stream and uses the final URL for the document base, relative links, navigation
   history and downloads. A final fragment selects the document position, taking
   precedence over an initial fragment. The final body has its own cache entry;
-  requested URLs alias that snapshot without changing an inline cache key or
+  requested URLs alias that cached body without changing an inline cache key or
   fetching it again. Aliases do not keep bodies alive indefinitely: after the
-  body is evicted, opening a requested URL fetches a new snapshot. Native files
+  body is evicted, opening a requested URL fetches a new response. Native files
   and inherited streams have no response metadata and retain their behavior.
 - **0006 Alternate screen.** Pyxis terminals have the alternate screen and saved
   cursor, so Links uses upstream's xterm path whatever `TERM` says: it enters the
