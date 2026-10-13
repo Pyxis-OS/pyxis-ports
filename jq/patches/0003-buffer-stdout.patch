@@ -1,0 +1,17 @@
+diff --git a/src/main.c b/src/main.c
+index 43586c4..a19c8f8 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -319,6 +319,12 @@ int main(int argc, char* argv[]) {
+   int badwrite;
+   int options = 0;
+ 
++#ifdef PYXIS
++  /* Pyxis libc starts stdout unbuffered, one native write per token. Unix
++   * programs get line buffering on a terminal and full buffering otherwise. */
++  setvbuf(stdout, NULL, isatty(fileno(stdout)) ? _IOLBF : _IOFBF, BUFSIZ);
++#endif
++
+ #ifdef HAVE_SETLOCALE
+   (void) setlocale(LC_ALL, "");
+ #endif

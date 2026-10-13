@@ -19,6 +19,7 @@ return {
   patches = {
     "patches/0001-environment-snapshot.patch",
     "patches/0002-zero-size-allocations.patch",
+    "patches/0003-buffer-stdout.patch",
   },
   outputs = {
     executable = "bin/jq.pxe",

@@ -48,6 +48,8 @@ earns. The generated `parser.c` and `lexer.c` ship in the archive, and
    and `realloc(p, 0)` return NULL, as Pyxis libc does, so the wrappers ask for
    one byte instead. Without it every non-trivial input failed with "cannot
    allocate memory".
+3. `0003-buffer-stdout.patch` (under `PYXIS`): `main` calls `setvbuf` on stdout,
+   line buffered on a terminal and fully buffered otherwise.
 
 ## libc additions
 
@@ -71,8 +73,9 @@ Functions libc does not have, so their `HAVE_` options are off:
 
 ## Limits
 
-Output is written through libc's unbuffered stdout, one native write per jq
-token. Redirecting a large result is slow: `jq -n '[range(100000)]' -c > file`
-took about 15 seconds on QEMU/KVM, against 0.3 seconds for jq to read it back.
-`jq` also colors its output when stdout is a terminal, as on Unix; use `-M` to
-turn that off.
+jq colors its output when stdout is a terminal, as on Unix; use `-M` to turn that
+off. Patch 3 makes stdout line buffered on a terminal and fully buffered
+otherwise, as on Unix: without it jq makes one native write per output token
+through libc's unbuffered stdout, and `jq -n '[range(100000)]' -c > file` took
+about 15 seconds on QEMU/KVM. A pipe or file therefore receives output at exit or
+when the buffer fills, unless `--unbuffered` is given.
