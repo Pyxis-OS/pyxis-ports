@@ -26,6 +26,8 @@ declared functions, and its own versions of the rest. `SDL_iconv` stays SDL's
 own, because libc's `iconv` lacks the UCS-2, UCS-4 and UTF-32 forms SDL uses.
 A program needs the `display`, `keyboard` and `clock` grants; `pointer` is
 optional, and without it or a mouse the program runs from the keyboard.
+Threads and callback timers need a bundle declaring `threads/manage`, and
+blocking event waits in a threaded program also need `pipe/create`.
 
 ## The backend
 
@@ -85,14 +87,31 @@ The files in `pyxis/` are the platform layer:
     negative means infinite. Finite deadlines are retained across the native
     30-second wait bound, and infinite waits re-arm at that bound. Absent pointer
     grants are omitted; no new input session is acquired by waiting. Unsupported
-    waits, ownership/backend errors, or missing window/input sessions fall back
-    to upstream polling. SDL's joystick enumeration poll interval remains when
-    that subsystem is initialized.
+    waits, ownership/backend errors, missing window/input sessions, or threads
+    authority without a wakeup pipe fall back to upstream polling. SDL's
+    joystick enumeration poll interval remains when that subsystem is
+    initialized.
+  - **Wakeup.** With a threads grant, video initialization creates a private
+    pipe from the `pipe` grant and keeps it until the process exits, so a
+    racing sender never writes to a reused handle. SDL's wakeup sender writes
+    one byte without blocking (a full pipe already means a pending wakeup);
+    waits watch the read end and the pump drains it. Before blocking, the wait
+    checks SDL's queue for events queued before SDL published the waiting
+    window. Without a threads grant no other thread exists and no pipe is made.
 - **Timer** (`SDL_systimer.c`): ticks and the performance counter come from
   `clock_now` in nanoseconds, and `SDL_Delay` from `clock_sleep_for`. Sleeps
   use HPET deadlines and never finish before the requested deadline. Interrupt
   delivery and scheduling can delay resumption; nanosecond clock values do not
-  guarantee wakeup precision.
+  guarantee wakeup precision. `SDL_INIT_TIMER` starts no thread; the first
+  `SDL_AddTimer` starts SDL's timer thread and `SDL_Quit` always joins it.
+- **Threads** (`SDL_systhread.c`, `SDL_syscond.c`): SDL threads are libc
+  joinable pthreads. Creation fails with libc's error without the threads
+  grant. Stack requests are minimums of at least 1 MiB, rounded up to a page;
+  libc refuses more than 8 MiB. Names stay inside SDL. Only normal priority
+  succeeds. `SDL_DetachThread` sets an error and leaves libc's record and stack
+  reserved until exit, which then skips orderly finalizers. Conditions wait on
+  the monotonic clock; upstream's pthread recursive mutexes and TLS keys and its
+  generic semaphores (over those conditions) are built unchanged.
 - **Paths** (`SDL_sysfilesystem.c`):
   - `SDL_GetPrefPath(org, app)` creates and returns `home://APP/`; the
     organisation is not used.
@@ -149,9 +168,10 @@ editor is the in-tree Set and Has-then-Get consumer.
 4. `0004` makes native Pyxis position, warp and lock authoritative in SDL mouse
    core: no synthetic warp position or relative-mode fallback after lock refusal.
    Other video drivers retain upstream behavior.
-5. `0005` permits the threadless Pyxis wait hook without `SendWakeupEvent`.
-   There are no asynchronous SDL event producers in this configuration. A
-   threaded port needs a real wakeup sender before using this path.
+5. `0005` keeps `SDL_INIT_TIMER` from starting the timer thread, leaving that
+   to the first `SDL_AddTimer`, and makes `SDL_Quit` stop a running timer
+   thread even when `SDL_INIT_TIMER` was never requested. A thread left running
+   at exit would make libc skip its orderly finalizers.
 
 6. `0006` retains the Pyxis native clipboard action identity on the original
    private event queue node. Only original single-event removal delivers it;
@@ -167,9 +187,8 @@ editor is the in-tree Set and Has-then-Get consumer.
 
 These facilities report themselves as unsupported, as upstream does:
 
-- **Threads.** `SDL_CreateThread` fails, and so does `SDL_INIT_TIMER`, whose
-  callback timers need a thread. Mutexes and semaphores succeed and do nothing,
-  which is correct with one thread.
+- **Thread priorities and detach.** Only normal priority succeeds, and
+  detached threads are not collected before exit.
 - **Audio devices.** `SDL_INIT_AUDIO` fails. Conversion and WAV loading work.
 - **Haptics, sensors, HIDAPI, shared objects, power, OpenGL and Vulkan.**
 - **Joysticks.** They use SDL's dummy driver: `SDL_INIT_JOYSTICK` succeeds

@@ -1,0 +1,28 @@
+diff --git a/src/SDL.c b/src/SDL.c
+--- a/src/SDL.c
++++ b/src/SDL.c
+@@ -253,9 +253,12 @@ int SDL_InitSubSystem(Uint32 flags)
+     if (flags & SDL_INIT_TIMER) {
+ #if !defined(SDL_TIMERS_DISABLED) && !defined(SDL_TIMER_DUMMY)
+         if (SDL_PrivateShouldInitSubsystem(SDL_INIT_TIMER)) {
++#ifndef SDL_TIMER_PYXIS
+             if (SDL_TimerInit() < 0) {
+                 goto quit_and_error;
+             }
++#endif
++            /* Pyxis ticks and delays need no thread; SDL_AddTimer starts it. */
+         }
+         SDL_PrivateSubsystemRefCountIncr(SDL_INIT_TIMER);
+         flags_initialized |= SDL_INIT_TIMER;
+@@ -519,6 +522,11 @@ void SDL_Quit(void)
+     SDL_HelperWindowDestroy();
+ #endif
+     SDL_QuitSubSystem(SDL_INIT_EVERYTHING);
++#ifdef SDL_TIMER_PYXIS
++    /* SDL_AddTimer can start the thread without SDL_INIT_TIMER. A thread
++     * left running at exit would make Pyxis libc skip orderly finalizers. */
++    SDL_TimerQuit();
++#endif
+ 
+ #ifdef SDL_USE_LIBDBUS
+     SDL_DBus_Quit();

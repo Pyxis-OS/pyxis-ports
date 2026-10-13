@@ -3,7 +3,7 @@ include $(SDK)/share/pyxis.mk
 S := $(SOURCE)
 INCLUDE := $(BUILD)/include/SDL2
 
-# Each upstream directory is either used whole or only its dummy backend.
+# Each upstream directory is used whole, or only its dummy or selected backend files.
 UPSTREAM_SOURCES := $(wildcard $(S)/src/*.c) \
   $(wildcard $(S)/src/atomic/*.c) \
   $(wildcard $(S)/src/audio/*.c) \
@@ -22,7 +22,8 @@ UPSTREAM_SOURCES := $(wildcard $(S)/src/*.c) \
   $(wildcard $(S)/src/render/*.c) $(wildcard $(S)/src/render/software/*.c) \
   $(wildcard $(S)/src/sensor/*.c) $(S)/src/sensor/dummy/SDL_dummysensor.c \
   $(wildcard $(S)/src/stdlib/*.c) \
-  $(wildcard $(S)/src/thread/*.c) $(wildcard $(S)/src/thread/generic/*.c) \
+  $(wildcard $(S)/src/thread/*.c) $(S)/src/thread/generic/SDL_syssem.c \
+  $(S)/src/thread/pthread/SDL_sysmutex.c $(S)/src/thread/pthread/SDL_systls.c \
   $(wildcard $(S)/src/timer/*.c) \
   $(wildcard $(S)/src/video/*.c) $(wildcard $(S)/src/video/yuv2rgb/*.c)
 BACKEND_SOURCES := $(wildcard $(RECIPE)/pyxis/*.c)

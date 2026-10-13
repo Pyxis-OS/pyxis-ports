@@ -24,7 +24,7 @@ return function(ctx)
   for _, patch in ipairs(ctx.metadata.patches) do
     assert(provenance:write("patch=" .. patch .. "\n"))
   end
-  assert(provenance:write("profile=static library, Pyxis video/input/timer/paths, software renderer\n",
-    "omitted=threads, audio devices, haptics, sensors, HIDAPI, shared objects, OpenGL/Vulkan, SDL_main, SDL_test\n"))
+  assert(provenance:write("profile=static library, Pyxis video/input/timer/threads/paths, software renderer\n",
+    "omitted=thread priorities and detach, audio devices, haptics, sensors, HIDAPI, shared objects, OpenGL/Vulkan, SDL_main, SDL_test\n"))
   assert(provenance:close())
 end

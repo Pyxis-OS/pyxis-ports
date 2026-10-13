@@ -88,7 +88,6 @@
 #define SDL_HIDAPI_DISABLED 1
 #define SDL_SENSOR_DISABLED 1
 #define SDL_LOADSO_DISABLED 1
-#define SDL_THREADS_DISABLED 1
 #define SDL_POWER_DISABLED 1
 
 /* Joysticks initialize and report zero devices. */
@@ -98,5 +97,11 @@
 #define SDL_VIDEO_RENDER_SW 1
 #define SDL_TIMER_PYXIS 1
 #define SDL_FILESYSTEM_PYXIS 1
+
+/* Threads use libc's joinable pthread profile: upstream's recursive mutexes
+ * and TLS keys, Pyxis thread and monotonic condition files, and SDL's generic
+ * semaphores over those conditions. */
+#define SDL_THREAD_PTHREAD 1
+#define SDL_THREAD_PTHREAD_RECURSIVE_MUTEX 1
 
 #endif /* SDL_config_h_ */

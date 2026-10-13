@@ -43,6 +43,9 @@ void PYXIS_InitMouse(void);
 int PYXIS_AcquirePointer(void);
 void PYXIS_PumpEvents(SDL_VideoDevice *device);
 int PYXIS_WaitEventTimeout(SDL_VideoDevice *device, int timeout);
+/* Create the cross-thread wakeup when the program holds threads authority. */
+void PYXIS_InitWakeup(void);
+void PYXIS_SendWakeupEvent(SDL_VideoDevice *device, SDL_Window *window);
 /* Release held keys and buttons in SDL; the sessions are released separately. */
 void PYXIS_ResetInput(void);
 

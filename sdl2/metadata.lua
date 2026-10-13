@@ -15,7 +15,7 @@ return {
     "patches/0002-register-the-pyxis-video-driver.patch",
     "patches/0003-steam-gamepad-info-without-modification-time.patch",
     "patches/0004-native-pyxis-pointer-authority.patch",
-    "patches/0005-blocking-wait-without-thread-wakeup.patch",
+    "patches/0005-pyxis-timer-thread-on-first-timer.patch",
     "patches/0006-private-pyxis-clipboard-command-identity.patch",
     "patches/0007-pyxis-scroll-residue-and-32-buttons.patch",
   },

@@ -9,7 +9,9 @@
 #include <clock.h>
 #include <clipboard.h>
 #include <keyboard.h>
+#include <pipe.h>
 #include <pointer.h>
+#include <startup.h>
 #include <pxe/key_layout.h>
 #include <wait.h>
 
@@ -20,7 +22,9 @@
 #define ASCII_FIRST_PRINTABLE ' '
 #define ASCII_LAST_PRINTABLE '~'
 #define NANOSECONDS_PER_MILLISECOND UINT64_C(1000000)
-#define INPUT_WAIT_CAPACITY 3
+#define INPUT_WAIT_CAPACITY 4
+#define INPUT_WAIT_ABSENT SIZE_MAX
+#define WAKEUP_DRAIN_BYTES 64
 #define POINTER_BUTTON_COUNT 32
 
 static bool keyboard_focused;
@@ -29,10 +33,26 @@ static bool shared_v_held;
 static bool pointer_focused;
 static bool pointer_inside;
 static uint32_t held_buttons; /* Pyxis POINTER_BUTTON_* bits SDL has pressed. */
-/* The threadless SDL loop pumps immediately after the wait hook. Consume its
- * observation once, avoiding a second BSP handoff before draining input. */
+/* SDL's wait loop pumps immediately after the wait hook, on the same thread
+ * and with the same sessions. Consume its observation once, avoiding a second
+ * BSP handoff before draining input. */
 static bool waited;
 static uint64_t waited_events[INPUT_WAIT_CAPACITY];
+
+/* Other threads post events through SDL's queue. With threads authority a
+ * blocking wait also watches a private pipe that SendWakeupEvent writes to.
+ * Without it no other thread can exist, so waits need no wakeup. */
+static bool wakeup_needed;
+static handle_t wakeup_reader = HANDLE_INVALID;
+static handle_t wakeup_writer = HANDLE_INVALID;
+
+struct input_wait {
+  struct wait_interest interests[INPUT_WAIT_CAPACITY];
+  size_t count;
+  size_t keyboard; /* Interest indices, or INPUT_WAIT_ABSENT. */
+  size_t pointer;
+  size_t wakeup;
+};
 
 static const SDL_Scancode scancodes[KEY_COUNT] = {
   [KEY_ESCAPE] = SDL_SCANCODE_ESCAPE,
@@ -325,24 +345,72 @@ static void drain_keyboard(void)
   }
 }
 
-static size_t input_interests(struct wait_interest interests[INPUT_WAIT_CAPACITY])
+static size_t add_interest(struct input_wait *wait, handle_t handle, uint64_t events)
 {
-  size_t count = 0;
-  interests[count++] = (struct wait_interest){
-    .handle = pyxis_video.display, .events = WAIT_RESIZED,
-    .observed_generation = pyxis_video.generation,
-  };
+  wait->interests[wait->count] = (struct wait_interest){.handle = handle, .events = events};
+  return wait->count++;
+}
+
+/* The display is always interest 0. */
+static void input_interests(struct input_wait *wait)
+{
+  wait->count = 0;
+  wait->keyboard = wait->pointer = wait->wakeup = INPUT_WAIT_ABSENT;
+  add_interest(wait, pyxis_video.display, WAIT_RESIZED);
+  wait->interests[0].observed_generation = pyxis_video.generation;
   if (pyxis_video.keyboard_owned) {
-    interests[count++] = (struct wait_interest){
-      .handle = pyxis_video.keyboard, .events = WAIT_READABLE,
-    };
+    wait->keyboard = add_interest(wait, pyxis_video.keyboard, WAIT_READABLE);
   }
   if (pyxis_video.pointer_owned) {
-    interests[count++] = (struct wait_interest){
-      .handle = pyxis_video.pointer, .events = WAIT_READABLE,
-    };
+    wait->pointer = add_interest(wait, pyxis_video.pointer, WAIT_READABLE);
   }
-  return count;
+  if (wakeup_reader != HANDLE_INVALID) {
+    wait->wakeup = add_interest(wait, wakeup_reader, WAIT_READABLE);
+  }
+}
+
+static bool interest_ready(const uint64_t events[], size_t index)
+{
+  return index != INPUT_WAIT_ABSENT && (events[index] & (WAIT_READABLE | WAIT_ERROR));
+}
+
+static void drain_wakeup(void)
+{
+  uint8_t bytes[WAKEUP_DRAIN_BYTES];
+  size_t read;
+  while (pipe_try_read(wakeup_reader, bytes, sizeof(bytes), &read) == CALL_OK && read > 0) {
+  }
+}
+
+/* The pipe is created once and kept until the process exits, even across
+ * SDL_VideoQuit: a sender racing a close could otherwise write to a reused
+ * handle number. Failure leaves waits on SDL's polling fallback. */
+void PYXIS_InitWakeup(void)
+{
+  wakeup_needed = startup_resource("threads") != HANDLE_INVALID;
+  handle_t service = startup_resource("pipe");
+  if (!wakeup_needed || wakeup_writer != HANDLE_INVALID || service == HANDLE_INVALID) {
+    return;
+  }
+  struct pipe_create_reply pair;
+  if (pipe_create(service, &pair) == CALL_OK) {
+    wakeup_reader = pair.reader;
+    wakeup_writer = pair.writer;
+  }
+}
+
+/* Called from any thread, at most once per wait, after SDL has queued an
+ * event. A full pipe already holds a pending wakeup, so the result is unused. */
+void PYXIS_SendWakeupEvent(SDL_VideoDevice *device, SDL_Window *window)
+{
+  (void)device;
+  (void)window;
+  if (wakeup_writer == HANDLE_INVALID) {
+    return;
+  }
+  uint8_t byte = 0;
+  size_t written;
+  pipe_try_write(wakeup_writer, &byte, sizeof(byte), &written);
 }
 
 int PYXIS_WaitEventTimeout(SDL_VideoDevice *device, int timeout)
@@ -351,9 +419,12 @@ int PYXIS_WaitEventTimeout(SDL_VideoDevice *device, int timeout)
   if (!pyxis_video.window || !pyxis_video.keyboard_owned) {
     return -1;
   }
+  if (wakeup_needed && wakeup_reader == HANDLE_INVALID) {
+    return -1; /* Another thread's event could not end the wait. */
+  }
 
-  struct wait_interest interests[INPUT_WAIT_CAPACITY];
-  size_t count = input_interests(interests);
+  struct input_wait wait;
+  input_interests(&wait);
   uint64_t end = 0;
   if (timeout > 0) {
     uint64_t now;
@@ -378,15 +449,21 @@ int PYXIS_WaitEventTimeout(SDL_VideoDevice *device, int timeout)
       }
     }
 
+    /* SDL publishes the wakeup window before calling this hook, and senders
+     * queue before taking it. An event queued before publication is visible
+     * here; a later one writes the pipe. */
+    if (wakeup_reader != HANDLE_INVALID && SDL_HasEvents(SDL_FIRSTEVENT, SDL_LASTEVENT)) {
+      return 1;
+    }
     uint64_t events[INPUT_WAIT_CAPACITY] = {0};
-    enum call_status status = wait_many(interests, count, deadline, events);
+    enum call_status status = wait_many(wait.interests, wait.count, deadline, events);
     if (status == CALL_OK) {
       bool ready = false;
-      for (size_t i = 0; i < count; ++i) {
+      for (size_t i = 0; i < wait.count; ++i) {
         if (events[i] & WAIT_ERROR) {
           return -1; /* Ownership/backend loss needs the polling fallback. */
         }
-        ready |= (events[i] & interests[i].events) != 0;
+        ready |= (events[i] & wait.interests[i].events) != 0;
       }
       if (ready) {
         SDL_memcpy(waited_events, events, sizeof(waited_events));
@@ -412,8 +489,8 @@ void PYXIS_PumpEvents(SDL_VideoDevice *device)
     return;
   }
 
-  struct wait_interest interests[INPUT_WAIT_CAPACITY];
-  size_t count = input_interests(interests);
+  struct input_wait wait;
+  input_interests(&wait);
   uint64_t events[INPUT_WAIT_CAPACITY] = {0};
   bool pointer_ready = true;
   enum call_status status;
@@ -422,18 +499,23 @@ void PYXIS_PumpEvents(SDL_VideoDevice *device)
     waited = false;
     status = CALL_OK;
   } else {
-    status = wait_many(interests, count, 0, events);
+    status = wait_many(wait.interests, wait.count, 0, events);
   }
   if (status == CALL_OK) {
+    if (interest_ready(events, wait.wakeup)) {
+      drain_wakeup();
+    }
     if (events[0] & WAIT_RESIZED) {
       PYXIS_FollowDisplaySize(device);
     }
-    if (pyxis_video.keyboard_owned && (events[1] & (WAIT_READABLE | WAIT_ERROR))) {
+    if (interest_ready(events, wait.keyboard)) {
       drain_keyboard();
     }
-    pointer_ready = pyxis_video.pointer_owned &&
-        (events[count - 1] & (WAIT_READABLE | WAIT_ERROR));
+    pointer_ready = interest_ready(events, wait.pointer);
   } else {
+    if (wakeup_reader != HANDLE_INVALID) {
+      drain_wakeup();
+    }
     if (pyxis_video.keyboard_owned) {
       drain_keyboard();
     }

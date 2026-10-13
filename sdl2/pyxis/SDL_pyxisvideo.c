@@ -163,6 +163,7 @@ static int PYXIS_VideoInit(SDL_VideoDevice *device)
   }
   SDL_AddDisplayMode(&device->displays[0], &mode);
   PYXIS_InitInput();
+  PYXIS_InitWakeup();
   return 0;
 }
 
@@ -278,6 +279,7 @@ static SDL_VideoDevice *PYXIS_CreateDevice(void)
   device->VideoQuit = PYXIS_VideoQuit;
   device->PumpEvents = PYXIS_PumpEvents;
   device->WaitEventTimeout = PYXIS_WaitEventTimeout;
+  device->SendWakeupEvent = PYXIS_SendWakeupEvent;
   device->CreateSDLWindow = PYXIS_CreateWindow;
   device->DestroyWindow = PYXIS_DestroyWindow;
   device->CreateWindowFramebuffer = PYXIS_CreateWindowFramebuffer;
