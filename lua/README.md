@@ -282,7 +282,10 @@ gap, or repeated in a fold without an `isdst` field that settles it, makes
 represented" error. An `isdst` that disagrees with an unambiguous wall time
 reads it in the requested kind of time, as in standard C. `os.date` uses real
 C-locale strftime, UTC/TZif names and numeric offsets. String comparison uses
-libc's `strcoll`, which compares in byte order in the only, C, locale. Native `os.rename` does not replace an existing target.
+libc's `strcoll`, which compares in byte order in the only, C, locale.
+`os.rename` uses libc's replacement policy where the filesystem and caller's
+authority permit it. Replacement requires matching kinds and an empty directory
+victim; directory moves require RAM or writable npfs.
 
 Absent functions are `file:setvbuf`, `io.popen`, `os.execute`, `os.clock`,
 `os.setlocale`, `package.loadlib`, C-module searchers, debug and full math.
