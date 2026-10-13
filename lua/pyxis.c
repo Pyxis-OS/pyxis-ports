@@ -778,8 +778,10 @@ static int http_prepare(lua_State *state)
 
 static int http_commit(lua_State *state)
 {
-  luaL_Stream *request = http_file(state);
+  luaL_checkudata(state, 1, LUA_FILEHANDLE);
   luaL_Stream *response = new_http_file(state);
+  /* Allocation can run finalizers which explicitly close another live FILE. */
+  luaL_Stream *request = http_file(state);
   FILE *file = pyxis_http_commit(request->f);
   if (!file) {
     return luaL_fileresult(state, 0, NULL);
