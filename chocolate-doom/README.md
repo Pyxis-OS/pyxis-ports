@@ -14,8 +14,8 @@ lua build.lua chocolate-doom --sdk /path/to/build/sdk --sdl2 /path/to/sdl2/dev
 
 Only the `chocolate-doom` target is built: not Heretic, Hexen, Strife,
 `chocolate-setup` or the server. The CMake options `ENABLE_SDL2_MIXER` and
-`ENABLE_SDL2_NET` are off, so there is no sound, music or network play; the
-SDL2 port has no audio either. libsamplerate, libpng and FluidSynth are not
+`ENABLE_SDL2_NET` are off, so there is no sound, music or network play.
+libsamplerate, libpng and FluidSynth are not
 offered to CMake, so screenshots are PCX.
 
 ## Patches

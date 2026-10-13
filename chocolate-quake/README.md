@@ -4,7 +4,8 @@
 to the `chocolate-quake-2.1.0` release archive (commit
 `8ee22175e3a5613e94ad2f9776aadc428b948cf3`), built through the SDK's CMake
 toolchain file against the [SDL2 port](../sdl2/README.md). The recipe stages
-`bin/chocolate-quake.pxe`, upstream's licence, SDL2's licence and the port
+the program bundle `bin/chocolate-quake.pxb` (`manifest.json` and
+`app/bin/chocolate-quake.pxe`), upstream's licence, SDL2's licence and the port
 notice. Game data is not part of the recipe; the image stages one set of Quake
 data for both this and the native [Quake](../quake/README.md).
 
@@ -14,9 +15,23 @@ lua build.lua chocolate-quake --sdk /path/to/build/sdk --sdl2 /path/to/sdl2/dev
 
 Only the `chocolate-quake` target is built. Upstream requires SDL2_net and the
 Vorbis, MP3 and FLAC libraries with no options to turn them off, so the first
-patch removes them from the build. There is no network play or music. Sound
-initialization fails as SDL2 has no audio here, and the game runs silent, as
-with `-nosound`.
+patch removes them from the build. There is no network play or music.
+
+## Bundle and grants
+
+`chocolate-quake` selects the bundle, as `lua` selects `lua.pxb`. Its manifest
+declares the grants the game uses; nothing is obtained at runtime:
+
+- required: `memory/manage`, `clock` read and sleep, `display/draw` and
+  `keyboard/input`;
+- optional: `pointer/input` for mouse look, and for sound `audio/create`,
+  `threads/manage` (SDL's audio callback thread) and `pipe/create` (SDL's
+  cross-thread event wakeup).
+
+Sound uses upstream's SDL driver (`snd_sdl.c`) through the SDL2 port's audio
+backend. When a supplier cannot provide the optional sound grants, or the
+executable is launched directly by its `app/bin` path, sound initialization
+fails with SDL's error and the game runs silent, as with `-nosound`.
 
 ## Patches
 

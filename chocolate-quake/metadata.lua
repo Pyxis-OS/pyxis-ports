@@ -20,7 +20,8 @@ return {
     "patches/0003-pyxis-frame-sleep.patch",
   },
   outputs = {
-    executable = "bin/chocolate-quake.pxe",
+    executable = "bin/chocolate-quake.pxb/app/bin/chocolate-quake.pxe",
+    manifest = "bin/chocolate-quake.pxb/manifest.json",
     license = "share/licenses/chocolate-quake/LICENSE",
     notice = "share/licenses/chocolate-quake/PORT-NOTICE",
     sdl2_license = "share/licenses/chocolate-quake/SDL2-LICENSE.txt",
