@@ -9,6 +9,8 @@
     {"name": "clock", "resource": "clock", "rights": ["read", "sleep"], "required": true},
     {"name": "launcher", "resource": "launcher", "rights": ["launch"], "required": true},
     {"name": "pipe", "resource": "pipe", "rights": ["create"], "required": true},
-    {"name": "system_info", "resource": "system_info", "rights": ["read"], "required": false}
+    {"name": "system_info", "resource": "system_info", "rights": ["read"], "required": false},
+    {"name": "fat32_data", "resource": "directory", "source": "fat32_write", "root": "edit",
+     "rights": ["lookup", "enumerate", "read-files", "create", "write-files", "remove"], "required": false}
   ]
 }

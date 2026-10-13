@@ -91,3 +91,10 @@ checksums and patch order are in `metadata.lua` and the bundle's
 runtime travel under `app/metadata/licenses/`; the port note is beside them.
 See [PORT-NOTICE.md](PORT-NOTICE.md) for licences
 and local-change attribution.
+
+The optional `fat32_data` directory grant selects the launch source `fat32_write`
+and binds it as `edit://`. It is supplied only by explicit trusted configuration
+or a shell-owned writable FAT mount named `fat32://`; it grants no disk or mount
+management authority. Without that source, ordinary startup is unchanged. Open
+`edit://FILE` explicitly to edit the selected scratch volume; inherited FAT views
+remain read-only. Device identifiers belong only in local configuration.
