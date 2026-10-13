@@ -3,7 +3,7 @@ include $(SDK)/share/pyxis.mk
 # config.h replaces configure's output, which cannot run against the SDK.
 # include/ holds declarations for Unix interfaces Links compiles but this port
 # never reaches; pyxis.c is the platform layer, as dos.c is for DOS.
-CPPFLAGS := $(PYXIS_CPPFLAGS) -I$(RECIPE) -I$(RECIPE)/include -DHAVE_CONFIG_H
+CPPFLAGS := -I$(RECIPE) -I$(RECIPE)/include $(PYXIS_CPPFLAGS) -DHAVE_CONFIG_H
 SOURCES := $(filter-out $(SOURCE)/dos.c,$(wildcard $(SOURCE)/*.c))
 OBJECTS := $(patsubst $(SOURCE)/%.c,$(BUILD)/%.o,$(SOURCES)) \
            $(BUILD)/pyxis.o $(BUILD)/pyxis_console.o $(BUILD)/network.o
