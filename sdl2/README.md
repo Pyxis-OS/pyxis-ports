@@ -27,7 +27,8 @@ own, because libc's `iconv` lacks the UCS-2, UCS-4 and UTF-32 forms SDL uses.
 A program needs the `display`, `keyboard` and `clock` grants; `pointer` is
 optional, and without it or a mouse the program runs from the keyboard.
 Threads and callback timers need a bundle declaring `threads/manage`, and
-blocking event waits in a threaded program also need `pipe/create`.
+blocking event waits in a threaded program also need `pipe/create`. Audio
+output needs the `audio` grant and, for SDL's callback thread, `threads/manage`.
 
 ## The backend
 
@@ -112,6 +113,28 @@ The files in `pyxis/` are the platform layer:
   reserved until exit, which then skips orderly finalizers. Conditions wait on
   the monotonic clock; upstream's pthread recursive mutexes and TLS keys and its
   generic semaphores (over those conditions) are built unchanged.
+- **Audio** (`SDL_pyxisaudio.c`): one output device, the space's native PCM
+  session. `SDL_INIT_AUDIO` needs the `audio` and `clock` grants and acquires
+  nothing. Opening acquires the session; SDL refuses a second open in the same
+  process, and another owner in the space makes the open fail. Without the
+  threads grant SDL cannot create its callback thread, so the open fails and
+  the session is released. The device runs at the native 48 kHz S16LE stereo
+  with 1,024-frame (21.3 ms) buffers, one maximum native write; SDL's audio
+  stream converts other rates, formats, channel counts and buffer sizes.
+  - **Queue.** The callback thread waits for the session to be writable (at
+    least 1,024 free frames) and writes one buffer, keeping the 3,840-frame
+    native queue near full. Waits are bounded to 100 ms so a closing device
+    sees SDL's shutdown flag.
+  - **Pause.** Upstream behaviour: while paused the callback does not run and
+    SDL writes silence, so the session stays held.
+  - **Close.** `SDL_CloseAudioDevice` and `SDL_Quit` join the callback thread,
+    then release the session, discarding PCM still queued.
+  - **Underruns and failure.** A late or slow callback becomes native silence,
+    counted by the session's starvation counter; SDL has no underrun report.
+    A refused write or a failed wait marks the SDL device disconnected
+    (`SDL_AUDIODEVICEREMOVED`), and the callback keeps its nominal rate into
+    a discarded buffer, as upstream does. SDL's `TIME_CRITICAL` thread
+    priority request is refused and ignored.
 - **Paths** (`SDL_sysfilesystem.c`):
   - `SDL_GetPrefPath(org, app)` creates and returns `home://APP/`; the
     organisation is not used.
@@ -182,6 +205,7 @@ editor is the in-tree Set and Has-then-Get consumer.
    stops SDL's mouse core from resetting wheel residue on a direction change when
    the Pyxis pointer is in use, so signed fractional increments cancel. Other
    drivers keep upstream behavior.
+8. `0008` registers the Pyxis audio driver in SDL's audio bootstrap list.
 
 ## Not built
 
@@ -189,7 +213,7 @@ These facilities report themselves as unsupported, as upstream does:
 
 - **Thread priorities and detach.** Only normal priority succeeds, and
   detached threads are not collected before exit.
-- **Audio devices.** `SDL_INIT_AUDIO` fails. Conversion and WAV loading work.
+- **Audio capture** and output device selection: there is one default output.
 - **Haptics, sensors, HIDAPI, shared objects, power, OpenGL and Vulkan.**
 - **Joysticks.** They use SDL's dummy driver: `SDL_INIT_JOYSTICK` succeeds
   with zero devices.

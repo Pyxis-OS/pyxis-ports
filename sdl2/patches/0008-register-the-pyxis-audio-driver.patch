@@ -1,0 +1,24 @@
+diff --git a/src/audio/SDL_audio.c b/src/audio/SDL_audio.c
+--- a/src/audio/SDL_audio.c
++++ b/src/audio/SDL_audio.c
+@@ -129,6 +129,9 @@ static const AudioBootStrap *const bootstrap[] = {
+ #ifdef SDL_AUDIO_DRIVER_OS2
+     &OS2AUDIO_bootstrap,
+ #endif
++#ifdef SDL_AUDIO_DRIVER_PYXIS
++    &PYXISAUDIO_bootstrap,
++#endif
+ #ifdef SDL_AUDIO_DRIVER_DISK
+     &DISKAUDIO_bootstrap,
+ #endif
+diff --git a/src/audio/SDL_sysaudio.h b/src/audio/SDL_sysaudio.h
+--- a/src/audio/SDL_sysaudio.h
++++ b/src/audio/SDL_sysaudio.h
+@@ -209,6 +209,7 @@ extern AudioBootStrap VITAAUD_bootstrap;
+ extern AudioBootStrap N3DSAUDIO_bootstrap;
+ extern AudioBootStrap EMSCRIPTENAUDIO_bootstrap;
+ extern AudioBootStrap OS2AUDIO_bootstrap;
++extern AudioBootStrap PYXISAUDIO_bootstrap;
+ 
+ #endif /* SDL_sysaudio_h_ */
+ 

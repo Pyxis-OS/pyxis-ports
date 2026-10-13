@@ -83,7 +83,6 @@
 #define HAVE__EXIT 1
 
 /* Facilities Pyxis does not provide yet; SDL reports them as unsupported. */
-#define SDL_AUDIO_DISABLED 1
 #define SDL_HAPTIC_DISABLED 1
 #define SDL_HIDAPI_DISABLED 1
 #define SDL_SENSOR_DISABLED 1
@@ -95,6 +94,7 @@
 
 #define SDL_VIDEO_DRIVER_PYXIS 1
 #define SDL_VIDEO_RENDER_SW 1
+#define SDL_AUDIO_DRIVER_PYXIS 1
 #define SDL_TIMER_PYXIS 1
 #define SDL_FILESYSTEM_PYXIS 1
 

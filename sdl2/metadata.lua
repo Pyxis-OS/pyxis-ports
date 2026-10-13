@@ -18,6 +18,7 @@ return {
     "patches/0005-pyxis-timer-thread-on-first-timer.patch",
     "patches/0006-private-pyxis-clipboard-command-identity.patch",
     "patches/0007-pyxis-scroll-residue-and-32-buttons.patch",
+    "patches/0008-register-the-pyxis-audio-driver.patch",
   },
   outputs = {
     library = "dev/lib/libSDL2.a",
