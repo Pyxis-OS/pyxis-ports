@@ -1,0 +1,59 @@
+diff --git a/coreutils/printf.c b/coreutils/printf.c
+--- a/coreutils/printf.c
++++ b/coreutils/printf.c
+@@ -59,7 +59,7 @@
+ //usage:       "$ printf \"Val=%d\\n\" 5\n"
+ //usage:       "Val=5\n"
+ 
+-#include "libbb.h"
++#include "printf_support.h"
+ 
+ /* A note on bad input: neither bash 3.2 nor coreutils 6.10 stop on it.
+  * They report it:
+@@ -407,20 +407,8 @@
+ 	char *format;
+ 	char **argv2;
+ 
+-	/* We must check that stdout is not closed.
+-	 * The reason for this is highly non-obvious.
+-	 * printf_main is used from shell.
+-	 * Shell must correctly handle 'printf "%s" foo'
+-	 * if stdout is closed. With stdio, output gets shoveled into
+-	 * stdout buffer, and even fflush cannot clear it out. It seems that
+-	 * even if libc receives EBADF on write attempts, it feels determined
+-	 * to output data no matter what. So it will try later,
+-	 * and possibly will clobber future output. Not good. */
+-// TODO: check fcntl() & O_ACCMODE == O_WRONLY or O_RDWR?
+-	if (fcntl(1, F_GETFL) == -1)
+-		return 1; /* match coreutils 6.10 (sans error msg to stderr) */
+-	//if (dup2(1, 1) != 1) - old way
+-	//	return 1;
++	/* The standalone Pyxis entry point checks stdout errors and flushes
++	 * before exit; no embedded-shell stdio buffer can outlive this applet. */
+ 
+ 	/* bash builtin errors out on "printf '-%s-\n' foo",
+ 	 * coreutils-6.9 works. Both work with "printf -- '-%s-\n' foo".
+diff --git a/libbb/process_escape_sequence.c b/libbb/process_escape_sequence.c
+--- a/libbb/process_escape_sequence.c
++++ b/libbb/process_escape_sequence.c
+@@ -7,7 +7,7 @@
+  *
+  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
+  */
+-#include "libbb.h"
++#include "printf_support.h"
+ 
+ #define WANT_HEX_ESCAPES 1
+ 
+diff --git a/libbb/bb_strtonum.c b/libbb/bb_strtonum.c
+--- a/libbb/bb_strtonum.c
++++ b/libbb/bb_strtonum.c
+@@ -6,7 +6,7 @@
+  *
+  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
+  */
+-#include "libbb.h"
++#include "printf_support.h"
+ 
+ /* On exit: errno = 0 only if there was non-empty, '\0' terminated value
+  * errno = EINVAL if value was not '\0' terminated, but otherwise ok

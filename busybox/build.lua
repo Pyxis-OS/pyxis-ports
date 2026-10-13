@@ -8,6 +8,8 @@ return function(ctx)
     ctx.stage .. "/" .. ctx.metadata.outputs.less })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/tar.pxe",
     ctx.stage .. "/" .. ctx.metadata.outputs.tar })
+  ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/printf.pxe",
+    ctx.stage .. "/" .. ctx.metadata.outputs.printf })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
 end

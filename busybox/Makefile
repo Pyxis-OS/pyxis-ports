@@ -6,7 +6,7 @@ CPPFLAGS := $(PYXIS_CPPFLAGS) -I$(RECIPE)
 OBJECTS := $(BUILD)/vi.o $(BUILD)/busybox_pyxis.o
 
 .PHONY: all
-all: $(BUILD)/vi.pxe $(BUILD)/less.pxe $(BUILD)/tar.pxe
+all: $(BUILD)/vi.pxe $(BUILD)/less.pxe $(BUILD)/tar.pxe $(BUILD)/printf.pxe
 
 # Upstream relies on unused parameters, signed/unsigned comparisons and
 # intentional case fallthrough that BusyBox's own flags do not report.
@@ -52,3 +52,23 @@ $(BUILD)/tar.pxe: $(TAR_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKE
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(TAR_OBJECTS) $(PYXIS_LDLIBS)
 
 -include $(TAR_OBJECTS:.o=.d)
+
+PRINTF_OBJECTS := $(BUILD)/printf.o $(BUILD)/printf_escape.o \
+                  $(BUILD)/printf_number.o $(BUILD)/printf_pyxis.o
+
+$(BUILD)/printf.o: $(SOURCE)/coreutils/printf.c $(RECIPE)/printf_support.h
+	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) $(VI_WARNINGS) -c $< -o $@
+
+$(BUILD)/printf_escape.o: $(SOURCE)/libbb/process_escape_sequence.c $(RECIPE)/printf_support.h
+	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) $(VI_WARNINGS) -c $< -o $@
+
+$(BUILD)/printf_number.o: $(SOURCE)/libbb/bb_strtonum.c $(RECIPE)/printf_support.h
+	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) $(VI_WARNINGS) -c $< -o $@
+
+$(BUILD)/printf_pyxis.o: $(RECIPE)/printf_pyxis.c $(RECIPE)/printf_support.h
+	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) -c $< -o $@
+
+$(BUILD)/printf.pxe: $(PRINTF_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(PRINTF_OBJECTS) $(PYXIS_LDLIBS)
+
+-include $(PRINTF_OBJECTS:.o=.d)

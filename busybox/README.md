@@ -1,12 +1,12 @@
-# BusyBox vi, less and tar
+# BusyBox vi, less, tar and printf
 
 [Upstream BusyBox](https://git.busybox.net/busybox) is pinned to
 `f96d33d28a1f70fda5f27d221d5012b1ac0b7dad` (1.39.0.git) under GPL-2.0-only.
 Upstream's server refuses commits that no branch points at, and the
 [GitHub mirror](https://github.com/mirror/busybox) stopped in July 2024, so
 the recipe fetches the commit from the internal mirror of upstream.
-The recipe selects vi, less and uncompressed tar separately. It stages
-`bin/vi.pxe`, `bin/less.pxe` and `bin/tar.pxe`, with
+The recipe selects vi, less, uncompressed tar and printf separately. It stages
+`bin/vi.pxe`, `bin/less.pxe`, `bin/tar.pxe` and `bin/printf.pxe`, with
 `share/licenses/busybox/LICENSE`. Retain the license when distributing the
 executable. This recipe, its ordered patches and adapters are their corresponding source.
 
@@ -148,5 +148,26 @@ Patch 0004 retains the upstream ustar header, checksum, padding and creation
 algorithms, with a tar-specific libbb subset and libc snapshot adapter. It builds
 `archival/tar.c`, `archival/libarchive/get_header_tar.c` and
 `archival/chksum_and_xwrite_tar_header.c`. See [the tar notes](TAR.md) for exact
-validation, path/metadata behavior and memory/write limits. Both new applets use
-only the inherited working directory, scheme roots and explicit shell grants.
+validation, path/metadata behavior and memory/write limits. less and tar use only
+the inherited working directory, scheme roots and explicit shell grants.
+
+## printf
+
+Patch 0007 selects upstream `coreutils/printf.c`, escape decoding and numeric
+conversion helpers with `printf_support.h`. The standalone entry point and
+remaining libbb helpers use libc; no terminal, HTTP or request-control grant is
+needed. The shell supplies ordinary stdout and stderr, including redirected
+files and pipes. Output errors, formatting failures and the final stdout flush
+make the applet exit unsuccessfully.
+
+```text
+printf '{}'
+printf '%s:%d\n' value 7
+printf '%b' 'first\nsecond\n' > tmp://lines.txt
+```
+
+Upstream string, integer and floating formats, `%b`, escapes, optional `--` and
+format reuse are retained. Invalid formats or numeric arguments print a diagnostic
+and return failure. The embedded-shell `fcntl(F_GETFL)` check is removed:
+this applet owns its libc stream lifetime, and its entry point checks the actual
+stdio error and flush result before exit.

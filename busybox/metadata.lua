@@ -16,11 +16,13 @@ return {
     "patches/0004-pyxis-tar-ustar-subset.patch",
     "patches/0005-vi-replace-file-on-save.patch",
     "patches/0006-alternate-screen.patch",
+    "patches/0007-printf-native-stdio.patch",
   },
   outputs = {
     executable = "bin/vi.pxe",
     less = "bin/less.pxe",
     tar = "bin/tar.pxe",
+    printf = "bin/printf.pxe",
     license = "share/licenses/busybox/LICENSE",
   },
 }
