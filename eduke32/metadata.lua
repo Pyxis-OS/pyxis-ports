@@ -13,12 +13,13 @@ return {
   },
   patches = {
     "patches/0001-pyxis-platform.patch",
-    "patches/0002-pyxis-single-thread.patch",
+    "patches/0002-pyxis-thread-limits.patch",
     "patches/0003-pyxis-paths.patch",
     "patches/0004-pyxis-frame-sleep.patch",
   },
   outputs = {
-    executable = "bin/eduke32.pxe",
+    executable = "bin/eduke32.pxb/app/bin/eduke32.pxe",
+    manifest = "bin/eduke32.pxb/manifest.json",
     license = "share/licenses/eduke32/gpl-2.0.txt",
     buildlic = "share/licenses/eduke32/buildlic.txt",
     notice = "share/licenses/eduke32/PORT-NOTICE",

@@ -4,6 +4,8 @@ return function(ctx)
     "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile, "SDL2=" .. ctx.sdl2 })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/eduke32",
     ctx.stage .. "/" .. ctx.metadata.outputs.executable })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/manifest.json",
+    ctx.stage .. "/" .. ctx.metadata.outputs.manifest })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/package/common/gpl-2.0.txt",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/package/common/buildlic.txt",

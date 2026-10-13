@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "org.pyxis.eduke32",
+  "entry": "bin/eduke32.pxe",
+  "commands": {"eduke32": "bin/eduke32.pxe"},
+  "resource_dirs": {},
+  "grants": [
+    {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
+    {"name": "clock", "resource": "clock", "rights": ["read", "sleep"], "required": true},
+    {"name": "display", "resource": "display", "rights": ["draw"], "required": true},
+    {"name": "keyboard", "resource": "keyboard", "rights": ["input"], "required": true},
+    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false},
+    {"name": "audio", "resource": "audio", "rights": ["create"], "required": false},
+    {"name": "threads", "resource": "threads", "rights": ["manage"], "required": false},
+    {"name": "pipe", "resource": "pipe", "rights": ["create"], "required": false},
+    {"name": "clipboard_local", "resource": "clipboard_local", "rights": ["publish", "paste"], "required": false},
+    {"name": "clipboard_shared", "resource": "clipboard_shared", "rights": ["publish", "paste"], "required": false}
+  ]
+}

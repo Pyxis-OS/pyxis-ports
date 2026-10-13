@@ -3,14 +3,36 @@
 [EDuke32](https://voidpoint.io/terminx/eduke32) pinned to master commit
 `ec5824db81817866f70da326d3811bb0f52b3517` (2026-08-07; upstream has no
 release tags), built with its own GNU Make build against the
-[SDL2 port](../sdl2/README.md). The recipe stages `bin/eduke32.pxe`, the GPL
-and Build licences, SDL2's licence and the port notice. It is a personal-use
+[SDL2 port](../sdl2/README.md). The recipe stages the program bundle
+`bin/eduke32.pxb` (`manifest.json` and `app/bin/eduke32.pxe`), the GPL and
+Build licences, SDL2's licence and the port notice. It is a personal-use
 build: Pyxis builds it only when given the owner's `duke3d.grp`, and never
 installs it with the ordinary ports. Game data is not part of the recipe.
 
 ```sh
 lua build.lua eduke32 --sdk /path/to/build/sdk --sdl2 /path/to/sdl2/dev
 ```
+
+## Bundle and grants
+
+`eduke32` selects the bundle, as `lua` selects `lua.pxb`. Its manifest
+declares the grants the game uses; nothing is obtained at runtime:
+
+- required: `memory/manage`, `clock` read and sleep, `display/draw` and
+  `keyboard/input`;
+- optional: `pointer/input` for the mouse, and for sound `audio/create`,
+  `threads/manage` (SDL's audio callback thread) and `pipe/create` (SDL's
+  cross-thread event wakeup), and `clipboard_local` and `clipboard_shared`
+  (`publish`, `paste`) for the console's paste.
+
+Sound effects and music use upstream's SDL driver (`driver_sdl.cpp`) through
+the SDL2 port's audio backend at 48 kHz; music is upstream's default AdLib
+OPL3 emulation. When a supplier cannot provide the optional sound grants, or
+the executable is launched directly by its `app/bin` path, sound startup fails
+with "SDL Audio: error in OpenAudio" and the game runs silent. Upstream's
+`-ns` only turns sound effects and music off; the device stays open.
+
+## Build
 
 Only the `eduke32` game is built, with the classic software renderer. The
 Makefile passes `PLATFORM=PYXIS` and turns off OpenGL, Polymer, libvpx,
@@ -44,14 +66,14 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
      loop, so Pyxis uses 60 Hz.
    - **Sound:** after sound startup fails, playing a sound returns at once.
      Upstream tries each sound and logs every failure.
-2. **Single thread.** Pyxis processes have one thread:
-   - loguru builds without threads, `<regex>` or signals; its mutex is a
-     no-op, there is no flush thread, and its thread ID and error context are
-     plain values;
-   - smmalloc's per-thread cache and the audio library's lock flag are plain
-     globals, and the library's async tasks, used only by the Vorbis and XMP
-     decoders, are left out;
-   - minicoro is built with `MCO_NO_MULTITHREAD`.
+2. **Thread limits.** SDL's audio callback thread mixes sound beside the
+   game's thread, so upstream's thread-local state, loguru's mutex and the
+   audio library's lock stay as upstream has them. The patch leaves out only
+   what Pyxis lacks or the build does not use:
+   - loguru builds without `<regex>`, signal handlers, stack traces or pthread
+     thread names;
+   - the audio library's async tasks, used only by the Vorbis and XMP
+     decoders, are left out.
 3. **Paths.**
    - **Locations:** the data is `boot://share/duke3d/` and generated files go
      to `home://eduke32/`, created on first run and searched first. Upstream
@@ -87,5 +109,5 @@ Upstream's 96 MiB data cache and smmalloc's 16 MiB of buckets are allocated at
 startup, and Pyxis backs private memory eagerly. In QEMU the system's
 allocated memory rose by about 158 MiB while the game ran.
 
-Upstream compiler warnings remain visible. Two in loguru, an unused thread
-name and an unread flush flag, follow from patch 2.
+Upstream compiler warnings remain visible. One in loguru, an unused thread
+name, follows from patch 2.
