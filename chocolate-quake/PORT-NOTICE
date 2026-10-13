@@ -10,5 +10,6 @@ patched files remain under those terms. The program links the Pyxis SDL2 port
 statically; SDL2's zlib licence is SDL2-LICENSE.txt.
 
 The build leaves out SDL2_net, the UDP network driver and the Vorbis, MP3 and
-FLAC music codecs, so this program has no network play or music, and no sound
-on Pyxis.
+FLAC music codecs, so this program has no network play or music. Sound effects
+play through the SDL2 port's audio when the chocolate-quake.pxb bundle receives
+its optional grants.
