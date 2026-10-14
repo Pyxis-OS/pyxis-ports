@@ -3,11 +3,14 @@
 PUC Lua 5.1.5 with its standard libraries, LPeg 1.1.0, luv 1.52.1-0 and
 lua-compat-5.3 0.13, built as one recipe over the [native libuv](../libuv/README.md).
 These are the pins Neovim 0.12.5 uses. The Lua 5.5 port in `lua/` is separate;
-the two coexist. This interpreter has no native `pyxis` module and therefore
-does not expose Lua 5.5's explicit HTTP prepare/commit/status/abort helpers.
-Ordinary `io.open` reads can consume HTTP streams through libc; staged HTTP
-writes need an explicit transaction helper and are not a supported submission
-path here.
+the two coexist. This interpreter has no native `pyxis` module.
+Ordinary `io.open` reads consume HTTP streams through libc. A staged HTTP
+`"w"` or `"w+"` file commits on an exact file flush or final owning close;
+`"w+"` then reads its reply from the same file and rejects later writes. Close
+and garbage collection use libc's `fclose` and can submit a clean staged request;
+explicitly check flush/close results because GC cannot report close errors.
+These operations use existing declared grants. See the [Lua HTTP stream
+examples](../lua/README.md#http-streams).
 
 ```sh
 lua build.lua lua51 --sdk /path/to/build/sdk --libuv /path/to/libuv/stage/dev

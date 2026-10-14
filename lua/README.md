@@ -97,70 +97,54 @@ remaining body. Response streams cannot seek or report a file size. Lua's file
 and script loaders check read errors, so a failed response cannot be loaded as
 complete code. A GET follows libc's ordinary anonymous redirect/error policy.
 
-`io.open(uri, "w")` and `"w+"` only prepare a staged POST. Reads before commit
-fail with EBUSY. Reads, flushes, closes and garbage collection never commit.
-The global/preloaded `pyxis` module supplies explicit preparation and control:
+`io.open(uri, "w")` and `"w+"` prepare a staged POST through libc.
+Writing only stages bytes; reads before commit fail with EBUSY. Flushing that
+exact file commits once. With `"w+"`, the same file then reads the reply, and
+later writes fail with EBADF. Use ordinary file operations:
 
 ```lua
-local request = assert(pyxis.http_prepare("https://example.com/submit", "w+", {
-  headers = "Content-Type: application/json\r\n",
-  flags = pyxis.HTTP_PREPARE_JSON,
-  deadline_ns = pyxis.monotonic_ns() + 120000000000,
-}))
-assert(request:write('{"message":"hello"}'))
-local response = assert(pyxis.http_commit(request))
-assert(response == request) -- w+ adopts its response; w returns another FILE
+local request = assert(io.open("https://example.com/submit", "w+"))
+assert(request:write("hello"))
+assert(request:flush())
 while true do
-  local bytes, message, code = response:read(4096)
+  local bytes, message, code = request:read(4096)
   if not bytes then
     assert(not message, message)
     break
   end
-  io.write(bytes)
+  assert(io.write(bytes))
 end
-local result = assert(pyxis.http_status(response))
-assert(result.phase == pyxis.HTTP_TRANSACTION_COMPLETE)
-assert(result.framing == pyxis.HTTP_FRAMING_COMPLETE)
-assert(result.status == 0)
-assert(response:close())
+assert(request:close())
 ```
 
-`pyxis.http_prepare(uri, mode[, options])` defaults to `"r"` and makes no
-network request. It supports exactly `"r"`, `"w"` and `"w+"`. Options are
-`headers` (exact `name: value\r\n` lines without an empty terminating line),
-`flags` (`HTTP_PREPARE_CREDENTIALS | HTTP_PREPARE_JSON`) and `deadline_ns`
-(a nonnegative absolute monotonic nanosecond deadline). Zero/omitted deadline
-selects one 30-second budget for preparation, staging and response consumption;
-slow staging needs an explicit later deadline. The provider validates headers,
-credential flags and redirect policy. Pass credential-bearing headers only in
-the private options value; do not put them in command arguments or environment.
+A successful final owning close also commits an unsubmitted clean transaction;
+for a write-only request, check the close result:
 
-`pyxis.http_commit(file)` flushes this FILE's pending staged output and refuses
-failed or uncertain producers. It does not retry a lost submission. For `"w"`,
-close both the request and the separate response FILE when finished; `"r"` and
-`"w+"` commit return the original userdata. Explicit preparation retains complete
-HTTP error responses: a framed 4xx/5xx body can complete successfully, with its
-HTTP code recorded independently of transfer completion.
+```lua
+local request = assert(io.open("https://example.com/submit", "w"))
+assert(request:write("hello"))
+assert(request:close())
+```
 
-`pyxis.http_status(file)` returns the native fields `phase`, `submission`,
-`http_status`, `framing`, `status`, `source_status`, `cleanup_status`, `uploaded`,
-`received`, `consumed`, `deadline_ns`, `tls_error`, `tls_native_status`,
-`tls_cleanup_attempted`, `media_type` and `location`. Numeric fields use Lua
-integers, or exact decimal strings when above Lua's integer maximum. Phase,
-submission and framing constants retain the native `HTTP_TRANSACTION_*`,
-`HTTP_SUBMISSION_*` and `HTTP_FRAMING_*` names. Check final observation before
-accepting an HTTP result; absence/failure does not establish completion.
-`pyxis.http_abort(file)` explicitly aborts and returns true on success; it does
-not close the userdata. Preparation, commit, status and abort failures return
-`nil, message, errno` like ordinary Lua file operations; using a closed file is
-an argument error. Status on a local FILE reports ENOTSUP.
+Ordinary Lua close, error unwinding of a to-be-closed file and garbage collection
+use libc's `fclose`, so they can submit a clean staged request. These automatic
+closes discard close results; explicitly flush/close and check their results when
+submission matters. A Lua exception alone does not mark the FILE as failed;
+an existing FILE error blocks commit. Read, flush and close failures retain
+Lua's ordinary `nil, message, errno` results. Write failures also return the
+number of bytes accepted by that call. Libc never retries a lost submission.
+Implicit buffer drains and C `fflush(NULL)` only stage;
+Lua's `io.flush()` flushes its selected output file and can commit that file.
+Normal process exit stages buffers and commits clean transactions; finalization
+failure makes an otherwise successful exit fail.
 
-All helpers use the caller's existing declared grants. They neither provision
-HTTP staging/provider authority nor expand the interpreter bundle's requests.
-Missing preparation/private staging refuses the operation. The separate Lua
-5.1 interpreter has no `pyxis` module or explicit HTTP transaction helpers.
-The native `pyxis.sha256` helper still requires positioned FILE reads; use an
-explicit local materialization before hashing an HTTP response with it.
+The interpreter has no HTTP-specific preparation, commit, status, abort or
+constant wrappers. Explicit HTTP options and observation remain native C APIs;
+Lua uses the caller's existing declared grants through ordinary libc I/O.
+Missing preparation/private staging authority refuses the operation. No helper
+provisions authority or expands the interpreter bundle's requests. The native
+`pyxis.sha256` helper still requires positioned FILE reads; materialize an HTTP
+response into a local file before hashing it.
 
 ## Owned native jobs
 
@@ -331,5 +315,5 @@ while reading input. Session configuration
 is evaluated by the separate userland launcher, using the exported Lua library.
 
 `pyxis.monotonic_ns()` reads the declared CLOCK READ grant and returns an exact
-Lua integer for absolute request deadlines. Missing authority or an unrepresentable
+Lua integer for absolute monotonic deadlines. Missing authority or an unrepresentable
 reading raises an error; it never substitutes a clock value.
