@@ -187,7 +187,7 @@ end
 before argument/context preparation; progress does not extend it. Retirement
 after stop may take longer than this deadline. Other options are binary `input`
 (nil omits stdin; `""` supplies EOF), `stdout_limit`, `stderr_limit`, exact
-`resources`, `roots`, `cwd`, `environment` and boolean `namespace`. Zero/omitted
+`resources`, `roots`, `cwd`, `environment` and boolean `providers`. Zero/omitted
 output limits select the core's 1 MiB caps and polled stopping triggers; these
 are not hard backing quotas.
 
@@ -200,7 +200,9 @@ rights intersect held authority, and read access strips mutations. The cwd
 chain is rebuilt under these roots before admission. An incompatible or
 unspelled cwd fails; `cwd=false` deliberately supplies no cwd. An explicit
 environment is an exact string map, including an empty table for no variables.
-Namespace defaults to absent; `namespace=true` explicitly selects held LOOKUP.
+Providers default to absent; `providers=true` explicitly stages exported provider
+capabilities from an owned capture. Private controllers and configured bundle
+sources are excluded.
 Text rejects NUL; finite stdin and captured output remain binary.
 
 Image lookup uses the caller's held native path context, independently of child
@@ -208,7 +210,7 @@ roots/cwd. Bare names select `bin://name.pxe`, then `boot://name.pxe` only on
 absence; explicit FILE paths resolve from the caller's cwd. Thus `roots={}` and
 `cwd=false` can select a held image without passing its content roots to the
 child. Captured stages never inherit terminal/display, launcher or `job_work`.
-The caller must keep private-tree, namespace/provider and credential reachability
+The caller must keep private-tree, provider and credential reachability
 consistent with the core's capture audit for the job's lifetime.
 
 `job:step()` and `job:wait()` return `result, status`; `cancel()` returns a

@@ -1,5 +1,8 @@
 #include "internal.h"
 #include <startup.h>
+#include <environment.h>
+#include <handle.h>
+#include <abi/directory.h>
 #include <string.h>
 #include <system_info.h>
 
@@ -17,7 +20,14 @@ static int root_directory(const char *root, const char *path, char *buffer, size
   if (!buffer || !size) {
     return UV_EINVAL;
   }
-  if (startup_root(root) == HANDLE_INVALID) {
+  handle_t source = HANDLE_INVALID;
+  if (environment_capability(startup_environment_handle(), root, &source) != CALL_OK) {
+    return UV_ENOENT;
+  }
+  struct handle_info info;
+  enum call_status status = handle_query(source, &info);
+  handle_close(source);
+  if (status != CALL_OK || info.protocol != PROTOCOL_DIRECTORY) {
     return UV_ENOENT;
   }
   return uv__pyxis_copy_string(path, buffer, size);
@@ -38,12 +48,14 @@ int uv_os_gethostname(char *buffer, size_t *size)
   if (!buffer || !size) {
     return UV_EINVAL;
   }
-  handle_t system_info = startup_resource("system_info");
+  handle_t system_info = HANDLE_INVALID;
+  environment_capability(startup_environment_handle(), "system_info", &system_info);
   if (system_info == HANDLE_INVALID) {
     return UV_EACCES;
   }
   struct system_info_hostname hostname;
   enum call_status status = system_info_get_hostname(system_info, &hostname);
+  handle_close(system_info);
   if (status != CALL_OK) {
     return uv__pyxis_status(status);
   }
@@ -63,10 +75,15 @@ int uv_os_uname(uv_utsname_t *buffer)
   uv__strscpy(buffer->sysname, PYXIS_SYSNAME, sizeof(buffer->sysname));
   uv__strscpy(buffer->machine, PYXIS_MACHINE, sizeof(buffer->machine));
 
-  handle_t system_info = startup_resource("system_info");
+  handle_t system_info = HANDLE_INVALID;
+  environment_capability(startup_environment_handle(), "system_info", &system_info);
   struct system_info_identity identity;
-  if (system_info == HANDLE_INVALID ||
-      system_info_get_identity(system_info, &identity) != CALL_OK) {
+  if (system_info == HANDLE_INVALID) {
+    return 0;
+  }
+  enum call_status status = system_info_get_identity(system_info, &identity);
+  handle_close(system_info);
+  if (status != CALL_OK) {
     return 0;
   }
   if (identity.architecture[0]) {

@@ -26,7 +26,7 @@ diff --git a/src/nvim/event/libuv_proc.c b/src/nvim/event/libuv_proc.c
 index 50ab55e..77ef531 100644
 --- a/src/nvim/event/libuv_proc.c
 +++ b/src/nvim/event/libuv_proc.c
-@@ -2,6 +2,12 @@
+@@ -2,6 +2,14 @@
  #include <locale.h>
  #include <stdint.h>
  #include <uv.h>
@@ -34,6 +34,8 @@ index 50ab55e..77ef531 100644
 +# include <abi/pipe.h>
 +# include <abi/system_info.h>
 +# include <startup.h>
++# include <environment.h>
++# include <handle.h>
 +# include <uv/pyxis-native.h>
 +#endif
  
@@ -77,7 +79,7 @@ index 50ab55e..77ef531 100644
  #endif
    uvproc->uvopts.exit_cb = exit_cb;
    uvproc->uvopts.cwd = proc->cwd;
-@@ -137,7 +153,27 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+@@ -137,7 +153,36 @@ int libuv_proc_spawn(LibuvProc *uvproc)
    }
  
    int status;
@@ -85,13 +87,16 @@ index 50ab55e..77ef531 100644
 +#ifdef __pyxis__
 +  // Only the explicitly identified internal server gets a loop's pipe factory.
 +  assert(proc->internal_tui && !ui_client_forward_stdin);
++  handle_t pipe_service = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "pipe", &pipe_service);
 +  uv_pyxis_resource_t resources[2] = {
-+    { .name = "pipe", .source = startup_resource("pipe"),
++    { .name = "pipe", .source = pipe_service,
 +      .rights = PIPE_SERVICE_RIGHT_CREATE, .transport = 0 },
 +  };
 +  size_t resource_count = 1;
 +  // The server answers uname and the hostname from SYSTEM_INFO READ, when held.
-+  handle_t system_info = startup_resource("system_info");
++  handle_t system_info = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "system_info", &system_info);
 +  if (system_info != HANDLE_INVALID) {
 +    resources[resource_count++] = (uv_pyxis_resource_t){
 +      .name = "system_info", .source = system_info,
@@ -99,6 +104,12 @@ index 50ab55e..77ef531 100644
 +  }
 +  status = uv_pyxis_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts,
 +                         resources, resource_count);
++  if (pipe_service != HANDLE_INVALID) {
++    handle_close(pipe_service);
++  }
++  if (system_info != HANDLE_INVALID) {
++    handle_close(system_info);
++  }
 +#else
 +  status = uv_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts);
 +#endif

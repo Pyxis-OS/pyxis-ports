@@ -2,7 +2,6 @@
 #include "lauxlib.h"
 #include <abi/clock.h>
 #include <abi/memory.h>
-#include <abi/namespace.h>
 #include <abi/pipe.h>
 #include <abi/random.h>
 #include <abi/system_info.h>
@@ -10,11 +9,13 @@
 #include <abi/thread.h>
 #include <abi/udp.h>
 #include <clock.h>
+#include <bundle_launch.h>
 #include <directory.h>
 #include <file.h>
 #include <handle.h>
 #include <pyxis/pipeline.h>
 #include <startup.h>
+#include <environment.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -28,15 +29,20 @@ struct owned_job {
   struct pyxis_pipeline *pipeline;
 };
 
+struct selected_root {
+  const char *name;
+  handle_t handle;
+};
+
 struct preparation {
   struct pyxis_job_options stages[LAUNCH_BATCH_MAX];
   const char **argv[LAUNCH_BATCH_MAX];
-  struct path_root *roots;
+  struct selected_root *roots;
   size_t root_count;
-  struct launch_binding root_bindings[STARTUP_ROOT_LIMIT];
-  struct launch_binding resources[8];
-  struct launch_grant grants[STARTUP_ROOT_LIMIT + 8];
-  size_t grant_count, resource_count;
+  struct launch_environment_entry *entries;
+  struct launch_grant *grants;
+  size_t grant_count, entry_count;
+  struct environment_capture parent;
   struct pyxis_working_snapshot working;
   struct pyxis_environment_snapshot environment;
   struct pyxis_pipeline_options options;
@@ -125,6 +131,12 @@ static int discard_preparation(lua_State *state)
   free(owned->roots);
   owned->roots = NULL;
   owned->root_count = 0;
+  free(owned->grants);
+  owned->grants = NULL;
+  free(owned->entries);
+  owned->entries = NULL;
+  owned->grant_count = owned->entry_count = 0;
+  environment_capture_close(&owned->parent);
   pyxis_working_snapshot_close(&owned->working);
   pyxis_environment_snapshot_close(&owned->environment);
   return 0;
@@ -149,15 +161,40 @@ static void register_job(lua_State *state, int index, bool present)
   lua_pop(state, 1);
 }
 
+static enum call_status stage_capability(struct preparation *owned,
+    const char *name, handle_t source, uint64_t rights, uint64_t transport)
+{
+  if (owned->entry_count >= LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->entries) ||
+      owned->grant_count >= LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->grants)) {
+    return CALL_LIMIT;
+  }
+  struct launch_grant *grants = realloc(owned->grants,
+      (owned->grant_count + 1) * sizeof(*grants));
+  if (!grants) {
+    return CALL_NO_MEMORY;
+  }
+  owned->grants = grants;
+  struct launch_environment_entry *entries = realloc(owned->entries,
+      (owned->entry_count + 1) * sizeof(*entries));
+  if (!entries) {
+    return CALL_NO_MEMORY;
+  }
+  owned->entries = entries;
+  entries[owned->entry_count++] = (struct launch_environment_entry){
+    (uintptr_t)name, ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, owned->grant_count, 0};
+  grants[owned->grant_count++] = (struct launch_grant){source, rights, transport};
+  return CALL_OK;
+}
+
 static enum call_status add_role(struct preparation *owned,
     const struct resource_role *role, bool required)
 {
-  handle_t source = startup_resource(role->name);
-  if (source == HANDLE_INVALID) {
+  const struct environment_value *value = environment_capture_find(&owned->parent, role->name);
+  if (!value || value->kind != ENVIRONMENT_CAP) {
     return required ? CALL_UNAVAILABLE : CALL_OK;
   }
   struct handle_info info;
-  enum call_status status = handle_query(source, &info);
+  enum call_status status = handle_query(value->handle, &info);
   if (status != CALL_OK) {
     return status;
   }
@@ -169,10 +206,7 @@ static enum call_status add_role(struct preparation *owned,
     return required ? CALL_DENIED : CALL_OK;
   }
   uint64_t transport = info.kind == HANDLE_KIND_EXPORTED ? HANDLE_TRANSPORT_CALL : 0;
-  owned->resources[owned->resource_count++] =
-      (struct launch_binding){(uintptr_t)role->name, owned->grant_count};
-  owned->grants[owned->grant_count++] = (struct launch_grant){source, rights, transport};
-  return CALL_OK;
+  return stage_capability(owned, role->name, value->handle, rights, transport);
 }
 
 static enum call_status select_resources(lua_State *state, int options,
@@ -210,17 +244,10 @@ static enum call_status select_resources(lua_State *state, int options,
   return status;
 }
 
-static handle_t root_source(const struct path_context *current, const char *name)
+static handle_t root_source(const struct preparation *owned, const char *name)
 {
-  if (!current->roots) {
-    return startup_root(name);
-  }
-  for (size_t i = 0; i < current->root_count; ++i) {
-    if (!strcmp(current->roots[i].name, name)) {
-      return current->roots[i].handle;
-    }
-  }
-  return HANDLE_INVALID;
+  const struct environment_value *value = environment_capture_find(&owned->parent, name);
+  return value && value->kind == ENVIRONMENT_CAP ? value->handle : HANDLE_INVALID;
 }
 
 static enum call_status add_root(struct preparation *owned, const char *name,
@@ -250,24 +277,17 @@ static enum call_status add_root(struct preparation *owned, const char *name,
     return status;
   }
   size_t i = owned->root_count++;
-  owned->roots[i] = (struct path_root){name, copy};
-  owned->root_bindings[i] = (struct launch_binding){(uintptr_t)name, owned->grant_count};
-  owned->grants[owned->grant_count++] = (struct launch_grant){copy, info.rights & mask, 0};
-  return CALL_OK;
+  owned->roots[i] = (struct selected_root){name, copy};
+  return stage_capability(owned, name, copy, info.rights & mask, 0);
 }
 
 static enum call_status select_roots(lua_State *state, int options,
-    const struct path_context *current, struct preparation *owned, bool *explicit)
+    struct preparation *owned, bool *explicit)
 {
   field(state, options, "roots");
   *explicit = !lua_isnil(state, -1);
-  size_t count = *explicit ? dense_array(state, -1, STARTUP_ROOT_LIMIT, false) :
-      current->roots ? current->root_count : startup_root_count();
-  if (count > STARTUP_ROOT_LIMIT) {
-    lua_pop(state, 1);
-    return CALL_LIMIT;
-  }
-  /* A non-NULL empty set must not fall back to ambient startup roots. */
+  size_t count = *explicit ? dense_array(state, -1,
+      LAUNCH_CAPTURE_MAX_SIZE / sizeof(struct launch_environment_entry), false) : owned->parent.count;
   owned->roots = calloc(count + 1, sizeof(*owned->roots));
   if (!owned->roots) {
     lua_pop(state, 1);
@@ -292,11 +312,22 @@ static enum call_status select_roots(lua_State *state, int options,
       }
       lua_pop(state, 2);
     } else {
-      name = current->roots ? current->roots[i].name :
-          (const char *)(uintptr_t)startup_roots()[i].name;
+      const struct environment_value *value = &owned->parent.values[i];
+      struct handle_info info;
+      if (!(value->flags & ENVIRONMENT_EXPORTED) || value->kind != ENVIRONMENT_CAP) {
+        continue;
+      }
+      status = handle_query(value->handle, &info);
+      if (status != CALL_OK) {
+        break;
+      }
+      if (info.protocol != PROTOCOL_DIRECTORY) {
+        continue;
+      }
+      name = value->name;
     }
     if (status == CALL_OK) {
-      status = add_root(owned, name, root_source(current, name), read_only);
+      status = add_root(owned, name, root_source(owned, name), read_only);
     }
   }
   lua_pop(state, 1);
@@ -342,19 +373,41 @@ static enum call_status select_working(lua_State *state, int options,
     if (status == CALL_OK && resolved.context.count && !resolved.path) {
       status = CALL_UNAVAILABLE;
     }
-    if (status == CALL_OK) {
-      owned->working.path = resolved.path;
-      resolved.path = NULL;
-      owned->working.context.roots = owned->roots;
-      owned->working.context.root_count = owned->root_count;
-      if (owned->working.path) {
-        status = change_working(&owned->working, owned->working.path);
+    if (status == CALL_OK && resolved.path) {
+      const char *separator = strstr(resolved.path, "://");
+      handle_t root = HANDLE_INVALID;
+      if (separator) {
+        size_t length = (size_t)(separator - resolved.path);
+        for (size_t i = 0; i < owned->root_count; ++i) {
+          if (strlen(owned->roots[i].name) == length &&
+              !memcmp(owned->roots[i].name, resolved.path, length)) {
+            root = owned->roots[i].handle;
+            break;
+          }
+        }
+      }
+      if (!root) {
+        status = CALL_NOT_FOUND;
+      } else {
+        handle_t *storage = malloc(sizeof(*storage));
+        if (!storage) {
+          status = CALL_NO_MEMORY;
+        } else {
+          status = path_context_init(&owned->working.context, storage, 1, &root, 1);
+          if (status != CALL_OK) {
+            free(storage);
+          } else if (separator[3]) {
+            status = change_working(&owned->working, separator + 3);
+          }
+        }
+        if (status == CALL_OK) {
+          owned->working.path = resolved.path;
+          resolved.path = NULL;
+        }
       }
     }
     pyxis_working_snapshot_close(&resolved);
   }
-  owned->working.context.roots = owned->roots;
-  owned->working.context.root_count = owned->root_count;
   lua_pop(state, 1);
   return status;
 }
@@ -374,24 +427,31 @@ static enum call_status select_environment(lua_State *state, int options,
   while (lua_next(state, table)) {
     text(state, -2);
     text(state, -1);
-    if (++count > LAUNCH_CAPTURE_MAX_SIZE / sizeof(struct startup_variable)) {
+    if (++count > LAUNCH_CAPTURE_MAX_SIZE / sizeof(struct launch_environment_entry)) {
       luaL_error(state, "pyxis.job: environment exceeds native limits");
     }
     lua_pop(state, 1);
   }
-  owned->environment.variables = count ? calloc(count, sizeof(struct startup_variable)) : NULL;
-  if (count && !owned->environment.variables) {
+  struct environment_capture *capture = &owned->environment.capture;
+  capture->values = count ? calloc(count, sizeof(*capture->values)) : NULL;
+  if (count && !capture->values) {
     lua_pop(state, 1);
     return CALL_NO_MEMORY;
   }
   enum call_status status = CALL_OK;
   lua_pushnil(state);
   while (lua_next(state, table)) {
-    struct startup_variable *variable = &owned->environment.variables[owned->environment.count++];
-    variable->name = (uintptr_t)strdup(text(state, -2));
-    variable->value = (uintptr_t)strdup(text(state, -1));
-    if (!variable->name || !variable->value) {
+    struct environment_value *variable = &capture->values[capture->count++];
+    variable->kind = ENVIRONMENT_TEXT;
+    variable->flags = ENVIRONMENT_EXPORTED;
+    if (!environment_name(variable->name, text(state, -2))) {
+      status = CALL_BAD_REQUEST;
+    }
+    variable->text = strdup(text(state, -1));
+    if (!variable->text) {
       status = CALL_NO_MEMORY;
+    } else {
+      variable->length = strlen(variable->text);
     }
     lua_pop(state, 1);
   }
@@ -477,15 +537,21 @@ static int start(lua_State *state, bool pipeline)
     return luaL_error(state, "pyxis.job: expected a positive timeout within native limits");
   }
   lua_pop(state, 1);
-  handle_t launcher = startup_resource("launcher");
-  handle_t clock = startup_resource("clock");
-  handle_t pipe = startup_resource("pipe");
-  handle_t private_root = startup_resource("job_work");
-  enum call_status status = CALL_OK;
+  struct preparation *owned = lua_newuserdatauv(state, sizeof(*owned), 0);
+  *owned = (struct preparation){0};
+  luaL_setmetatable(state, PREPARATION_METATABLE);
+  lua_toclose(state, lua_gettop(state));
+  enum call_status status = environment_capture_init(startup_environment_handle(),
+      ENVIRONMENT_SNAPSHOT_INCLUDE_PRIVATE, &owned->parent);
+  handle_t launcher = root_source(owned, "launcher");
+  handle_t clock = root_source(owned, "clock");
+  handle_t pipe = root_source(owned, "pipe");
+  handle_t private_root = root_source(owned, "job_work");
   uint64_t now, deadline = 0;
-  if (!launcher || !clock || !pipe || !private_root) {
+  if (status == CALL_OK && (!launcher || !clock || !pipe || !private_root)) {
     status = CALL_UNAVAILABLE;
-  } else {
+  }
+  if (status == CALL_OK) {
     status = clock_now(clock, &now);
     if (status == CALL_OK && now > UINT64_MAX - timeout * NS_PER_MS) {
       status = CALL_LIMIT;
@@ -494,10 +560,6 @@ static int start(lua_State *state, bool pipeline)
       deadline = now + timeout * NS_PER_MS;
     }
   }
-  struct preparation *owned = lua_newuserdatauv(state, sizeof(*owned), 0);
-  *owned = (struct preparation){0};
-  luaL_setmetatable(state, PREPARATION_METATABLE);
-  lua_toclose(state, lua_gettop(state));
   size_t count = pipeline ? dense_array(state, 1, LAUNCH_BATCH_MAX, true) : 1;
   for (size_t i = 0; i < count; ++i) {
     if (pipeline) {
@@ -521,11 +583,11 @@ static int start(lua_State *state, bool pipeline)
   field(state, 2, "stderr_limit");
   owned->options.stderr_limit = lua_isnil(state, -1) ? 0 : unsigned_integer(state, -1);
   lua_pop(state, 1);
-  field(state, 2, "namespace");
+  field(state, 2, "providers");
   if (!lua_isnil(state, -1)) {
     luaL_checktype(state, -1, LUA_TBOOLEAN);
   }
-  bool namespace = lua_toboolean(state, -1);
+  bool providers = lua_toboolean(state, -1);
   lua_pop(state, 1);
   owned->options.clock = clock;
   owned->options.pipe_service = pipe;
@@ -537,7 +599,7 @@ static int start(lua_State *state, bool pipeline)
   }
   bool explicit_roots = false;
   if (status == CALL_OK) {
-    status = select_roots(state, 2, current, owned, &explicit_roots);
+    status = select_roots(state, 2, owned, &explicit_roots);
   }
   if (status == CALL_OK) {
     status = select_working(state, 2, owned, explicit_roots);
@@ -548,11 +610,43 @@ static int start(lua_State *state, bool pipeline)
   if (status == CALL_OK) {
     status = select_resources(state, 2, owned);
   }
-  handle_t namespace_handle = HANDLE_INVALID;
-  if (status == CALL_OK && namespace) {
-    namespace_handle = current->namespace_handle ? current->namespace_handle : startup_namespace();
-    if (!namespace_handle) {
-      status = CALL_UNAVAILABLE;
+  if (status == CALL_OK && providers) {
+    for (size_t i = 0; i < owned->parent.count && status == CALL_OK; ++i) {
+      const struct environment_value *value = &owned->parent.values[i];
+      if (value->kind != ENVIRONMENT_CAP || !(value->flags & ENVIRONMENT_EXPORTED) ||
+          !strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
+          !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status") ||
+          !strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1)) {
+        continue;
+      }
+      struct handle_info info;
+      status = handle_query(value->handle, &info);
+      if (status == CALL_OK && info.kind == HANDLE_KIND_EXPORTED) {
+        bool selected = false;
+        for (size_t j = 0; j < owned->entry_count; ++j) {
+          selected |= !strcmp(value->name, (const char *)(uintptr_t)owned->entries[j].name);
+        }
+        if (!selected) {
+          status = stage_capability(owned, value->name, value->handle, info.rights, info.transport);
+        }
+      }
+    }
+  }
+  if (status == CALL_OK) {
+    size_t extra = owned->environment.capture.count;
+    struct launch_environment_entry *entries = realloc(owned->entries,
+        (owned->entry_count + extra) * sizeof(*entries));
+    if (extra && !entries) {
+      status = CALL_NO_MEMORY;
+    } else {
+      if (entries) {
+        owned->entries = entries;
+      }
+      for (size_t i = 0; i < extra; ++i) {
+        const struct environment_value *value = &owned->environment.capture.values[i];
+        owned->entries[owned->entry_count++] = (struct launch_environment_entry){
+          (uintptr_t)value->name, ENVIRONMENT_TEXT, value->flags, (uintptr_t)value->text, value->length};
+      }
     }
   }
   for (size_t i = 0; i < count && status == CALL_OK; ++i) {
@@ -562,14 +656,10 @@ static int start(lua_State *state, bool pipeline)
     status = native_program(current, stage->argv[0], &stage->image);
     stage->grants = owned->grants;
     stage->grant_count = owned->grant_count;
-    stage->resources = owned->resources;
-    stage->resource_count = owned->resource_count;
-    stage->roots = owned->root_bindings;
-    stage->root_count = owned->root_count;
+    stage->entries = owned->entries;
+    stage->entry_count = owned->entry_count;
     stage->working = &owned->working;
-    stage->environment = &owned->environment;
-    stage->namespace_handle = namespace_handle;
-    for (size_t stream = 0; stream < STARTUP_STREAM_COUNT; ++stream) {
+    for (size_t stream = 0; stream < ENVIRONMENT_STREAM_COUNT; ++stream) {
       stage->streams[stream] = -1;
     }
   }
@@ -704,11 +794,11 @@ static int read_job(lua_State *state)
 {
   struct owned_job *job = check_job(state);
   const char *name = text(state, 2);
-  enum startup_stream_index stream;
+  enum environment_stream_index stream;
   if (!strcmp(name, "stdout")) {
-    stream = STARTUP_STDOUT;
+    stream = ENVIRONMENT_STDOUT;
   } else if (!strcmp(name, "stderr")) {
-    stream = STARTUP_STDERR;
+    stream = ENVIRONMENT_STDERR;
   } else {
     return luaL_error(state, "pyxis.job: expected stdout or stderr");
   }

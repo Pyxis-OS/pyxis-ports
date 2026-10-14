@@ -7,6 +7,7 @@
 #include <pyxis/environment.h>
 #include <pyxis/working_path.h>
 #include <startup.h>
+#include <environment.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -222,7 +223,12 @@ void uv__pyxis_release(uv_loop_t *loop, unsigned count)
 uint64_t uv_hrtime(void)
 {
   uint64_t now;
-  enum call_status status = clock_now(startup_resource("clock"), &now);
+  handle_t clock = HANDLE_INVALID;
+  enum call_status status = environment_capability(startup_environment_handle(), "clock", &clock);
+  if (status == CALL_OK) {
+    status = clock_now(clock, &now);
+    handle_close(clock);
+  }
   if (status != CALL_OK) {
     abort();
   }
@@ -241,14 +247,25 @@ void uv_update_time(uv_loop_t *loop)
 int uv_loop_init(uv_loop_t *loop)
 {
   uint64_t now;
-  handle_t clock = startup_resource("clock");
-  enum call_status status = clock_now(clock, &now);
+  handle_t clock = HANDLE_INVALID;
+  enum call_status status = environment_capability(startup_environment_handle(), "clock", &clock);
   if (status != CALL_OK) {
     return uv__pyxis_status(status);
   }
-  struct pipe_create_reply wake;
-  status = pipe_create(startup_resource("pipe"), &wake);
+  status = clock_now(clock, &now);
   if (status != CALL_OK) {
+    handle_close(clock);
+    return uv__pyxis_status(status);
+  }
+  struct pipe_create_reply wake;
+  handle_t pipe_service = HANDLE_INVALID;
+  status = environment_capability(startup_environment_handle(), "pipe", &pipe_service);
+  if (status == CALL_OK) {
+    status = pipe_create(pipe_service, &wake);
+    handle_close(pipe_service);
+  }
+  if (status != CALL_OK) {
+    handle_close(clock);
     return uv__pyxis_status(status);
   }
   memset(loop, 0, sizeof(*loop));
@@ -272,6 +289,11 @@ int uv_loop_close(uv_loop_t *loop)
   }
   enum call_status first = handle_close(loop->wake_reader);
   enum call_status second = handle_close(loop->wake_writer);
+  enum call_status clock_status = handle_close(loop->clock);
+  loop->clock = HANDLE_INVALID;
+  if (first == CALL_OK) {
+    first = clock_status;
+  }
   loop->wake_reader = HANDLE_INVALID;
   loop->wake_writer = HANDLE_INVALID;
   if (loop == &default_loop) {
@@ -580,24 +602,30 @@ int uv_clock_gettime(uv_clock_id id, uv_timespec64_t *time)
     return UV_EINVAL;
   }
   uv_timespec64_t result;
-  enum call_status status;
+  handle_t clock = HANDLE_INVALID;
+  enum call_status status = environment_capability(startup_environment_handle(), "clock", &clock);
+  if (status != CALL_OK) {
+    return uv__pyxis_status(status);
+  }
   if (id == UV_CLOCK_MONOTONIC) {
     uint64_t now;
-    status = clock_now(startup_resource("clock"), &now);
+    status = clock_now(clock, &now);
     if (status == CALL_OK) {
       result.tv_sec = (int64_t)(now / UINT64_C(1000000000));
       result.tv_nsec = (int32_t)(now % UINT64_C(1000000000));
     }
   } else if (id == UV_CLOCK_REALTIME) {
     struct clock_wall_reading wall;
-    status = clock_wall_now(startup_resource("clock"), &wall);
+    status = clock_wall_now(clock, &wall);
     if (status == CALL_OK) {
       result.tv_sec = wall.seconds;
       result.tv_nsec = (int32_t)wall.nanoseconds;
     }
   } else {
+    handle_close(clock);
     return UV_EINVAL;
   }
+  handle_close(clock);
   if (status != CALL_OK) {
     return uv__pyxis_status(status);
   }
@@ -620,7 +648,13 @@ int uv_gettimeofday(uv_timeval64_t *time)
 
 void uv_sleep(unsigned milliseconds)
 {
-  if (clock_sleep_for(startup_resource("clock"), (uint64_t)milliseconds * UINT64_C(1000000)) != CALL_OK) {
+  handle_t clock = HANDLE_INVALID;
+  enum call_status status = environment_capability(startup_environment_handle(), "clock", &clock);
+  if (status == CALL_OK) {
+    status = clock_sleep_for(clock, (uint64_t)milliseconds * UINT64_C(1000000));
+    handle_close(clock);
+  }
+  if (status != CALL_OK) {
     abort();
   }
 }
@@ -729,16 +763,16 @@ int uv_os_environ(uv_env_item_t **envitems, int *count)
   if (status != CALL_OK) {
     return uv__pyxis_status(status);
   }
-  if (snapshot.count > INT_MAX || snapshot.count > SIZE_MAX / sizeof(uv_env_item_t)) {
+  if (snapshot.capture.count > INT_MAX || snapshot.capture.count > SIZE_MAX / sizeof(uv_env_item_t)) {
     pyxis_environment_snapshot_close(&snapshot);
     return UV_EOVERFLOW;
   }
-  uv_env_item_t *items = uv__calloc(snapshot.count ? snapshot.count : 1, sizeof(*items));
+  uv_env_item_t *items = uv__calloc(snapshot.capture.count ? snapshot.capture.count : 1, sizeof(*items));
   int error = items ? 0 : UV_ENOMEM;
   size_t used = 0;
-  while (!error && used < snapshot.count) {
-    const char *name = (const char *)(uintptr_t)snapshot.variables[used].name;
-    const char *value = (const char *)(uintptr_t)snapshot.variables[used].value;
+  while (!error && used < snapshot.capture.count) {
+    const char *name = snapshot.capture.values[used].name;
+    const char *value = snapshot.capture.values[used].text;
     size_t name_size = strlen(name) + 1, value_size = strlen(value) + 1;
     if (value_size > SIZE_MAX - name_size) {
       error = UV_EOVERFLOW;

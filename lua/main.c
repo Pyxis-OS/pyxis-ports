@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <startup.h>
+#include <environment.h>
+#include <handle.h>
 #include <stdlib.h>
 #include <string.h>
 #include <term.h>
@@ -194,10 +196,12 @@ static int report_error(lua_State *state)
   return fprintf(stderr, "lua: %s\n", message);
 }
 
+static struct terminal repl_terminal;
+
 static int run_repl(lua_State *state)
 {
   struct repl repl = {
-    .terminal = {startup_resource("input"), startup_resource("output")},
+    .terminal = repl_terminal,
   };
   lua_pushcfunction(state, traceback);
   /* Keep the handler below each protected iteration, including input assembly
@@ -268,11 +272,15 @@ int main(int argc, char **argv)
   }
 
   /* Shebang launches hand off an open file object, not a path to reopen. */
-  if (startup_resource("script") != HANDLE_INVALID) {
+  handle_t script = HANDLE_INVALID;
+  if (environment_capability(startup_environment_handle(), "script", &script) == CALL_OK) {
+    handle_close(script);
     fprintf(stderr, "lua: script handoff is not supported; use lua file.lua\n");
     return EXIT_FAILURE;
   }
 
+  environment_capability(startup_environment_handle(), "input", &repl_terminal.input);
+  environment_capability(startup_environment_handle(), "output", &repl_terminal.output);
   lua_State *state = luaL_newstate();
   if (state == NULL) {
     fprintf(stderr, "lua: cannot allocate interpreter state\n");
@@ -289,5 +297,11 @@ int main(int argc, char **argv)
   }
   lua_close(state);
   pyxis_finish();
+  if (repl_terminal.input != HANDLE_INVALID) {
+    handle_close(repl_terminal.input);
+  }
+  if (repl_terminal.output != HANDLE_INVALID) {
+    handle_close(repl_terminal.output);
+  }
   return status == LUA_OK ? EXIT_SUCCESS : EXIT_FAILURE;
 }

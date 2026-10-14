@@ -87,10 +87,10 @@ server, allowing both event loops to create their own wake pipes.
 
 `uv_pyxis_spawn_job(loop, process, launcher, command, exit_cb)` selects the exact
 native inventory in `struct pyxis_job_options` from the SDK's `pyxis/job.h`.
-It adds no inherited resources. The supplied image, argv, grants, resource/root
-bindings, namespace, cwd and environment follow libc's direct-job preparation
+It adds no inherited resources. The supplied image, argv, grants, selected CAP/TEXT
+entries and cwd follow libc's direct-job preparation
 and final grant audit, including rejection of known descendant launch authority.
-The caller audits namespace/provider behavior for the child's lifetime.
+The caller audits provider behavior for the child's lifetime.
 The three live descriptor slots can select native FILE, PIPE or CONSOLE streams,
 or `-1` for absence. Libc flushes selected buffered outputs before launch; FILE
 children start with independent cursors at offset zero and no parent read-ahead.

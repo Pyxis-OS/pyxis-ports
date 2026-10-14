@@ -7,7 +7,6 @@
 #include <abi/echo.h>
 #include <abi/keyboard.h>
 #include <abi/memory.h>
-#include <abi/namespace.h>
 #include <abi/pipe.h>
 #include <abi/pointer.h>
 #include <abi/profile.h>
@@ -34,6 +33,7 @@
 #include <pyxis/working_path.h>
 #include <random.h>
 #include <startup.h>
+#include <environment.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,6 +52,8 @@ struct resources {
   char **argv;
   char *argument_bytes;
   struct launch_grant *grants;
+  struct launch_environment_entry *entries;
+  struct environment_capture parent;
   uint64_t *directories;
   struct pyxis_working_snapshot working;
   struct pyxis_environment_snapshot environment;
@@ -97,6 +99,14 @@ void pyxis_finish(void)
     mbedtls_psa_crypto_free();
     crypto_ready = false;
   }
+  if (entropy_clock != HANDLE_INVALID) {
+    handle_close(entropy_clock);
+    entropy_clock = HANDLE_INVALID;
+  }
+  if (entropy_random != HANDLE_INVALID) {
+    handle_close(entropy_random);
+    entropy_random = HANDLE_INVALID;
+  }
 }
 
 static bool crypto_init(void)
@@ -104,8 +114,9 @@ static bool crypto_init(void)
   if (crypto_ready) {
     return true;
   }
-  entropy_clock = startup_resource("clock");
-  entropy_random = startup_resource("random");
+  pyxis_finish();
+  environment_capability(startup_environment_handle(), "clock", &entropy_clock);
+  environment_capability(startup_environment_handle(), "random", &entropy_random);
   uint64_t now;
   if (entropy_random == HANDLE_INVALID ||
       clock_now(entropy_clock, &now) != CALL_OK || now > UINT64_MAX - ENTROPY_WAIT_NS) {
@@ -160,6 +171,9 @@ static enum call_status release_resources(struct resources *owned)
   owned->directories = NULL;
   pyxis_working_snapshot_close(&owned->working);
   pyxis_environment_snapshot_close(&owned->environment);
+  environment_capture_close(&owned->parent);
+  free(owned->entries);
+  owned->entries = NULL;
   free(owned->name);
   owned->name = NULL;
   return status;
@@ -316,16 +330,15 @@ static const struct resource_policy ordinary_resources[] = {
 static_assert(sizeof(ordinary_resources) / sizeof(ordinary_resources[0]) + 3 <= RESOURCE_LIMIT,
     "ordinary resources and input devices fit launch bindings");
 
-static enum call_status add_resource(struct launch_request *request,
-    struct launch_grant *grants, struct launch_binding *bindings,
+static enum call_status add_resource(struct resources *owned, struct launch_request *request,
     const struct resource_policy *policy)
 {
-  handle_t source = startup_resource(policy->name);
-  if (source == HANDLE_INVALID) {
+  const struct environment_value *value = environment_capture_find(&owned->parent, policy->name);
+  if (!value || value->kind != ENVIRONMENT_CAP) {
     return CALL_OK;
   }
   struct handle_info info;
-  enum call_status status = handle_query(source, &info);
+  enum call_status status = handle_query(value->handle, &info);
   if (status != CALL_OK) {
     return status;
   }
@@ -336,14 +349,13 @@ static enum call_status add_resource(struct launch_request *request,
   if (!rights) {
     return CALL_OK;
   }
-  bindings[request->resource_count++] =
-      (struct launch_binding){(uintptr_t)policy->name, request->grant_count};
-  grants[request->grant_count++] = (struct launch_grant){source, rights, 0};
+  owned->entries[request->entry_count++] = (struct launch_environment_entry){
+    (uintptr_t)policy->name, ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
+  owned->grants[request->grant_count++] = (struct launch_grant){value->handle, rights, 0};
   return CALL_OK;
 }
 
-static enum call_status prepare_grants(struct resources *owned, struct launch_request *request,
-    struct launch_binding *bindings, struct launch_binding *roots)
+static enum call_status prepare_grants(struct resources *owned, struct launch_request *request)
 {
   enum call_status status = pyxis_working_snapshot_init(&owned->working, NULL);
   if (status == CALL_OK) {
@@ -353,67 +365,82 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     return status;
   }
   const struct path_context *context = &owned->working.context;
-  size_t root_count = context->roots ? context->root_count : startup_root_count();
   size_t depth = context->count;
-  if (root_count > STARTUP_ROOT_LIMIT ||
-      depth > SIZE_MAX / sizeof(*owned->grants) - root_count - RESOURCE_LIMIT - 4) {
+  size_t capacity = owned->parent.count + owned->environment.capture.count + RESOURCE_LIMIT + 4;
+  if (capacity > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->entries) ||
+      depth > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->grants) - capacity) {
     return CALL_LIMIT;
   }
-  size_t capacity = root_count + depth + RESOURCE_LIMIT + STARTUP_STREAM_COUNT + 1;
-  owned->grants = calloc(capacity, sizeof(*owned->grants));
+  owned->grants = calloc(capacity + depth, sizeof(*owned->grants));
+  owned->entries = calloc(capacity, sizeof(*owned->entries));
   owned->directories = depth ? malloc(depth * sizeof(*owned->directories)) : NULL;
-  if (!owned->grants || (depth && !owned->directories)) {
+  if (!owned->grants || !owned->entries || (depth && !owned->directories)) {
     return CALL_NO_MEMORY;
   }
-  struct launch_grant *grants = owned->grants;
-  request->grants = (uintptr_t)grants;
-  request->resources = (uintptr_t)bindings;
-  request->roots = (uintptr_t)roots;
+  request->grants = (uintptr_t)owned->grants;
+  request->entries = (uintptr_t)owned->entries;
   request->working_directories = (uintptr_t)owned->directories;
   request->working_directory_count = depth;
   request->working_path = (uintptr_t)owned->working.path;
-  request->environment = (uintptr_t)owned->environment.variables;
-  request->environment_count = owned->environment.count;
-  for (size_t i = 0; i < root_count + depth; ++i) {
-    const char *name = i < root_count ? (context->roots ? context->roots[i].name :
-        (const char *)(uintptr_t)startup_roots()[i].name) : NULL;
-    if (name && !strcmp(name, "app")) {
+  for (size_t i = 0; i < owned->parent.count; ++i) {
+    const struct environment_value *value = &owned->parent.values[i];
+    if (value->kind != ENVIRONMENT_CAP || !(value->flags & ENVIRONMENT_EXPORTED) ||
+        !strcmp(value->name, "app") || !strcmp(value->name, "stdin") ||
+        !strcmp(value->name, "stdout") || !strcmp(value->name, "stderr") ||
+        !strcmp(value->name, "stdin.status") ||
+        !strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1)) {
       continue;
     }
-    handle_t source = i < root_count ? (context->roots ? context->roots[i].handle :
-        startup_roots()[i].handle) : context->directories[i - root_count];
     struct handle_info info;
-    enum call_status status = handle_query(source, &info);
+    status = handle_query(value->handle, &info);
+    if (status != CALL_OK) {
+      return status;
+    }
+    if (info.protocol != PROTOCOL_DIRECTORY && info.kind != HANDLE_KIND_EXPORTED) {
+      continue;
+    }
+    uint64_t rights = info.protocol == PROTOCOL_DIRECTORY ? info.rights & DIRECTORY_RIGHTS : info.rights;
+    owned->entries[request->entry_count++] = (struct launch_environment_entry){
+      (uintptr_t)value->name, ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
+    owned->grants[request->grant_count++] = (struct launch_grant){value->handle, rights, info.transport};
+  }
+  for (size_t i = 0; i < depth; ++i) {
+    struct handle_info info;
+    status = handle_query(context->directories[i], &info);
     if (status != CALL_OK) {
       return status;
     }
     if (info.protocol != PROTOCOL_DIRECTORY || info.kind != HANDLE_KIND_NATIVE) {
       return CALL_WRONG_TYPE;
     }
-    if (i < root_count) {
-      roots[request->root_count++] =
-          (struct launch_binding){(uintptr_t)name, request->grant_count};
-    } else {
-      owned->directories[i - root_count] = request->grant_count;
-    }
-    grants[request->grant_count++] =
-        (struct launch_grant){source, info.rights & DIRECTORY_RIGHTS, 0};
+    owned->directories[i] = request->grant_count;
+    owned->grants[request->grant_count++] = (struct launch_grant){
+      context->directories[i], info.rights & DIRECTORY_RIGHTS, 0};
   }
+  size_t grant_count = request->grant_count, entry_count = request->entry_count;
+  status = environment_capture_stage(&owned->environment.capture,
+      owned->grants, capacity + depth, &grant_count, owned->entries, capacity, &entry_count);
+  if (status != CALL_OK) {
+    return status;
+  }
+  request->grant_count = grant_count;
+  request->entry_count = entry_count;
   FILE *standard[] = {stdin, stdout, stderr};
-  struct startup_stream streams[STARTUP_STREAM_COUNT];
-  for (size_t i = 0; i < STARTUP_STREAM_COUNT; ++i) {
+  const char *stream_names[] = {"stdin", "stdout", "stderr"};
+  struct pyxis_stdio_binding streams[ENVIRONMENT_STREAM_COUNT];
+  for (size_t i = 0; i < ENVIRONMENT_STREAM_COUNT; ++i) {
     if (pyxis_stdio_stream(standard[i], &streams[i]) != 0) {
       return CALL_BAD_HANDLE;
     }
-    if (streams[i].protocol == STARTUP_STREAM_NONE) {
+    if (!streams[i].protocol) {
       continue;
     }
     struct handle_info info;
-    enum call_status status = handle_query(streams[i].handle, &info);
+    status = handle_query(streams[i].handle, &info);
     if (status != CALL_OK) {
       return status;
     }
-    bool input = i == STARTUP_STDIN;
+    bool input = i == ENVIRONMENT_STDIN;
     uint64_t rights = streams[i].protocol == PROTOCOL_FILE ?
         (input ? FILE_RIGHT_READ : FILE_RIGHT_WRITE) :
         streams[i].protocol == PROTOCOL_PIPE ?
@@ -430,28 +457,39 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     if ((info.transport & transport) != transport) {
       return CALL_DENIED;
     }
-    request->streams[i] = (struct launch_stream){streams[i].protocol, request->grant_count};
-    grants[request->grant_count++] = (struct launch_grant){streams[i].handle, rights, transport};
+    owned->entries[request->entry_count++] = (struct launch_environment_entry){
+      (uintptr_t)stream_names[i], ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
+    owned->grants[request->grant_count++] = (struct launch_grant){streams[i].handle, rights, transport};
+    if (input && streams[i].observation != HANDLE_INVALID) {
+      status = handle_query(streams[i].observation, &info);
+      if (status != CALL_OK) {
+        return status;
+      }
+      owned->entries[request->entry_count++] = (struct launch_environment_entry){
+        (uintptr_t)"stdin.status", ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
+      owned->grants[request->grant_count++] = (struct launch_grant){
+        streams[i].observation, info.rights, info.transport};
+    }
   }
   for (size_t i = 0; i < sizeof(ordinary_resources) / sizeof(ordinary_resources[0]); ++i) {
-    enum call_status status = add_resource(request, grants, bindings, &ordinary_resources[i]);
+    status = add_resource(owned, request, &ordinary_resources[i]);
     if (status != CALL_OK) {
       return status;
     }
   }
-  bool console_input = streams[STARTUP_STDIN].protocol == PROTOCOL_CONSOLE;
-  bool pager_input = streams[STARTUP_STDOUT].protocol == PROTOCOL_CONSOLE &&
-      (streams[STARTUP_STDIN].protocol == PROTOCOL_FILE ||
-       streams[STARTUP_STDIN].protocol == PROTOCOL_PIPE);
+  bool console_input = streams[ENVIRONMENT_STDIN].protocol == PROTOCOL_CONSOLE;
+  bool pager_input = streams[ENVIRONMENT_STDOUT].protocol == PROTOCOL_CONSOLE &&
+      (streams[ENVIRONMENT_STDIN].protocol == PROTOCOL_FILE ||
+       streams[ENVIRONMENT_STDIN].protocol == PROTOCOL_PIPE);
   const struct resource_policy input = {"input", PROTOCOL_CONSOLE, CONSOLE_RIGHT_READ};
   bool named_input = false;
   if (console_input || pager_input) {
-    size_t before = request->resource_count;
-    enum call_status status = add_resource(request, grants, bindings, &input);
+    size_t before = request->entry_count;
+    status = add_resource(owned, request, &input);
     if (status != CALL_OK) {
       return status;
     }
-    named_input = request->resource_count != before;
+    named_input = request->entry_count != before;
   }
   if (console_input && named_input) {
     const struct resource_policy devices[] = {
@@ -459,27 +497,10 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
       {"pointer", PROTOCOL_POINTER, POINTER_RIGHT_INPUT},
     };
     for (size_t i = 0; i < sizeof(devices) / sizeof(devices[0]); ++i) {
-      enum call_status status = add_resource(request, grants, bindings, &devices[i]);
+      status = add_resource(owned, request, &devices[i]);
       if (status != CALL_OK) {
         return status;
       }
-    }
-  }
-  handle_t namespace = context->namespace_handle != HANDLE_INVALID ?
-      context->namespace_handle : startup_namespace();
-  if (namespace != HANDLE_INVALID) {
-    struct handle_info info;
-    enum call_status status = handle_query(namespace, &info);
-    if (status != CALL_OK) {
-      return status;
-    }
-    if (info.protocol != PROTOCOL_NAMESPACE || info.kind != HANDLE_KIND_NATIVE) {
-      return CALL_WRONG_TYPE;
-    }
-    if (info.rights & NAMESPACE_RIGHT_LOOKUP) {
-      request->namespace_grant = request->grant_count + 1;
-      grants[request->grant_count++] =
-          (struct launch_grant){namespace, NAMESPACE_RIGHT_LOOKUP, 0};
     }
   }
   return CALL_OK;
@@ -496,7 +517,8 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
   struct bundle_authority inventory[sizeof(names) / sizeof(names[0]) + BUNDLE_SOURCE_LIMIT];
   size_t count = 0;
   for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
-    handle_t source = startup_resource(names[i]);
+    const struct environment_value *value = environment_capture_find(&owned->parent, names[i]);
+    handle_t source = value && value->kind == ENVIRONMENT_CAP ? value->handle : HANDLE_INVALID;
     if (source != HANDLE_INVALID) {
       struct handle_info info;
       enum call_status status = handle_query(source, &info);
@@ -507,7 +529,7 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
     }
   }
   size_t source_count;
-  enum call_status status = bundle_sources_from_startup(inventory + count,
+  enum call_status status = bundle_sources_from_capture(&owned->parent, inventory + count,
       BUNDLE_SOURCE_LIMIT, &source_count);
   if (status != CALL_OK) {
     return status;
@@ -558,9 +580,14 @@ static int run_program(lua_State *state)
     destination += length;
     lua_pop(state, 1);
   }
-  handle_t launcher = startup_resource("launcher");
+  enum call_status capture_status = environment_capture_init(startup_environment_handle(),
+      ENVIRONMENT_SNAPSHOT_INCLUDE_PRIVATE, &owned->parent);
+  const struct environment_value *launcher_value = environment_capture_find(&owned->parent, "launcher");
+  handle_t launcher = launcher_value && launcher_value->kind == ENVIRONMENT_CAP ?
+      launcher_value->handle : HANDLE_INVALID;
   struct handle_info info;
-  enum call_status status = launcher == HANDLE_INVALID ? CALL_DENIED : handle_query(launcher, &info);
+  enum call_status status = capture_status != CALL_OK ? capture_status :
+      launcher == HANDLE_INVALID ? CALL_DENIED : handle_query(launcher, &info);
   if (status == CALL_OK && (info.protocol != PROTOCOL_LAUNCHER ||
       info.kind != HANDLE_KIND_NATIVE)) {
     status = CALL_WRONG_TYPE;
@@ -569,13 +596,12 @@ static int run_program(lua_State *state)
     status = CALL_DENIED;
   }
   struct launch_request request = {.argv = (uintptr_t)owned->argv, .argc = count};
-  struct launch_binding bindings[RESOURCE_LIMIT], roots[STARTUP_ROOT_LIMIT];
   if (status == CALL_OK) {
     status = open_program(owned->argv[0], owned);
   }
   if (status == CALL_OK) {
     request.image = owned->bundle ? bundle_program_image(owned->bundle) : owned->object;
-    status = prepare_grants(owned, &request, bindings, roots);
+    status = prepare_grants(owned, &request);
   }
   if (status == CALL_OK && owned->bundle) {
     status = prepare_bundle_launch(owned, &request);
@@ -588,6 +614,15 @@ static int run_program(lua_State *state)
   if (status != CALL_OK) {
     return native_error(state, owned, "run", status);
   }
+  /* Captures can retain standard pipe grants: release admission storage before
+   * waiting for child completion. The observer alone owns collection. */
+  bundle_launch_close(owned->launch);
+  owned->launch = NULL;
+  bundle_program_close(owned->bundle);
+  owned->bundle = NULL;
+  environment_capture_close(&owned->parent);
+  pyxis_environment_snapshot_close(&owned->environment);
+  pyxis_working_snapshot_close(&owned->working);
   /* No Lua allocation occurs while a child is launched or being collected. */
   struct process_result result;
   status = process_wait(owned->child, &result);
@@ -749,7 +784,12 @@ static luaL_Stream *new_http_file(lua_State *state)
 static int monotonic_ns(lua_State *state)
 {
   uint64_t value;
-  enum call_status status = clock_now(startup_resource("clock"), &value);
+  handle_t clock = HANDLE_INVALID;
+  enum call_status status = environment_capability(startup_environment_handle(), "clock", &clock);
+  if (status == CALL_OK) {
+    status = clock_now(clock, &value);
+    handle_close(clock);
+  }
   if (status != CALL_OK) {
     return luaL_error(state, "pyxis.monotonic_ns: native clock read failed (status %d)", status);
   }
