@@ -78,15 +78,15 @@ index de44fa6..36e0ce6 100644
 +#include <stdint.h>
 +
 +/* Pyxis has no global environ array. Copy the process environment through
-+ * libc's snapshot, which already holds consistent name and value strings. */
++ * libc's owned snapshot of exported TEXT from the current process table. */
 +jv jq_environment_object(void) {
-+  struct pyxis_environment_snapshot snapshot;
++  struct pyxis_environment_snapshot snapshot = {0};
 +  if (pyxis_environment_snapshot_init(&snapshot) != CALL_OK)
 +    return jv_invalid_with_msg(jv_string("cannot read the environment"));
 +  jv env = jv_object();
-+  for (size_t i = 0; i < snapshot.count; i++) {
-+    const char *name = (const char *)(uintptr_t)snapshot.variables[i].name;
-+    const char *value = (const char *)(uintptr_t)snapshot.variables[i].value;
++  for (size_t i = 0; i < snapshot.capture.count; i++) {
++    const char *name = snapshot.capture.values[i].name;
++    const char *value = snapshot.capture.values[i].text;
 +    env = jv_object_set(env, jv_string(name), jv_string(value));
 +  }
 +  pyxis_environment_snapshot_close(&snapshot);
