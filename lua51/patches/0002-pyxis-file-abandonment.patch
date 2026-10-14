@@ -154,8 +154,6 @@ diff --git a/src/lua.c b/src/lua.c
 +  lua_pyxis_io_shutdown(L, !(status || s.status), &cleanup_failed);
    lua_close(L);
 -  return (status || s.status) ? EXIT_FAILURE : EXIT_SUCCESS;
--}
--
 +  return (status || s.status || cleanup_failed) ? EXIT_FAILURE : EXIT_SUCCESS;
-+}
-+
+ }
+ 
