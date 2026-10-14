@@ -79,7 +79,8 @@ augment the ordinary attenuated memory/clock/launcher grants. Empty or duplicate
 names and reserved names `memory`, `clock`, `launcher` and `script` reject before
 pipe creation or child publication. Requested rights/transport must be held by
 the source. Native capture and startup budgets apply; there is no separate
-resource-count policy. The array, names and source handles are borrowed until
+resource-count policy. CAP/TEXT name collisions refuse before launch; standard
+stream choices replace or omit those names in child staging. The array, names and source handles are borrowed until
 return and preserved on success and failure. No extra reference survives launch
 capture in the parent. Ordinary `uv_spawn` continues to delegate no pipe/create
 resource. Neovim selects that resource only for its same-image internal `--embed`

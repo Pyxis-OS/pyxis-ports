@@ -203,6 +203,7 @@ environment is an exact string map, including an empty table for no variables.
 Providers default to absent; `providers=true` explicitly stages exported provider
 capabilities from an owned capture. Private controllers and configured bundle
 sources are excluded.
+Capability and text selections share exact names; collisions refuse admission.
 Text rejects NUL; finite stdin and captured output remain binary.
 
 Image lookup uses the caller's held native path context, independently of child

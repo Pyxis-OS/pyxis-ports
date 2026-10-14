@@ -385,7 +385,9 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   for (size_t i = 0; i < owned->parent.count; ++i) {
     const struct environment_value *value = &owned->parent.values[i];
     if (value->kind != ENVIRONMENT_CAP || !(value->flags & ENVIRONMENT_EXPORTED) ||
-        !strcmp(value->name, "app") || !strcmp(value->name, "stdin") ||
+        !strcmp(value->name, "app") || !strcmp(value->name, "job_work") ||
+        !strcmp(value->name, "job_provisioner") || !strcmp(value->name, "staging") ||
+        !strcmp(value->name, "stdin") ||
         !strcmp(value->name, "stdout") || !strcmp(value->name, "stderr") ||
         !strcmp(value->name, "stdin.status") ||
         !strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1)) {
@@ -417,14 +419,16 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     owned->grants[request->grant_count++] = (struct launch_grant){
       context->directories[i], info.rights & DIRECTORY_RIGHTS, 0};
   }
-  size_t grant_count = request->grant_count, entry_count = request->entry_count;
-  status = environment_capture_stage(&owned->environment.capture,
-      owned->grants, capacity + depth, &grant_count, owned->entries, capacity, &entry_count);
-  if (status != CALL_OK) {
-    return status;
+  /* Live descriptor selection replaces all standard names in child staging. */
+  for (size_t i = 0; i < owned->environment.capture.count; ++i) {
+    const struct environment_value *value = &owned->environment.capture.values[i];
+    if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
+        !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status")) {
+      continue;
+    }
+    owned->entries[request->entry_count++] = (struct launch_environment_entry){
+      (uintptr_t)value->name, ENVIRONMENT_TEXT, value->flags, (uintptr_t)value->text, value->length};
   }
-  request->grant_count = grant_count;
-  request->entry_count = entry_count;
   FILE *standard[] = {stdin, stdout, stderr};
   const char *stream_names[] = {"stdin", "stdout", "stderr"};
   struct pyxis_stdio_binding streams[ENVIRONMENT_STREAM_COUNT];

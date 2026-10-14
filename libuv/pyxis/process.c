@@ -272,7 +272,9 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     uint64_t rights = 0;
     if (info.kind == HANDLE_KIND_EXPORTED) {
       rights = info.rights;
-    } else if (info.protocol == PROTOCOL_DIRECTORY && strcmp(value->name, "app")) {
+    } else if (info.protocol == PROTOCOL_DIRECTORY && strcmp(value->name, "app") &&
+        strcmp(value->name, "job_work") && strcmp(value->name, "job_provisioner") &&
+        strcmp(value->name, "staging")) {
       rights = info.rights;
     } else {
       for (size_t role = 0; role < ARRAY_SIZE(resource_names); ++role) {
@@ -299,6 +301,12 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     if ((resource->rights & ~rights) || (resource->transport & ~transport)) {
       error = UV_EACCES;
       goto done;
+    }
+    for (size_t j = 0; j < entry_count; ++j) {
+      if (!strcmp(resource->name, (const char *)(uintptr_t)entries[j].name)) {
+        error = UV_EINVAL;
+        goto done;
+      }
     }
     entries[entry_count++] = (struct launch_environment_entry){
       (uintptr_t)resource->name, ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, grant_count, 0};
@@ -330,6 +338,19 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     } else {
       name = inherited_environment.capture.values[i].name;
       value = inherited_environment.capture.values[i].text;
+    }
+    /* Explicit descriptor selection replaces/removes standard names and the
+     * input companion only in this child's entry staging. */
+    if (!strcmp(name, "stdin") || !strcmp(name, "stdout") ||
+        !strcmp(name, "stderr") || !strcmp(name, "stdin.status")) {
+      continue;
+    }
+    /* Environment text never silently replaces selected capability authority. */
+    for (size_t j = 0; j < entry_count; ++j) {
+      if (!strcmp(name, (const char *)(uintptr_t)entries[j].name)) {
+        error = UV_EINVAL;
+        goto done;
+      }
     }
     entries[entry_count++] = (struct launch_environment_entry){(uintptr_t)name,
       ENVIRONMENT_TEXT, ENVIRONMENT_EXPORTED, (uintptr_t)value, strlen(value)};

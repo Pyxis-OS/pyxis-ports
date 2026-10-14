@@ -164,6 +164,12 @@ static void register_job(lua_State *state, int index, bool present)
 static enum call_status stage_capability(struct preparation *owned,
     const char *name, handle_t source, uint64_t rights, uint64_t transport)
 {
+  /* Selection is explicit: a text/capability collision refuses admission. */
+  for (size_t i = 0; i < owned->entry_count; ++i) {
+    if (!strcmp(name, (const char *)(uintptr_t)owned->entries[i].name)) {
+      return CALL_BAD_REQUEST;
+    }
+  }
   if (owned->entry_count >= LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->entries) ||
       owned->grant_count >= LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->grants)) {
     return CALL_LIMIT;
@@ -314,7 +320,10 @@ static enum call_status select_roots(lua_State *state, int options,
     } else {
       const struct environment_value *value = &owned->parent.values[i];
       struct handle_info info;
-      if (!(value->flags & ENVIRONMENT_EXPORTED) || value->kind != ENVIRONMENT_CAP) {
+      if (!(value->flags & ENVIRONMENT_EXPORTED) || value->kind != ENVIRONMENT_CAP ||
+          !strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1) ||
+          !strcmp(value->name, "job_work") || !strcmp(value->name, "job_provisioner") ||
+          !strcmp(value->name, "staging")) {
         continue;
       }
       status = handle_query(value->handle, &info);
@@ -644,6 +653,15 @@ static int start(lua_State *state, bool pipeline)
       }
       for (size_t i = 0; i < extra; ++i) {
         const struct environment_value *value = &owned->environment.capture.values[i];
+        for (size_t j = 0; j < owned->entry_count; ++j) {
+          if (!strcmp(value->name, (const char *)(uintptr_t)owned->entries[j].name)) {
+            status = CALL_BAD_REQUEST;
+            break;
+          }
+        }
+        if (status != CALL_OK) {
+          break;
+        }
         owned->entries[owned->entry_count++] = (struct launch_environment_entry){
           (uintptr_t)value->name, ENVIRONMENT_TEXT, value->flags, (uintptr_t)value->text, value->length};
       }
