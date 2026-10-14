@@ -17,13 +17,15 @@ new file mode 100644
 index 0000000..d15b6df
 --- /dev/null
 +++ b/src/common/impl/FFPlatform_pyxis.c
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,45 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "FFPlatform_private.h"
 +#include "common/pyxis.h"
 +
 +#include <abi/memory.h>
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +#include <system_info.h>
 +
 +static struct system_info_identity identity;
@@ -44,12 +46,15 @@ index 0000000..d15b6df
 +  platform->sysinfo.pageSizeShift = (uint32_t) __builtin_ctzll(MEMORY_PAGE_SIZE);
 +
 +  identity = (struct system_info_identity) {};
-+  handle_t handle = startup_resource("system_info");
++  handle_t handle = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "system_info", &handle);
 +  if (handle == HANDLE_INVALID) {
 +    identity_error = "Missing system_info READ grant";
 +    return;
 +  }
-+  if (system_info_get_identity(handle, &identity) != CALL_OK) {
++  enum call_status status = system_info_get_identity(handle, &identity);
++  handle_close(handle);
++  if (status != CALL_OK) {
 +    identity_error = "Native system identity query failed";
 +    return;
 +  }
@@ -109,7 +114,7 @@ new file mode 100644
 index 0000000..add1a24
 --- /dev/null
 +++ b/src/common/impl/io_pyxis.c
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,96 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "common/io.h"
 +
@@ -117,6 +122,8 @@ index 0000000..add1a24
 +#include <path.h>
 +#include <pyxis/working_path.h>
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +#include <stdlib.h>
 +
 +bool ffIsTerminal(int fd)
@@ -124,8 +131,7 @@ index 0000000..add1a24
 +  if (fd < STDIN_FILENO || fd > STDERR_FILENO) {
 +    return false;
 +  }
-+  struct startup_stream stream = startup_stream((enum startup_stream_index) fd);
-+  return stream.protocol == PROTOCOL_CONSOLE && stream.handle != HANDLE_INVALID;
++  return isatty(fd) == 1;
 +}
 +
 +bool ffAppendFDBuffer(FFNativeFD fd, FFstrbuf *buffer)
@@ -210,7 +216,7 @@ new file mode 100644
 index 0000000..a959db2
 --- /dev/null
 +++ b/src/common/impl/time_pyxis.c
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,25 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "common/time.h"
 +
@@ -218,11 +224,19 @@ index 0000000..a959db2
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +
 +double ffTimeGetTick(void)
 +{
 +  uint64_t nanoseconds;
-+  if (clock_now(startup_resource("clock"), &nanoseconds) != CALL_OK) {
++  handle_t clock = HANDLE_INVALID;
++  enum call_status status = environment_capability(startup_environment_handle(), "clock", &clock);
++  if (status == CALL_OK) {
++    status = clock_now(clock, &nanoseconds);
++    handle_close(clock);
++  }
++  if (status != CALL_OK) {
 +    fputs("Native monotonic clock query failed\n", stderr);
 +    exit(1);
 +  }
@@ -325,21 +339,26 @@ new file mode 100644
 index 0000000..a6b6568
 --- /dev/null
 +++ b/src/detection/cpu/cpu_pyxis.c
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,28 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "cpu.h"
 +
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +#include <system_info.h>
 +
 +const char *ffDetectCPUImpl([[maybe_unused]] const FFCPUOptions *options, FFCPUResult *cpu)
 +{
-+  handle_t handle = startup_resource("system_info");
++  handle_t handle = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "system_info", &handle);
 +  if (handle == HANDLE_INVALID) {
 +    return "Missing system_info READ grant";
 +  }
 +  struct system_info_cpu info;
-+  if (system_info_get_cpu(handle, &info) != CALL_OK) {
++  enum call_status status = system_info_get_cpu(handle, &info);
++  handle_close(handle);
++  if (status != CALL_OK) {
 +    return "Native CPU query failed";
 +  }
 +  if (info.online_count > UINT16_MAX) {
@@ -354,21 +373,26 @@ new file mode 100644
 index 0000000..bb21cef
 --- /dev/null
 +++ b/src/detection/memory/memory_pyxis.c
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,25 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "memory.h"
 +
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +#include <system_info.h>
 +
 +const char *ffDetectMemory(FFMemoryResult *memory)
 +{
-+  handle_t handle = startup_resource("system_info");
++  handle_t handle = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "system_info", &handle);
 +  if (handle == HANDLE_INVALID) {
 +    return "Missing system_info READ grant";
 +  }
 +  struct system_info_memory info;
-+  if (system_info_get_memory(handle, &info) != CALL_OK) {
++  enum call_status status = system_info_get_memory(handle, &info);
++  handle_close(handle);
++  if (status != CALL_OK) {
 +    return "Native allocator memory query failed";
 +  }
 +  memory->bytesTotal = info.total_bytes;
@@ -397,21 +421,26 @@ new file mode 100644
 index 0000000..801597d
 --- /dev/null
 +++ b/src/detection/terminalsize/terminalsize_pyxis.c
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,28 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "terminalsize.h"
 +
 +#include <console.h>
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +
 +bool ffDetectTerminalSize(FFTerminalSizeResult *result, [[maybe_unused]] bool fast_only)
 +{
-+  handle_t output = startup_resource("output");
++  handle_t output = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "output", &output);
 +  if (output == HANDLE_INVALID) {
 +    return false;
 +  }
 +  struct console_size_reply size;
-+  if (console_size(output, &size) != CALL_OK ||
++  enum call_status status = console_size(output, &size);
++  handle_close(output);
++  if (status != CALL_OK ||
 +      size.columns > UINT16_MAX || size.rows > UINT16_MAX) {
 +    return false;
 +  }
@@ -426,21 +455,26 @@ new file mode 100644
 index 0000000..1c63451
 --- /dev/null
 +++ b/src/detection/uptime/uptime_pyxis.c
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,24 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "uptime.h"
 +
 +#include <clock.h>
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +
 +const char *ffDetectUptime(FFUptimeResult *result)
 +{
-+  handle_t handle = startup_resource("clock");
++  handle_t handle = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "clock", &handle);
 +  if (handle == HANDLE_INVALID) {
 +    return "Missing clock READ grant";
 +  }
 +  uint64_t nanoseconds;
-+  if (clock_now(handle, &nanoseconds) != CALL_OK) {
++  enum call_status status = clock_now(handle, &nanoseconds);
++  handle_close(handle);
++  if (status != CALL_OK) {
 +    return "Native monotonic clock query failed";
 +  }
 +  result->uptime = nanoseconds / UINT64_C(1000000);

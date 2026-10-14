@@ -7,6 +7,7 @@
 #include <handle.h>
 #include <stdarg.h>
 #include <startup.h>
+#include <environment.h>
 #include <term.h>
 #include "libbb.h"
 
@@ -79,8 +80,8 @@ void bb_show_usage(void)
 
 int main(int argc, char **argv)
 {
-  terminal.input = startup_resource("input");
-  terminal.output = startup_resource("output");
+  environment_capability(startup_environment_handle(), "input", &terminal.input);
+  environment_capability(startup_environment_handle(), "output", &terminal.output);
   if (terminal.input == HANDLE_INVALID || terminal.output == HANDLE_INVALID) {
     fail("input and output console capabilities are required");
   }

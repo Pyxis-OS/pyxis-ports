@@ -1,9 +1,10 @@
 diff --git a/kilo.c b/kilo.c
 --- a/kilo.c
 +++ b/kilo.c
-@@ -44,6 +44,10 @@
+@@ -44,7 +44,11 @@
  #include <stdarg.h>
  #include <startup.h>
+ #include <environment.h>
  #include <term.h>
 +#include <clock.h>
 +
@@ -106,10 +107,10 @@ diff --git a/kilo.c b/kilo.c
  
          int c = editorReadKey();
 @@ -1231,6 +1273,9 @@
-     terminal.output = startup_resource("output");
+     environment_capability(startup_environment_handle(), "output", &terminal.output);
      if (terminal.input == HANDLE_INVALID || terminal.output == HANDLE_INVALID)
          fail("input and output console capabilities are required");
-+    clock_handle = startup_resource("clock");
++    environment_capability(startup_environment_handle(), "clock", &clock_handle);
 +    if (clock_handle == HANDLE_INVALID) fail("a clock capability with READ is required");
 +    (void)monotonic_ns();
      terminal_ready = 1;

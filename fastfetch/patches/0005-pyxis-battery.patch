@@ -41,11 +41,13 @@ new file mode 100644
 index 0000000..310a76a
 --- /dev/null
 +++ b/src/detection/battery/battery_pyxis.c
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,95 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "battery.h"
 +
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +#include <system_info.h>
 +
 +#define SECONDS_PER_HOUR 3600
@@ -86,12 +88,15 @@ index 0000000..310a76a
 +const char *ffDetectBattery(FFBatteryOptions *options, FFlist *results)
 +{
 +  (void) options;
-+  handle_t handle = startup_resource("system_info");
++  handle_t handle = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "system_info", &handle);
 +  if (handle == HANDLE_INVALID) {
 +    return "Missing system_info READ grant";
 +  }
 +  struct system_info_power power;
-+  if (system_info_get_power(handle, &power) != CALL_OK) {
++  enum call_status status = system_info_get_power(handle, &power);
++  handle_close(handle);
++  if (status != CALL_OK) {
 +    return "Native power query failed";
 +  }
 +

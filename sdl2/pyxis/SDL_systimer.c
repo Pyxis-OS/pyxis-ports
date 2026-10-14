@@ -7,6 +7,8 @@
 
 #include <clock.h>
 #include <startup.h>
+#include <environment.h>
+#include <handle.h>
 
 #include "SDL_timer.h"
 
@@ -34,12 +36,16 @@ void SDL_TicksInit(void)
     return;
   }
   ticks_started = SDL_TRUE;
-  clock_handle = startup_resource("clock");
+  environment_capability(startup_environment_handle(), "clock", &clock_handle);
   start_ns = now_ns();
 }
 
 void SDL_TicksQuit(void)
 {
+  if (clock_handle != HANDLE_INVALID) {
+    handle_close(clock_handle);
+    clock_handle = HANDLE_INVALID;
+  }
   ticks_started = SDL_FALSE;
 }
 

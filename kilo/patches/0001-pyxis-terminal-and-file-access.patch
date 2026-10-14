@@ -2,7 +2,7 @@ diff --git a/kilo.c b/kilo.c
 index 0d8aef4..091cce0 100644
 --- a/kilo.c
 +++ b/kilo.c
-@@ -34,25 +34,16 @@
+@@ -34,25 +34,17 @@
  
  #define KILO_VERSION "0.0.1"
  
@@ -27,6 +27,7 @@ index 0d8aef4..091cce0 100644
 -#include <fcntl.h>
 -#include <signal.h>
 +#include <startup.h>
++#include <environment.h>
 +#include <term.h>
  
  /* Syntax highlight types */
@@ -464,8 +465,8 @@ index 0d8aef4..091cce0 100644
          exit(1);
      }
  
-+    terminal.input = startup_resource("input");
-+    terminal.output = startup_resource("output");
++    environment_capability(startup_environment_handle(), "input", &terminal.input);
++    environment_capability(startup_environment_handle(), "output", &terminal.output);
 +    if (terminal.input == HANDLE_INVALID || terminal.output == HANDLE_INVALID)
 +        fail("input and output console capabilities are required");
 +    terminal_ready = 1;

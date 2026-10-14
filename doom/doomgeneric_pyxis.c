@@ -76,6 +76,7 @@ enum doom_key {
 #include <display.h>
 #include <keyboard.h>
 #include <startup.h>
+#include <environment.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -203,9 +204,9 @@ void DG_Init(void)
     }
   }
 
-  display = startup_resource("display");
-  keyboard = startup_resource("keyboard");
-  clock = startup_resource("clock");
+  environment_capability(startup_environment_handle(), "display", &display);
+  environment_capability(startup_environment_handle(), "keyboard", &keyboard);
+  environment_capability(startup_environment_handle(), "clock", &clock);
   if (display == HANDLE_INVALID || keyboard == HANDLE_INVALID || clock == HANDLE_INVALID) {
     fputs("doom: display, keyboard and clock resources are required\n", stderr);
     exit(EXIT_FAILURE);

@@ -60,7 +60,7 @@ native/build/logo material is MPL-2.0. See `PORT-NOTICE` and the staged licenses
 | Memory | **Memory (allocator)**: allocator total and allocated bytes |
 | Uptime | Monotonic duration since HPET initialization, using clock READ |
 | TerminalSize | Columns/rows from the named `output` console grant |
-| Disk | Explicit startup root bindings with native directory FILESYSTEM_INFO authority |
+| Disk | Exported environment directory entries with native directory FILESYSTEM_INFO authority |
 | Battery | `system_info` READ power and battery queries |
 | Colors, Break, Separator | Upstream presentation helpers |
 
@@ -75,7 +75,7 @@ uses null where appropriate. Uptime has no inferred boot epoch: `bootTime` is
 null, and calendar format slots are unset. For example,
 `{name}{?freq-max} @ {freq-max}{?}` omits unknown CPU frequency.
 
-Disk enumerates only the caller's selected startup roots. Each native directory
+Disk enumerates only the caller's exported directory entries. Each native directory
 with `FILESYSTEM_INFO` authority supplies its retained npfs volume observation;
 roots without that authority and exported/provider roots are skipped. Archive,
 RAM and HOST roots do not acquire an invented disk result. An attempted grant or
@@ -120,7 +120,7 @@ remaining capacity times 3600 over the present rate, as Linux computes it.
 Temperature and manufacture date are unavailable. Power Adapter is not built:
 ACPI reports no adapter wattage, which that module prints.
 
-Actual stdout's startup binding controls automatic plain-output mode, separately
+Actual stdout's live descriptor binding controls automatic plain-output mode, separately
 from named console authority. Redirected defaults use plain text; upstream ASCII logo layout may remain
 (`--logo none` suppresses it). TerminalSize can still query its named console. JSON skips terminal setup and
 logo output. No keyboard input or terminal escape-response query is used.

@@ -2,6 +2,7 @@
 #include <directory.h>
 #include <handle.h>
 #include <startup.h>
+#include <environment.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,9 +27,11 @@ static enum call_status open_save_directory(handle_t *directory)
   const char *names[] = {"doom", "saves", save_iwad};
   uint64_t rights = DIRECTORY_RIGHT_LOOKUP | DIRECTORY_RIGHT_CREATE |
     DIRECTORY_RIGHT_READ_FILES | DIRECTORY_RIGHT_WRITE_FILES | DIRECTORY_RIGHT_REMOVE;
-  handle_t parent = startup_root("home");
-  bool owned = false;
-  enum call_status status;
+  handle_t parent = HANDLE_INVALID;
+  enum call_status status = environment_capability(startup_environment_handle(), "home", &parent);
+  if (status != CALL_OK) {
+    return status;
+  }
 
   *directory = HANDLE_INVALID;
   for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
@@ -40,14 +43,11 @@ static enum call_status open_save_directory(handle_t *directory)
         status = directory_lookup(parent, names[i], DIRECTORY_KIND_DIRECTORY, rights, &child);
       }
     }
-    if (owned) {
-      handle_close(parent);
-    }
+    handle_close(parent);
     if (status != CALL_OK) {
       return status;
     }
     parent = child;
-    owned = true;
   }
   *directory = parent;
   return CALL_OK;

@@ -11,6 +11,8 @@
 #include <audio.h>
 #include <clock.h>
 #include <startup.h>
+#include <environment.h>
+#include <handle.h>
 #include <wait.h>
 
 #include "SDL_audio.h"
@@ -118,14 +120,28 @@ static int PYXIS_OpenDevice(SDL_AudioDevice *device, const char *name)
   return 0;
 }
 
+static void PYXIS_Deinitialize(void)
+{
+  if (audio_grant != HANDLE_INVALID) {
+    handle_close(audio_grant);
+    audio_grant = HANDLE_INVALID;
+  }
+  if (clock_grant != HANDLE_INVALID) {
+    handle_close(clock_grant);
+    clock_grant = HANDLE_INVALID;
+  }
+}
+
 static SDL_bool PYXIS_Init(SDL_AudioDriverImpl *impl)
 {
-  audio_grant = startup_resource("audio");
-  clock_grant = startup_resource("clock");
+  environment_capability(startup_environment_handle(), "audio", &audio_grant);
+  environment_capability(startup_environment_handle(), "clock", &clock_grant);
   if (audio_grant == HANDLE_INVALID || clock_grant == HANDLE_INVALID) {
+    PYXIS_Deinitialize();
     SDL_SetError("Pyxis audio needs the audio and clock grants");
     return SDL_FALSE;
   }
+  impl->Deinitialize = PYXIS_Deinitialize;
   impl->OpenDevice = PYXIS_OpenDevice;
   impl->WaitDevice = PYXIS_WaitDevice;
   impl->PlayDevice = PYXIS_PlayDevice;

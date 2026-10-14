@@ -12,6 +12,8 @@
 #include <pipe.h>
 #include <pointer.h>
 #include <startup.h>
+#include <environment.h>
+#include <handle.h>
 #include <pxe/key_layout.h>
 #include <wait.h>
 
@@ -387,9 +389,16 @@ static void drain_wakeup(void)
  * handle number. Failure leaves waits on SDL's polling fallback. */
 void PYXIS_InitWakeup(void)
 {
-  wakeup_needed = startup_resource("threads") != HANDLE_INVALID;
-  handle_t service = startup_resource("pipe");
-  if (!wakeup_needed || wakeup_writer != HANDLE_INVALID || service == HANDLE_INVALID) {
+  handle_t threads = HANDLE_INVALID;
+  wakeup_needed = environment_capability(startup_environment_handle(), "threads", &threads) == CALL_OK;
+  if (threads != HANDLE_INVALID) {
+    handle_close(threads);
+  }
+  if (!wakeup_needed || wakeup_writer != HANDLE_INVALID) {
+    return;
+  }
+  handle_t service = HANDLE_INVALID;
+  if (environment_capability(startup_environment_handle(), "pipe", &service) != CALL_OK) {
     return;
   }
   struct pipe_create_reply pair;
@@ -397,6 +406,7 @@ void PYXIS_InitWakeup(void)
     wakeup_reader = pair.reader;
     wakeup_writer = pair.writer;
   }
+  handle_close(service);
 }
 
 /* Called from any thread, at most once per wait, after SDL has queued an

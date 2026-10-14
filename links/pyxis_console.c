@@ -7,18 +7,31 @@
 #include <errno.h>
 #include <handle.h>
 #include <startup.h>
+#include <environment.h>
+#include <abi/directory.h>
 #include <term.h>
 #include "pyxis_console.h"
 
 #define NANOSECONDS_PER_MILLISECOND UINT64_C(1000000)
 
 static struct terminal terminal;
+static handle_t clock_handle;
 static handle_t passthrough = HANDLE_INVALID;
 
 bool pyxis_console_open(void)
 {
-  terminal.input = startup_resource("input");
-  terminal.output = startup_resource("output");
+  if (terminal.input != HANDLE_INVALID) {
+    handle_close(terminal.input);
+  }
+  if (terminal.output != HANDLE_INVALID) {
+    handle_close(terminal.output);
+  }
+  if (clock_handle != HANDLE_INVALID) {
+    handle_close(clock_handle);
+  }
+  environment_capability(startup_environment_handle(), "input", &terminal.input);
+  environment_capability(startup_environment_handle(), "output", &terminal.output);
+  environment_capability(startup_environment_handle(), "clock", &clock_handle);
   return terminal.input != HANDLE_INVALID && terminal.output != HANDLE_INVALID;
 }
 
@@ -79,7 +92,7 @@ void pyxis_console_hold_ctrl_c(bool hold)
 bool pyxis_clock_ms(uint64_t *milliseconds)
 {
   uint64_t now;
-  if (clock_now(startup_resource("clock"), &now) != CALL_OK) {
+  if (clock_now(clock_handle, &now) != CALL_OK) {
     return false;
   }
   *milliseconds = now / NANOSECONDS_PER_MILLISECOND;
@@ -91,11 +104,18 @@ bool pyxis_sleep_ms(uint64_t milliseconds)
   if (milliseconds > UINT64_MAX / NANOSECONDS_PER_MILLISECOND) {
     milliseconds = UINT64_MAX / NANOSECONDS_PER_MILLISECOND;
   }
-  return clock_sleep_for(startup_resource("clock"),
+  return clock_sleep_for(clock_handle,
       milliseconds * NANOSECONDS_PER_MILLISECOND) == CALL_OK;
 }
 
 bool pyxis_scheme_is_root(const char *scheme)
 {
-  return startup_root(scheme) != HANDLE_INVALID;
+  handle_t source = HANDLE_INVALID;
+  if (environment_capability(startup_environment_handle(), scheme, &source) != CALL_OK) {
+    return false;
+  }
+  struct handle_info info;
+  bool directory = handle_query(source, &info) == CALL_OK && info.protocol == PROTOCOL_DIRECTORY;
+  handle_close(source);
+  return directory;
 }

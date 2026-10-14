@@ -10,6 +10,8 @@
 #include <keyboard.h>
 #include <pointer.h>
 #include <startup.h>
+#include <environment.h>
+#include <handle.h>
 
 #include "SDL_pyxisvideo.h"
 #include "events/SDL_events_c.h"
@@ -135,30 +137,46 @@ void PYXIS_FollowDisplaySize(SDL_VideoDevice *device)
   }
 }
 
+static void release_video_grants(void)
+{
+  handle_t *grants[] = {&pyxis_video.display, &pyxis_video.keyboard, &pyxis_video.pointer,
+      &pyxis_video.clock, &pyxis_video.clipboard_local, &pyxis_video.clipboard_shared};
+  for (size_t i = 0; i < sizeof(grants) / sizeof(grants[0]); ++i) {
+    if (*grants[i] != HANDLE_INVALID) {
+      handle_close(*grants[i]);
+      *grants[i] = HANDLE_INVALID;
+    }
+  }
+}
+
 static int PYXIS_VideoInit(SDL_VideoDevice *device)
 {
-  pyxis_video.display = startup_resource("display");
-  pyxis_video.keyboard = startup_resource("keyboard");
-  pyxis_video.pointer = startup_resource("pointer");
-  pyxis_video.clock = startup_resource("clock");
-  pyxis_video.clipboard_local = startup_resource("clipboard_local");
-  pyxis_video.clipboard_shared = startup_resource("clipboard_shared");
+  environment_capability(startup_environment_handle(), "display", &pyxis_video.display);
+  environment_capability(startup_environment_handle(), "keyboard", &pyxis_video.keyboard);
+  environment_capability(startup_environment_handle(), "pointer", &pyxis_video.pointer);
+  environment_capability(startup_environment_handle(), "clock", &pyxis_video.clock);
+  environment_capability(startup_environment_handle(), "clipboard_local", &pyxis_video.clipboard_local);
+  environment_capability(startup_environment_handle(), "clipboard_shared", &pyxis_video.clipboard_shared);
   if (pyxis_video.display == HANDLE_INVALID || pyxis_video.keyboard == HANDLE_INVALID ||
       pyxis_video.clock == HANDLE_INVALID) {
+    release_video_grants();
     return SDL_SetError("Pyxis video needs the display, keyboard and clock grants");
   }
 
   struct display_size_reply size;
   enum call_status status = display_size(pyxis_video.display, &size);
   if (status != CALL_OK) {
+    release_video_grants();
     return SDL_SetError("Pyxis display size query failed (status %u)", (unsigned)status);
   }
   SDL_DisplayMode mode;
   if (!display_mode(&size, &mode)) {
+    release_video_grants();
     return SDL_SetError("Pyxis display has an unsupported pixel layout");
   }
   pyxis_video.generation = size.generation;
   if (SDL_AddBasicVideoDisplay(&mode) < 0) {
+    release_video_grants();
     return -1;
   }
   SDL_AddDisplayMode(&device->displays[0], &mode);
@@ -173,6 +191,7 @@ static void PYXIS_VideoQuit(SDL_VideoDevice *device)
   release_input();
   release_display();
   pyxis_video.window = NULL;
+  release_video_grants();
 }
 
 static int PYXIS_CreateWindow(SDL_VideoDevice *device, SDL_Window *window)

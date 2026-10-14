@@ -70,7 +70,7 @@ diff --git a/kilo.c b/kilo.c
      erow *cursor_row = filerow < E.numrows ? &E.row[filerow] : NULL;
      int filecol = E.coloff+E.cx;
 @@ -1284,6 +1303,8 @@
-     clock_handle = startup_resource("clock");
+     environment_capability(startup_environment_handle(), "clock", &clock_handle);
      if (clock_handle == HANDLE_INVALID) fail("a clock capability with READ is required");
      (void)monotonic_ns();
 +    if (term_event_reader_init(&event_reader,&terminal,clock_handle) != CALL_OK)

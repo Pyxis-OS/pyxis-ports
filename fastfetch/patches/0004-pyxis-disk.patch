@@ -105,13 +105,14 @@ new file mode 100644
 index 0000000..8c58e6a
 --- /dev/null
 +++ b/src/detection/disk/disk_pyxis.c
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,90 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "disk.h"
 +
 +#include <directory.h>
 +#include <handle.h>
 +#include <startup.h>
++#include <environment.h>
 +
 +static void format_id(const uint8_t id[16], char text[33])
 +{
@@ -141,12 +142,20 @@ index 0000000..8c58e6a
 +    return "Folder filters are unsupported on Pyxis";
 +  }
 +
-+  const struct startup_binding *roots = startup_roots();
-+  size_t count = startup_root_count();
-+  for (size_t i = 0; i < count; ++i) {
++  struct environment_capture capture = {};
++  if (environment_capture_init(startup_environment_handle(), 0, &capture) != CALL_OK) {
++    return "Native environment capture failed";
++  }
++  const struct environment_value *roots = capture.values;
++  const char *error = nullptr;
++  for (size_t i = 0; i < capture.count; ++i) {
++    if (roots[i].kind != ENVIRONMENT_CAP) {
++      continue;
++    }
 +    struct handle_info grant;
 +    if (handle_query(roots[i].handle, &grant) != CALL_OK) {
-+      return clear_disks(disks, "Native root grant query failed");
++      error = "Native root grant query failed";
++      break;
 +    }
 +    if (grant.kind != HANDLE_KIND_NATIVE || grant.protocol != PROTOCOL_DIRECTORY ||
 +        !(grant.rights & DIRECTORY_RIGHT_FILESYSTEM_INFO)) {
@@ -155,16 +164,18 @@ index 0000000..8c58e6a
 +
 +    struct directory_filesystem_info info;
 +    if (directory_filesystem_info(roots[i].handle, &info) != CALL_OK) {
-+      return clear_disks(disks, "Native filesystem information query failed");
++      error = "Native filesystem information query failed";
++      break;
 +    }
 +    if (info.type != FILESYSTEM_TYPE_NPFS) {
-+      return clear_disks(disks, "Unsupported native filesystem type");
++      error = "Unsupported native filesystem type";
++      break;
 +    }
 +    if (ffStrbufSeparatedContainS(&options->hideFS, "npfs", ':')) {
 +      continue;
 +    }
 +
-+    // Startup handles are borrowed; querying does not acquire another reference.
++    // Each snapshot grant stays owned until all queries are complete.
 +    FFDisk *disk = ffListAdd(disks, sizeof(*disk));
 +    *disk = (FFDisk) {};
 +    ffStrbufInit(&disk->mountFrom);
@@ -182,7 +193,8 @@ index 0000000..8c58e6a
 +    disk->gptDegraded = !!(info.flags & FILESYSTEM_FLAG_GPT_DEGRADED);
 +    disk->filesystemDegraded = !!(info.flags & FILESYSTEM_FLAG_DEGRADED);
 +  }
-+  return nullptr;
++  environment_capture_close(&capture);
++  return error ? clear_disks(disks, error) : nullptr;
 +}
 diff --git a/src/modules/disk/disk.c b/src/modules/disk/disk.c
 index c9c42e2..bf75763 100644

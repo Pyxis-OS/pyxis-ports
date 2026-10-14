@@ -3,6 +3,7 @@
 #include <keyboard.h>
 #include <pointer.h>
 #include <startup.h>
+#include <environment.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -300,10 +301,10 @@ static bool read_pointer(void)
 
 void pyxis_quake_start(void)
 {
-  display = startup_resource("display");
-  keyboard = startup_resource("keyboard");
-  pointer = startup_resource("pointer");
-  clock = startup_resource("clock");
+  environment_capability(startup_environment_handle(), "display", &display);
+  environment_capability(startup_environment_handle(), "keyboard", &keyboard);
+  environment_capability(startup_environment_handle(), "pointer", &pointer);
+  environment_capability(startup_environment_handle(), "clock", &clock);
   if (display == HANDLE_INVALID || keyboard == HANDLE_INVALID || clock == HANDLE_INVALID) {
     fputs("quake: display, keyboard and clock resources are required\n", stderr);
     exit(EXIT_FAILURE);

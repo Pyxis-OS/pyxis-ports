@@ -18,13 +18,15 @@ diff --git a/tcc.c b/tcc.c
 index d0c9086..f8a3321 100644
 --- a/tcc.c
 +++ b/tcc.c
-@@ -23,6 +23,10 @@
+@@ -23,6 +23,12 @@
  #endif
  
  #include "tcc.h"
 +#ifdef __pyxis__
 +#include <clock.h>
 +#include <startup.h>
++#include <environment.h>
++#include <handle.h>
 +#endif
  #if ONE_SOURCE
  # include "libtcc.c"
@@ -38,7 +40,7 @@ index d0c9086..f8a3321 100644
  #else
      "-bench uses the host clock.\n"
  #endif
-@@ -332,10 +336,16 @@ static char *default_outputfile(TCCState *s, const char *first_file)
+@@ -332,10 +336,22 @@ static char *default_outputfile(TCCState *s, const char *first_file)
      return tcc_strdup(buf);
  }
  
@@ -48,7 +50,13 @@ index d0c9086..f8a3321 100644
 -#ifdef _WIN32
 +#ifdef __pyxis__
 +    uint64_t nanoseconds;
-+    if (clock_now(startup_resource("clock"), &nanoseconds) != CALL_OK) {
++    handle_t clock = HANDLE_INVALID;
++    enum call_status status = environment_capability(startup_environment_handle(), "clock", &clock);
++    if (status == CALL_OK) {
++        status = clock_now(clock, &nanoseconds);
++        handle_close(clock);
++    }
++    if (status != CALL_OK) {
 +        fprintf(stderr, "tcc: cannot read the monotonic clock\n");
 +        exit(1);
 +    }
