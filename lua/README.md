@@ -127,10 +127,11 @@ assert(request:close())
 ```
 
 Ordinary Lua close, error unwinding of a to-be-closed file and garbage collection
-use libc's `fclose`, so they can submit a clean staged request. These automatic
-closes discard close results; explicitly flush/close and check their results when
-submission matters. A Lua exception alone does not mark the FILE as failed;
-an existing FILE error blocks commit. Read, flush and close failures retain
+currently use upstream `fclose` and discard automatic close results. Their
+pending-transaction policy awaits the A4 owner decision; automatic-cleanup
+qualification is not delivered in this checkpoint. A Lua exception alone does
+not mark the FILE as failed; an existing FILE error blocks commit.
+Read, flush and close failures retain
 Lua's ordinary `nil, message, errno` results. Write failures also return the
 number of bytes accepted by that call. Libc never retries a lost submission.
 Implicit buffer drains and C `fflush(NULL)` only stage;
