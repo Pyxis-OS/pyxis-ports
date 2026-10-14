@@ -12,7 +12,7 @@
 #include <path.h>
 #include <pipe.h>
 #include <process.h>
-#include <provider.h>
+#include <provider_http_private.h>
 #include <pyxis/environment.h>
 #include <pyxis/job.h>
 #include <pyxis/working_path.h>
