@@ -36,7 +36,10 @@ return {
     host = { "make", "curl", "sha256sum", "tar", "gzip", "install", "git" },
     pyxis = { "libc", "libpyxis" },
   },
-  patches = { "patches/0001-pyxis-runtime.patch" },
+  patches = {
+    "patches/0001-pyxis-runtime.patch",
+    "patches/0002-pyxis-file-abandonment.patch",
+  },
   outputs = {
     lua_library = "dev/lib/liblua5.1.a",
     lpeg_library = "dev/lib/liblpeg.a",

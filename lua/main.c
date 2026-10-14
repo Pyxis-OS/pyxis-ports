@@ -295,6 +295,8 @@ int main(int argc, char **argv)
   if (status != LUA_OK) {
     report_error(state);
   }
+  int cleanup_failed;
+  lua_pyxis_io_shutdown(state, status == LUA_OK, &cleanup_failed);
   lua_close(state);
   pyxis_finish();
   if (repl_terminal.input != HANDLE_INVALID) {
@@ -303,5 +305,5 @@ int main(int argc, char **argv)
   if (repl_terminal.output != HANDLE_INVALID) {
     handle_close(repl_terminal.output);
   }
-  return status == LUA_OK ? EXIT_SUCCESS : EXIT_FAILURE;
+  return status == LUA_OK && !cleanup_failed ? EXIT_SUCCESS : EXIT_FAILURE;
 }

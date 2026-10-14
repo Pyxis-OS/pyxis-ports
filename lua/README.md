@@ -16,6 +16,11 @@ The recipe also exports `stage/dev/lib/liblua.a` and public headers under
 `stage/dev/include`. The archive contains the pinned core, auxiliary library and
 selected base/coroutine/table/string/UTF-8/io/os/package libraries, without
 the CLI's `main` or its native `pyxis` bridge.
+Embeddings call `lua_pyxis_io_shutdown(state, normal, &failed)` immediately
+before `lua_close(state)` to choose normal completion or error abandonment and
+receive recorded cleanup failures. The `failed` pointer remains borrowed until
+`lua_close` returns. Without the hook, finalizers abandon pending transactions;
+the hook is harmless when the embedding has not opened `io`.
 Consumers choose which libraries to open. `lua.h` retains the MIT notice.
 Pyxis stages these build inputs separately at `build/ports-dev/lua`; they are
 included in the ports bundle but excluded from the boot archive. Link with the
@@ -126,18 +131,32 @@ assert(request:write("hello"))
 assert(request:close())
 ```
 
-Ordinary Lua close, error unwinding of a to-be-closed file and garbage collection
-currently use upstream `fclose` and discard automatic close results. Their
-pending-transaction policy awaits the A4 owner decision; automatic-cleanup
-qualification is not delivered in this checkpoint. A Lua exception alone does
-not mark the FILE as failed; an existing FILE error blocks commit.
-Read, flush and close failures retain
-Lua's ordinary `nil, message, errno` results. Write failures also return the
-number of bytes accepted by that call. Libc never retries a lost submission.
-Implicit buffer drains and C `fflush(NULL)` only stage;
-Lua's `io.flush()` flushes its selected output file and can commit that file.
-Normal process exit stages buffers and commits clean transactions; finalization
-failure makes an otherwise successful exit fail.
+Explicit `file:close()` and `file:flush()` use normal libc close/commit.
+A successful lexical-scope close of a Lua 5.5 to-be-closed file also uses normal
+close; a real close failure raises a Lua error. During error unwinding,
+`__close` abandons a pending transaction without submission and preserves the
+original Lua error. Ordinary garbage collection also abandons pending requests.
+Successful intentional abandonment is not an error. Abort/release failures
+emit a bounded diagnostic to delegated stderr and remain recorded in that Lua
+state, making the standalone interpreter's otherwise successful exit fail.
+
+Before destroying its Lua state, the standalone interpreter selects normal
+close after successful execution and abandonment after an unhandled Lua error.
+`os.exit(status, true)` is explicit normal termination, including a nonzero
+requested status; it closes normally and changes only a zero status when cleanup
+fails. Without the close flag, `os.exit` still honors earlier GC cleanup
+failures before ordinary C exit finalization. An already committed request is
+never submitted again by either path.
+A FILE error still blocks normal commit. Lua exceptions and requested nonzero
+statuses alone do not mark a FILE as failed.
+
+Read, flush and explicit close failures retain Lua's ordinary
+`nil, message, errno` results. Write failures also return the number of bytes
+accepted by that call. Libc never retries a lost submission. Implicit buffer
+drains and C `fflush(NULL)` only stage; Lua's `io.flush()` flushes its selected
+output file and can commit that file. Normal process exit stages buffers and
+commits clean transactions; finalization failure makes an otherwise successful
+exit fail.
 
 The interpreter has no HTTP-specific preparation, commit, status, abort or
 constant wrappers. Explicit HTTP options and observation remain native C APIs;
@@ -293,6 +312,9 @@ arithmetic remain available.
   entries and dynamic loading paths, retaining pure-Lua package searchers.
   Failed clock/strftime calls report errors instead of formatting fake time.
   Calendar tables keep upstream's `mktime` path.
+- `0003` gives ordinary IO files separate normal-close and abandonment paths,
+  records cleanup failures per Lua state, and exposes the shutdown hook used by
+  the CLI and `os.exit(..., true)`. It preserves standard-file close protection.
 - `config.h` selects Lua's existing hooks for an integer hook flag (no signals),
   decimal point `.`, reentrant calendar conversion
   and libc mkstemp-backed reserved names. There is no fake locale or

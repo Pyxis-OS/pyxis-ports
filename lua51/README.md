@@ -5,12 +5,22 @@ lua-compat-5.3 0.13, built as one recipe over the [native libuv](../libuv/README
 These are the pins Neovim 0.12.5 uses. The Lua 5.5 port in `lua/` is separate;
 the two coexist. This interpreter has no native `pyxis` module.
 Ordinary `io.open` reads consume HTTP streams through libc. A staged HTTP
-`"w"` or `"w+"` file commits on an exact file flush or final owning close;
-`"w+"` then reads its reply from the same file and rejects later writes. Close
-and garbage collection use libc's `fclose` and can submit a clean staged request;
-explicitly check flush/close results because GC cannot report close errors.
-These operations use existing declared grants. See the [Lua HTTP stream
-examples](../lua/README.md#http-streams).
+`"w"` or `"w+"` file commits on an explicit file flush or final owning close;
+`"w+"` then reads its reply from the same file and rejects later writes.
+Garbage collection abandons pending requests without submission. A successful
+standalone interpreter shutdown, or explicit `os.exit(status)`, closes its Lua
+state normally and can commit clean transactions; an unhandled Lua error
+selects abandonment. Real automatic abort/release failures emit a bounded
+stderr diagnostic and make an otherwise successful exit fail. Requested nonzero
+exit status alone does not mark a FILE as failed. Explicitly check flush/close
+results. These operations use existing declared grants. See the
+[Lua HTTP stream examples](../lua/README.md#http-streams); Lua 5.1 has no
+lexical-scope `__close` support.
+
+Embeddings call `lua_pyxis_io_shutdown(state, normal, &failed)` immediately
+before `lua_close(state)`; the failure pointer remains borrowed until close
+returns. Without this hook, GC abandons pending requests. The hook is harmless
+when `io` was not opened.
 
 ```sh
 lua build.lua lua51 --sdk /path/to/build/sdk --libuv /path/to/libuv/stage/dev
@@ -100,6 +110,9 @@ console streams, child processes and synchronous filesystem calls.
 - `0001-pyxis-runtime.patch` (Lua) implements the profile above, removes the
   interpreter's signal handling and interactive mode, names it `lua5.1` and
   preloads `lpeg` and `luv`.
+- `0002-pyxis-file-abandonment.patch` separates explicit close from GC
+  abandonment, records cleanup failure per Lua state, and gives the driver and
+  `os.exit` normal/error shutdown paths while protecting standard files.
 - `luv-0001-pyxis-native.patch` adds `src/pyxis.c`, which replaces `dns.c`,
   `tcp.c`, `udp.c`, `fs_event.c` and `fs_poll.c` with ENOSYS functions under
   the same Lua names, plus luv's connect callback that pipes also use. It guards

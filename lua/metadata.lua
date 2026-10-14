@@ -13,6 +13,7 @@ return {
   patches = {
     "patches/0001-upstream-gc-parameter-fix.patch",
     "patches/0002-pyxis-runtime.patch",
+    "patches/0003-pyxis-file-abandonment.patch",
   },
   outputs = {
     executable = "bin/lua.pxb/app/bin/lua.pxe",
