@@ -76,8 +76,11 @@ Spawn initializes its inactive process handle before fallible preparation, so a
 caller must close it after a failed spawn as well as after successful observation.
 
 `uv_pyxis_spawn` accepts an array of `uv_pyxis_resource_t` records containing
-name, source handle, rights and transport. These explicitly selected resources
-augment the ordinary attenuated memory/clock/launcher grants. Empty or duplicate
+name, source handle, rights and transport. Ordinary spawn forwards explicitly
+exported named capabilities, including native FILEs and controllers, with their
+actual masks and transport. The fixed memory/clock/launcher roles retain their
+narrowed masks; stdio and bundle-owned context keep their selected handoffs.
+The additional records augment these selected grants. Empty or duplicate
 names and reserved names `memory`, `clock`, `launcher` and `script` reject before
 pipe creation or child publication. Requested rights/transport must be held by
 the source. Native capture and startup budgets apply; there is no separate

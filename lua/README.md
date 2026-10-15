@@ -263,6 +263,10 @@ a `.pxb` path, including a trailing slash, selects that bundle's default entry.
 Catalog lookup reads the shared mutable environment and preserves allocation
 errors. Child launch captures an owned snapshot of the current libc cwd and
 environment, keeping parent mutations separate from launch metadata.
+Explicitly exported named capabilities, including native FILEs and controllers,
+retain their actual rights and transport in plain children. Fixed runtime roles
+keep their protocol checks, narrowed masks and conditional input selection;
+stdio and bundle-owned entries follow their separate selected handoffs.
 Invalid catalogs or manifests raise native errors. Bundles receive their
 manifest's requested resources from Lua's existing grants and read-only
 app/resource roots. Plain children omit an

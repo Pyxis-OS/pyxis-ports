@@ -276,21 +276,22 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
         !strncmp(value->name, "source.", sizeof("source.") - 1)) {
       continue;
     }
-    uint64_t rights = 0;
-    if (info.kind == HANDLE_KIND_EXPORTED) {
-      rights = info.rights;
-    } else if (info.protocol == PROTOCOL_DIRECTORY && strcmp(value->name, "app") &&
-        strcmp(value->name, "job_work") && strcmp(value->name, "job_provisioner") &&
-        strcmp(value->name, "staging")) {
-      rights = info.rights;
-    } else {
-      for (size_t role = 0; role < ARRAY_SIZE(resource_names); ++role) {
-        if (!strcmp(value->name, resource_names[role])) {
-          rights = info.rights & resource_rights[role];
-        }
+    if (!(value->flags & ENVIRONMENT_EXPORTED) ||
+        (info.kind != HANDLE_KIND_EXPORTED &&
+          (!strcmp(value->name, "app") || !strcmp(value->name, "job_work") ||
+           !strcmp(value->name, "job_provisioner") || !strcmp(value->name, "staging")))) {
+      continue;
+    }
+    uint64_t rights = info.rights;
+    bool runtime_resource = false;
+    for (size_t role = 0; role < ARRAY_SIZE(resource_names); ++role) {
+      if (!strcmp(value->name, resource_names[role])) {
+        rights &= resource_rights[role];
+        runtime_resource = true;
+        break;
       }
     }
-    if (!rights) {
+    if (runtime_resource && !rights) {
       continue;
     }
     entries[entry_count++] = (struct launch_environment_entry){

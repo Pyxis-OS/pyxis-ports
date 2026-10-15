@@ -328,6 +328,19 @@ static const struct resource_policy ordinary_resources[] = {
 static_assert(sizeof(ordinary_resources) / sizeof(ordinary_resources[0]) + 3 <= RESOURCE_LIMIT,
     "ordinary resources and input devices fit launch bindings");
 
+static bool runtime_resource_name(const char *name)
+{
+  if (!strcmp(name, "input") || !strcmp(name, "keyboard") || !strcmp(name, "pointer")) {
+    return true;
+  }
+  for (size_t i = 0; i < sizeof(ordinary_resources) / sizeof(ordinary_resources[0]); ++i) {
+    if (!strcmp(name, ordinary_resources[i].name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static enum call_status add_resource(struct resources *owned, struct launch_request *request,
     const struct resource_policy *policy)
 {
@@ -383,6 +396,7 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   for (size_t i = 0; i < owned->parent.count; ++i) {
     const struct environment_value *value = &owned->parent.values[i];
     if (value->kind != ENVIRONMENT_CAP || !(value->flags & ENVIRONMENT_EXPORTED) ||
+        runtime_resource_name(value->name) ||
         !strcmp(value->name, "app") || !strcmp(value->name, "job_work") ||
         !strcmp(value->name, "job_provisioner") || !strcmp(value->name, "staging") ||
         !strcmp(value->name, "stdin") ||
@@ -398,13 +412,9 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     if (status != CALL_OK) {
       return status;
     }
-    if (info.protocol != PROTOCOL_DIRECTORY && info.kind != HANDLE_KIND_EXPORTED) {
-      continue;
-    }
-    uint64_t rights = info.protocol == PROTOCOL_DIRECTORY ? info.rights & DIRECTORY_RIGHTS : info.rights;
     owned->entries[request->entry_count++] = (struct launch_environment_entry){
       (uintptr_t)value->name, ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
-    owned->grants[request->grant_count++] = (struct launch_grant){value->handle, rights, info.transport};
+    owned->grants[request->grant_count++] = (struct launch_grant){value->handle, info.rights, info.transport};
   }
   for (size_t i = 0; i < depth; ++i) {
     struct handle_info info;
