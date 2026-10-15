@@ -397,6 +397,7 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     const struct environment_value *value = &owned->parent.values[i];
     if (value->kind != ENVIRONMENT_CAP || !(value->flags & ENVIRONMENT_EXPORTED) ||
         runtime_resource_name(value->name) ||
+        !strcmp(value->name, "script") ||
         !strcmp(value->name, "app") || !strcmp(value->name, "job_work") ||
         !strcmp(value->name, "job_provisioner") || !strcmp(value->name, "staging") ||
         !strcmp(value->name, "stdin") ||

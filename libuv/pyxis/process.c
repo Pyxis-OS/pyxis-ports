@@ -272,7 +272,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
         !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status") ||
         !strcmp(value->name, "stdin.append") || !strcmp(value->name, "stdout.append") ||
-        !strcmp(value->name, "stderr.append") ||
+        !strcmp(value->name, "stderr.append") || !strcmp(value->name, "script") ||
         !strncmp(value->name, "source.", sizeof("source.") - 1)) {
       continue;
     }
