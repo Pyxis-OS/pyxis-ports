@@ -271,8 +271,10 @@ inherited `app` root. Bundled scripts and ZIP bundles are not supported.
 `pyxis.run` inherits live C stdin/stdout/stderr, omitting closed streams.
 `io.input`/`io.output` rebinding remains Lua-local. Standard files retain upstream Lua's protection against
 closing them through `io.close`; the native accessor also handles streams closed
-at the C runtime level. File cursors, append state,
-pushback and read-ahead remain private; child file streams start at zero.
+at the C runtime level. FILE append policy is preserved through the selected
+stream's TEXT companion. File cursors, pushback and read-ahead remain private;
+child file streams start at zero. Append retains libc's non-atomic SIZE/WRITE
+behavior.
 Launch authority is LAUNCH-only and explicitly opt-in per space. Shell Ctrl+C
 terminates Lua itself; a child can outlive it, subject to any enclosing remote
 execution group's lifetime.

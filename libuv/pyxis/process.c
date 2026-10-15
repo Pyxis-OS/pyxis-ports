@@ -77,9 +77,14 @@ static int prepare_streams(uv_loop_t *loop, const uv_process_options_t *options,
         return uv_translate_sys_error(errno);
       }
       const struct pyxis_descriptor_binding *binding = &streams[i].inherited;
-      if (binding->info.kind != HANDLE_KIND_NATIVE ||
-          (binding->info.protocol != PROTOCOL_PIPE && binding->info.protocol != PROTOCOL_CONSOLE) ||
-          !(binding->access & access) || (i == ENVIRONMENT_STDIN && binding->buffered_read)) {
+      bool file = binding->info.protocol == PROTOCOL_FILE;
+      bool native = binding->info.kind == HANDLE_KIND_NATIVE && !binding->info.transport;
+      bool exported_file = file && binding->info.kind == HANDLE_KIND_EXPORTED &&
+          (binding->info.transport & HANDLE_TRANSPORT_CALL);
+      if ((!native && !exported_file) ||
+          (!file && binding->info.protocol != PROTOCOL_PIPE && binding->info.protocol != PROTOCOL_CONSOLE) ||
+          !(binding->access & access) || (i == ENVIRONMENT_STDIN && binding->buffered_read) ||
+          (binding->append && (i == ENVIRONMENT_STDIN || !file))) {
         return UV_ENOSYS;
       }
     }
@@ -237,7 +242,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     }
     environment_count = inherited_environment.capture.count;
   }
-  size_t capacity = selected.count + extra_count + environment_count + 3;
+  size_t capacity = selected.count + extra_count + environment_count + 5;
   size_t depth = working.context.count;
   if (capacity > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*entries) ||
       depth > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*grants) - capacity) {
@@ -266,6 +271,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     }
     if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
         !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status") ||
+        !strcmp(value->name, "stdin.append") || !strcmp(value->name, "stdout.append") ||
+        !strcmp(value->name, "stderr.append") ||
         !strncmp(value->name, "source.", sizeof("source.") - 1)) {
       continue;
     }
@@ -340,9 +347,11 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       value = inherited_environment.capture.values[i].text;
     }
     /* Explicit descriptor selection replaces/removes standard names and the
-     * input companion only in this child's entry staging. */
+     * stream companions only in this child's entry staging. */
     if (!strcmp(name, "stdin") || !strcmp(name, "stdout") ||
-        !strcmp(name, "stderr") || !strcmp(name, "stdin.status")) {
+        !strcmp(name, "stderr") || !strcmp(name, "stdin.status") ||
+        !strcmp(name, "stdin.append") || !strcmp(name, "stdout.append") ||
+        !strcmp(name, "stderr.append")) {
       continue;
     }
     /* Environment text never silently replaces selected capability authority. */
@@ -404,13 +413,20 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
           i == ENVIRONMENT_STDIN ? PIPE_RIGHT_READ : PIPE_RIGHT_WRITE, 0};
     } else if (streams[i].inherited.handle != HANDLE_INVALID) {
       uint64_t protocol = streams[i].inherited.info.protocol;
-      uint64_t rights = protocol == PROTOCOL_PIPE ?
+      uint64_t rights = protocol == PROTOCOL_FILE ?
+          (i == ENVIRONMENT_STDIN ? FILE_RIGHT_READ : FILE_RIGHT_WRITE) :
+          protocol == PROTOCOL_PIPE ?
           (i == ENVIRONMENT_STDIN ? PIPE_RIGHT_READ : PIPE_RIGHT_WRITE) :
           (i == ENVIRONMENT_STDIN ? CONSOLE_RIGHT_READ : CONSOLE_RIGHT_WRITE);
+      uint64_t transport = streams[i].inherited.info.kind == HANDLE_KIND_EXPORTED ?
+          HANDLE_TRANSPORT_CALL : 0;
       entries[entry_count++] = (struct launch_environment_entry){
         (uintptr_t)(i == ENVIRONMENT_STDIN ? "stdin" : i == ENVIRONMENT_STDOUT ? "stdout" : "stderr"),
         ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, grant_count, 0};
-      grants[grant_count++] = (struct launch_grant){streams[i].inherited.handle, rights, 0};
+      grants[grant_count++] = (struct launch_grant){streams[i].inherited.handle, rights, transport};
+      if (streams[i].inherited.append) {
+        entries[entry_count++] = environment_stdio_append_entry(i);
+      }
     }
   }
   request.grant_count = grant_count;

@@ -63,9 +63,11 @@ query failures stop observation and report their negative UV error with zero
 dimensions. Close withdraws observation. There is no SIGWINCH emulation.
 
 Child launch supports up to three explicit stdin/stdout/stderr slots, directional
-CREATE_PIPE, and inherited native PIPE/CONSOLE descriptors. Duplex/IPC pipes,
-extra slots, FILE cursor inheritance, buffered inherited pipe input, process
-flags and child bundle paths reject before launch. Closing a
+CREATE_PIPE, and inherited native PIPE/CONSOLE or native/callable-exported FILE
+descriptors. Child FILE cursors start at zero; selected FILE append policy is
+preserved with libc's non-atomic SIZE/WRITE behavior. Duplex/IPC pipes, extra
+slots, buffered inherited input, process flags and child bundle paths reject
+before launch. Closing a
 process handle releases observation and never terminates the child. EXITED keeps
 its signed status; FAULTED/TERMINATED report -1 and term_signal zero. The public
 `exit_reason` is the native PROCESS_* result. Numeric pid fields/accessors return

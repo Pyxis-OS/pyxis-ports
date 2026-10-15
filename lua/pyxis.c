@@ -364,7 +364,7 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   }
   const struct path_context *context = &owned->working.context;
   size_t depth = context->count;
-  size_t capacity = owned->parent.count + owned->environment.capture.count + RESOURCE_LIMIT + 4;
+  size_t capacity = owned->parent.count + owned->environment.capture.count + RESOURCE_LIMIT + 6;
   if (capacity > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->entries) ||
       depth > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->grants) - capacity) {
     return CALL_LIMIT;
@@ -388,6 +388,8 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
         !strcmp(value->name, "stdin") ||
         !strcmp(value->name, "stdout") || !strcmp(value->name, "stderr") ||
         !strcmp(value->name, "stdin.status") ||
+        !strcmp(value->name, "stdin.append") || !strcmp(value->name, "stdout.append") ||
+        !strcmp(value->name, "stderr.append") ||
         !strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1)) {
       continue;
     }
@@ -421,7 +423,9 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   for (size_t i = 0; i < owned->environment.capture.count; ++i) {
     const struct environment_value *value = &owned->environment.capture.values[i];
     if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
-        !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status")) {
+        !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status") ||
+        !strcmp(value->name, "stdin.append") || !strcmp(value->name, "stdout.append") ||
+        !strcmp(value->name, "stderr.append")) {
       continue;
     }
     owned->entries[request->entry_count++] = (struct launch_environment_entry){
@@ -443,6 +447,9 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
       return status;
     }
     bool input = i == ENVIRONMENT_STDIN;
+    if (streams[i].append && (input || streams[i].protocol != PROTOCOL_FILE)) {
+      return CALL_BAD_REQUEST;
+    }
     uint64_t rights = streams[i].protocol == PROTOCOL_FILE ?
         (input ? FILE_RIGHT_READ : FILE_RIGHT_WRITE) :
         streams[i].protocol == PROTOCOL_PIPE ?
@@ -462,6 +469,9 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     owned->entries[request->entry_count++] = (struct launch_environment_entry){
       (uintptr_t)stream_names[i], ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
     owned->grants[request->grant_count++] = (struct launch_grant){streams[i].handle, rights, transport};
+    if (streams[i].append) {
+      owned->entries[request->entry_count++] = environment_stdio_append_entry(i);
+    }
     if (input && streams[i].observation != HANDLE_INVALID) {
       status = handle_query(streams[i].observation, &info);
       if (status != CALL_OK) {
