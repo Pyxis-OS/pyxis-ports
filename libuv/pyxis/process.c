@@ -2,6 +2,7 @@
 #include <abi/clock.h>
 #include <abi/console.h>
 #include <abi/file.h>
+#include <abi/http_transaction.h>
 #include <abi/launcher.h>
 #include <abi/memory.h>
 #include <abi/pipe.h>
@@ -12,7 +13,6 @@
 #include <path.h>
 #include <pipe.h>
 #include <process.h>
-#include <provider_http_private.h>
 #include <pyxis/environment.h>
 #include <pyxis/job.h>
 #include <pyxis/working_path.h>
@@ -87,6 +87,14 @@ static int prepare_streams(uv_loop_t *loop, const uv_process_options_t *options,
           (binding->append && (i == ENVIRONMENT_STDIN || !file))) {
         return UV_ENOSYS;
       }
+      if (binding->observation != HANDLE_INVALID &&
+          (i != ENVIRONMENT_STDIN || !file || binding->observation == binding->handle ||
+          binding->observation_info.kind != HANDLE_KIND_EXPORTED ||
+          binding->observation_info.protocol != PROTOCOL_HTTP_TRANSACTION ||
+          !(binding->observation_info.rights & HTTP_TRANSACTION_RIGHT_STATUS) ||
+          !(binding->observation_info.transport & HANDLE_TRANSPORT_CALL))) {
+        return UV_EINVAL;
+      }
     }
   }
   return 0;
@@ -113,10 +121,7 @@ static int open_image(const struct path_context *context, const char *path, hand
   size_t slots = context->count + length + 1;
   handle_t *directories = uv__malloc(slots * sizeof(*directories));
   char *component = uv__malloc(length + 1);
-  struct provider_http_workspace *http = provider_http_uri(path) ?
-      uv__malloc(sizeof(*http)) : NULL;
-  if (!directories || !component || (provider_http_uri(path) && !http)) {
-    uv__free(http);
+  if (!directories || !component) {
     uv__free(component);
     uv__free(directories);
     return UV_ENOMEM;
@@ -124,7 +129,6 @@ static int open_image(const struct path_context *context, const char *path, hand
   struct path_workspace workspace = {
     .directories = directories, .directory_capacity = slots,
     .component = component, .component_capacity = length + 1,
-    .http = http,
   };
   environment_capability(startup_environment_handle(), "clock", &workspace.clock);
   enum call_status status = path_open_file(context, path, FILE_RIGHT_READ, false,
@@ -132,7 +136,6 @@ static int open_image(const struct path_context *context, const char *path, hand
   if (workspace.clock != HANDLE_INVALID) {
     handle_close(workspace.clock);
   }
-  uv__free(http);
   uv__free(component);
   uv__free(directories);
   return uv__pyxis_status(status);
@@ -242,7 +245,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     }
     environment_count = inherited_environment.capture.count;
   }
-  size_t capacity = selected.count + extra_count + environment_count + 5;
+  size_t capacity = selected.count + extra_count + environment_count + 6;
   size_t depth = working.context.count;
   if (capacity > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*entries) ||
       depth > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*grants) - capacity) {
@@ -427,6 +430,12 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       grants[grant_count++] = (struct launch_grant){streams[i].inherited.handle, rights, transport};
       if (streams[i].inherited.append) {
         entries[entry_count++] = environment_stdio_append_entry(i);
+      }
+      if (streams[i].inherited.observation != HANDLE_INVALID) {
+        entries[entry_count++] = (struct launch_environment_entry){
+          (uintptr_t)"stdin.status", ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, grant_count, 0};
+        grants[grant_count++] = (struct launch_grant){
+          streams[i].inherited.observation, HTTP_TRANSACTION_RIGHT_STATUS, HANDLE_TRANSPORT_CALL};
       }
     }
   }

@@ -6,6 +6,7 @@
 #include <abi/display.h>
 #include <abi/echo.h>
 #include <abi/keyboard.h>
+#include <abi/http_transaction.h>
 #include <abi/memory.h>
 #include <abi/pipe.h>
 #include <abi/pointer.h>
@@ -483,15 +484,26 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     if (streams[i].append) {
       owned->entries[request->entry_count++] = environment_stdio_append_entry(i);
     }
-    if (input && streams[i].observation != HANDLE_INVALID) {
+    if (streams[i].observation_protocol || streams[i].observation != HANDLE_INVALID) {
+      if (!input || streams[i].protocol != PROTOCOL_FILE ||
+          streams[i].observation_protocol != PROTOCOL_HTTP_TRANSACTION ||
+          streams[i].observation == HANDLE_INVALID ||
+          streams[i].observation == streams[i].handle) {
+        return CALL_WRONG_TYPE;
+      }
       status = handle_query(streams[i].observation, &info);
       if (status != CALL_OK) {
         return status;
       }
+      if (info.kind != HANDLE_KIND_EXPORTED || info.protocol != PROTOCOL_HTTP_TRANSACTION ||
+          !(info.rights & HTTP_TRANSACTION_RIGHT_STATUS) ||
+          !(info.transport & HANDLE_TRANSPORT_CALL)) {
+        return CALL_WRONG_TYPE;
+      }
       owned->entries[request->entry_count++] = (struct launch_environment_entry){
         (uintptr_t)"stdin.status", ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
       owned->grants[request->grant_count++] = (struct launch_grant){
-        streams[i].observation, info.rights, info.transport};
+        streams[i].observation, HTTP_TRANSACTION_RIGHT_STATUS, HANDLE_TRANSPORT_CALL};
     }
   }
   for (size_t i = 0; i < sizeof(ordinary_resources) / sizeof(ordinary_resources[0]); ++i) {

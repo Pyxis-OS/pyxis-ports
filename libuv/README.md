@@ -65,7 +65,9 @@ dimensions. Close withdraws observation. There is no SIGWINCH emulation.
 Child launch supports up to three explicit stdin/stdout/stderr slots, directional
 CREATE_PIPE, and inherited native PIPE/CONSOLE or native/callable-exported FILE
 descriptors. Child FILE cursors start at zero; selected FILE append policy is
-preserved with libc's non-atomic SIZE/WRITE behavior. Duplex/IPC pipes, extra
+preserved with libc's non-atomic SIZE/WRITE behavior. An explicitly selected FILE
+stdin's HTTP observation companion is validated and delegated with STATUS rights
+only; ordinary FILE input needs no companion. Duplex/IPC pipes, extra
 slots, buffered inherited input, process flags and child bundle paths reject
 before launch. Closing a
 process handle releases observation and never terminates the child. EXITED keeps
