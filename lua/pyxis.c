@@ -34,9 +34,11 @@
 #include <random.h>
 #include <startup.h>
 #include <environment.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define GUARD_METATABLE "pyxis.resources"
 #define ENTROPY_WAIT_NS UINT64_C(2000000000)
@@ -720,6 +722,40 @@ static int list_directory(lua_State *state)
   return status == CALL_OK ? 1 : native_error(state, owned, "dir close", status);
 }
 
+static int sleep_seconds(lua_State *state)
+{
+  struct timespec duration;
+  if (lua_isinteger(state, 1)) {
+    lua_Integer seconds = lua_tointeger(state, 1);
+    luaL_argcheck(state, seconds >= 0, 1, "negative duration");
+    duration = (struct timespec){(time_t)seconds, 0};
+  } else {
+    lua_Number seconds = luaL_checknumber(state, 1);
+    luaL_argcheck(state, __builtin_isfinite(seconds), 1, "duration is not finite");
+    luaL_argcheck(state, seconds >= 0, 1, "negative duration");
+    if (seconds >= 0x1p63) {
+      duration = (struct timespec){INT64_MAX, 0};
+    } else {
+      time_t whole = (time_t)seconds;
+      lua_Number fraction = (seconds - (lua_Number)whole) * 1e9;
+      long nanoseconds = (long)fraction;
+      /* Round up so the sleep never ends early. */
+      if ((lua_Number)nanoseconds < fraction) {
+        ++nanoseconds;
+      }
+      if (nanoseconds >= 1000000000L) {
+        nanoseconds -= 1000000000L;
+        ++whole;
+      }
+      duration = (struct timespec){whole, nanoseconds};
+    }
+  }
+  if (nanosleep(&duration, NULL)) {
+    return luaL_error(state, "pyxis.sleep: %s", strerror(errno));
+  }
+  return 0;
+}
+
 static int hash_file(lua_State *state)
 {
   const char *path = check_text(state, 1);
@@ -803,7 +839,7 @@ int luaopen_pyxis(lua_State *state)
   lua_pop(state, 1);
   const luaL_Reg functions[] = {
     {"run", run_program}, {"dir", list_directory}, {"sha256", hash_file},
-    {"monotonic_ns", monotonic_ns}, {NULL, NULL},
+    {"monotonic_ns", monotonic_ns}, {"sleep", sleep_seconds}, {NULL, NULL},
   };
   luaL_newlib(state, functions);
   pyxis_jobs_register(state);
