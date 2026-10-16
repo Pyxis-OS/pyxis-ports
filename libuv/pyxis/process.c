@@ -2,7 +2,7 @@
 #include <abi/clock.h>
 #include <abi/console.h>
 #include <abi/file.h>
-#include <abi/http_transaction.h>
+#include <abi/stream.h>
 #include <abi/launcher.h>
 #include <abi/memory.h>
 #include <abi/pipe.h>
@@ -79,21 +79,14 @@ static int prepare_streams(uv_loop_t *loop, const uv_process_options_t *options,
       const struct pyxis_descriptor_binding *binding = &streams[i].inherited;
       bool file = binding->info.protocol == PROTOCOL_FILE;
       bool native = binding->info.kind == HANDLE_KIND_NATIVE && !binding->info.transport;
-      bool exported_file = file && binding->info.kind == HANDLE_KIND_EXPORTED &&
+      bool response = binding->info.protocol == PROTOCOL_STREAM && i == ENVIRONMENT_STDIN;
+      bool exported_stream = (file || response) && binding->info.kind == HANDLE_KIND_EXPORTED &&
           (binding->info.transport & HANDLE_TRANSPORT_CALL);
-      if ((!native && !exported_file) ||
-          (!file && binding->info.protocol != PROTOCOL_PIPE && binding->info.protocol != PROTOCOL_CONSOLE) ||
+      if ((!native && !exported_stream) ||
+          (!file && !response && binding->info.protocol != PROTOCOL_PIPE && binding->info.protocol != PROTOCOL_CONSOLE) ||
           !(binding->access & access) || (i == ENVIRONMENT_STDIN && binding->buffered_read) ||
           (binding->append && (i == ENVIRONMENT_STDIN || !file))) {
         return UV_ENOSYS;
-      }
-      if (binding->observation != HANDLE_INVALID &&
-          (i != ENVIRONMENT_STDIN || !file || binding->observation == binding->handle ||
-          binding->observation_info.kind != HANDLE_KIND_EXPORTED ||
-          binding->observation_info.protocol != PROTOCOL_HTTP_TRANSACTION ||
-          !(binding->observation_info.rights & HTTP_TRANSACTION_RIGHT_STATUS) ||
-          !(binding->observation_info.transport & HANDLE_TRANSPORT_CALL))) {
-        return UV_EINVAL;
       }
     }
   }
@@ -273,7 +266,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       goto done;
     }
     if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
-        !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status") ||
+        !strcmp(value->name, "stderr") ||
         !strcmp(value->name, "stdin.append") || !strcmp(value->name, "stdout.append") ||
         !strcmp(value->name, "stderr.append") || !strcmp(value->name, "script") ||
         !strncmp(value->name, "source.", sizeof("source.") - 1)) {
@@ -353,7 +346,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     /* Explicit descriptor selection replaces/removes standard names and the
      * stream companions only in this child's entry staging. */
     if (!strcmp(name, "stdin") || !strcmp(name, "stdout") ||
-        !strcmp(name, "stderr") || !strcmp(name, "stdin.status") ||
+        !strcmp(name, "stderr") ||
         !strcmp(name, "stdin.append") || !strcmp(name, "stdout.append") ||
         !strcmp(name, "stderr.append")) {
       continue;
@@ -421,6 +414,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
           (i == ENVIRONMENT_STDIN ? FILE_RIGHT_READ : FILE_RIGHT_WRITE) :
           protocol == PROTOCOL_PIPE ?
           (i == ENVIRONMENT_STDIN ? PIPE_RIGHT_READ : PIPE_RIGHT_WRITE) :
+          protocol == PROTOCOL_STREAM ? STREAM_RIGHT_READ :
           (i == ENVIRONMENT_STDIN ? CONSOLE_RIGHT_READ : CONSOLE_RIGHT_WRITE);
       uint64_t transport = streams[i].inherited.info.kind == HANDLE_KIND_EXPORTED ?
           HANDLE_TRANSPORT_CALL : 0;
@@ -430,12 +424,6 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       grants[grant_count++] = (struct launch_grant){streams[i].inherited.handle, rights, transport};
       if (streams[i].inherited.append) {
         entries[entry_count++] = environment_stdio_append_entry(i);
-      }
-      if (streams[i].inherited.observation != HANDLE_INVALID) {
-        entries[entry_count++] = (struct launch_environment_entry){
-          (uintptr_t)"stdin.status", ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, grant_count, 0};
-        grants[grant_count++] = (struct launch_grant){
-          streams[i].inherited.observation, HTTP_TRANSACTION_RIGHT_STATUS, HANDLE_TRANSPORT_CALL};
       }
     }
   }

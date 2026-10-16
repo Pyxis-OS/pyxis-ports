@@ -6,7 +6,7 @@
 #include <abi/display.h>
 #include <abi/echo.h>
 #include <abi/keyboard.h>
-#include <abi/http_transaction.h>
+#include <abi/stream.h>
 #include <abi/memory.h>
 #include <abi/pipe.h>
 #include <abi/pointer.h>
@@ -403,7 +403,6 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
         !strcmp(value->name, "job_provisioner") || !strcmp(value->name, "staging") ||
         !strcmp(value->name, "stdin") ||
         !strcmp(value->name, "stdout") || !strcmp(value->name, "stderr") ||
-        !strcmp(value->name, "stdin.status") ||
         !strcmp(value->name, "stdin.append") || !strcmp(value->name, "stdout.append") ||
         !strcmp(value->name, "stderr.append") ||
         !strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1)) {
@@ -435,7 +434,7 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   for (size_t i = 0; i < owned->environment.capture.count; ++i) {
     const struct environment_value *value = &owned->environment.capture.values[i];
     if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
-        !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status") ||
+        !strcmp(value->name, "stderr") ||
         !strcmp(value->name, "stdin.append") || !strcmp(value->name, "stdout.append") ||
         !strcmp(value->name, "stderr.append")) {
       continue;
@@ -462,16 +461,21 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     if (streams[i].append && (input || streams[i].protocol != PROTOCOL_FILE)) {
       return CALL_BAD_REQUEST;
     }
+    bool response = streams[i].protocol == PROTOCOL_STREAM;
+    if (response && !input) {
+      return CALL_WRONG_TYPE;
+    }
     uint64_t rights = streams[i].protocol == PROTOCOL_FILE ?
         (input ? FILE_RIGHT_READ : FILE_RIGHT_WRITE) :
         streams[i].protocol == PROTOCOL_PIPE ?
         (input ? PIPE_RIGHT_READ : PIPE_RIGHT_WRITE) :
+        response ? STREAM_RIGHT_READ :
         (input ? CONSOLE_RIGHT_READ : CONSOLE_RIGHT_WRITE);
     if (info.protocol != streams[i].protocol || (info.rights & rights) != rights) {
       return CALL_DENIED;
     }
     if (info.kind != HANDLE_KIND_NATIVE &&
-        !(streams[i].protocol == PROTOCOL_FILE && info.kind == HANDLE_KIND_EXPORTED)) {
+        !((streams[i].protocol == PROTOCOL_FILE || response) && info.kind == HANDLE_KIND_EXPORTED)) {
       return CALL_WRONG_TYPE;
     }
     uint64_t transport = info.kind == HANDLE_KIND_EXPORTED ? HANDLE_TRANSPORT_CALL : 0;
@@ -483,27 +487,6 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     owned->grants[request->grant_count++] = (struct launch_grant){streams[i].handle, rights, transport};
     if (streams[i].append) {
       owned->entries[request->entry_count++] = environment_stdio_append_entry(i);
-    }
-    if (streams[i].observation_protocol || streams[i].observation != HANDLE_INVALID) {
-      if (!input || streams[i].protocol != PROTOCOL_FILE ||
-          streams[i].observation_protocol != PROTOCOL_HTTP_TRANSACTION ||
-          streams[i].observation == HANDLE_INVALID ||
-          streams[i].observation == streams[i].handle) {
-        return CALL_WRONG_TYPE;
-      }
-      status = handle_query(streams[i].observation, &info);
-      if (status != CALL_OK) {
-        return status;
-      }
-      if (info.kind != HANDLE_KIND_EXPORTED || info.protocol != PROTOCOL_HTTP_TRANSACTION ||
-          !(info.rights & HTTP_TRANSACTION_RIGHT_STATUS) ||
-          !(info.transport & HANDLE_TRANSPORT_CALL)) {
-        return CALL_WRONG_TYPE;
-      }
-      owned->entries[request->entry_count++] = (struct launch_environment_entry){
-        (uintptr_t)"stdin.status", ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
-      owned->grants[request->grant_count++] = (struct launch_grant){
-        streams[i].observation, HTTP_TRANSACTION_RIGHT_STATUS, HANDLE_TRANSPORT_CALL};
     }
   }
   for (size_t i = 0; i < sizeof(ordinary_resources) / sizeof(ordinary_resources[0]); ++i) {

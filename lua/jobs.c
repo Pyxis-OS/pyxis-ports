@@ -624,7 +624,7 @@ static int start(lua_State *state, bool pipeline)
       const struct environment_value *value = &owned->parent.values[i];
       if (value->kind != ENVIRONMENT_CAP || !(value->flags & ENVIRONMENT_EXPORTED) ||
           !strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
-          !strcmp(value->name, "stderr") || !strcmp(value->name, "stdin.status") ||
+          !strcmp(value->name, "stderr") ||
           !strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1)) {
         continue;
       }

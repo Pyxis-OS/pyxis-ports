@@ -96,14 +96,15 @@ module is executable-only, leaving configuration embeddings restricted.
 
 ## HTTP files
 
-`io.open(uri, "r")` commits an HTTP GET and returns a completed, re-readable FILE.
+`io.open(uri, "r")` uses typed OPEN for an HTTP GET and returns a completed, re-readable FILE.
 Use `file:read(count)` for bounded reads; `file:read("a")` allocates the entire
 remaining body. The provider spools the complete response into private backing
 before OPEN succeeds. Lua's file
 and script loaders check read errors, so a failed response cannot be loaded as
 complete code. The selected provider owns redirects and final HTTP errors.
 
-`io.open(uri, "w")` and `"w+"` prepare a staged POST through libc.
+`io.open(uri, "w")` and `"w+"` open a staged transaction through libc.
+The captured provider selects its method and headers; stock HTTP roots use POST.
 Writing only stages bytes; reads before commit fail with EBUSY. Flushing that
 exact file commits once. With `"w+"`, the same file then reads the reply, and
 later writes fail with EBADF. Use ordinary file operations:
@@ -160,9 +161,10 @@ commits clean transactions; finalization failure makes an otherwise successful
 exit fail.
 
 The interpreter has no HTTP-specific preparation, commit, status, abort or
-constant wrappers. Explicit HTTP options and observation remain native C APIs;
+constant wrappers. `http prepare` creates configured capabilities before launch;
 Lua uses the caller's existing declared grants through ordinary libc I/O.
-Missing preparation/private staging authority refuses the operation. No helper
+Generic descriptions carry outcomes, without HTTP observation companions.
+Missing provider/private staging authority refuses the operation. No helper
 provisions authority or expands the interpreter bundle's requests. The native
 `pyxis.sha256` helper uses positioned FILE reads, including completed HTTP
 snapshots opened through the caller's declared provider root.
@@ -278,10 +280,9 @@ inherited `app` root. Bundled scripts and ZIP bundles are not supported.
 closing them through `io.close`; the native accessor also handles streams closed
 at the C runtime level. FILE append policy is preserved through the selected
 stream's TEXT companion. File cursors, pushback and read-ahead remain private;
-child file streams start at zero. An explicit FILE stdin HTTP observation
-companion is validated and delegated with STATUS rights only. Ordinary FILE
-input needs no companion. Append retains libc's non-atomic SIZE/WRITE
-behavior.
+child file streams start at zero. FILE and forward-only STREAM input carry
+their own generic description; neither needs an HTTP observation companion.
+Append retains libc's non-atomic SIZE/WRITE behavior.
 Launch authority is LAUNCH-only and explicitly opt-in per space. Shell Ctrl+C
 terminates Lua itself; a child can outlive it, subject to any enclosing remote
 execution group's lifetime.
