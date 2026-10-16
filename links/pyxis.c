@@ -6,7 +6,7 @@
  * (see COPYING in the Links source). */
 #include "links.h"
 #include "pyxis_console.h"
-#include <pyxis/http.h>
+#include <http_navigation.h>
 #include <pyxis/stdio.h>
 
 #define VIRTUAL_PIPE_SIZE	512
@@ -270,12 +270,12 @@ static int looks_like_html(unsigned char *data, int len)
 	return 0;
 }
 
-/* Materialize the forward response into Links' own cache. Libc has already
- * followed redirects; the requested cache entry aliases the final body. */
+/* The opt-in navigation FILE carries its final URL and media type as a
+ * bounded prefix. Cache only the raw body; aliases retain redirect behavior. */
 static void provider_func(struct connection *c)
 {
 	struct cache_entry *e;
-	struct pyxis_response_info response;
+	struct http_navigation response;
 	FILE *f;
 	unsigned char *data;
 	int len = 0, capacity = 4096, r;
@@ -283,16 +283,9 @@ static void provider_func(struct connection *c)
 	unsigned char *url = NULL, *position;
 	int head_len = 0, redirected = 0;
 
-	f = fopen(cast_const_char c->url, "r");
+	f = http_navigation_fopen(cast_const_char c->url, &response);
 	if (!f) {
 		setcstate(c, get_error_from_errno(errno));
-		abort_connection(c);
-		return;
-	}
-	if (pyxis_stdio_response(f, &response)) {
-		int er = errno;
-		fclose(f);
-		setcstate(c, get_error_from_errno(er));
 		abort_connection(c);
 		return;
 	}
@@ -324,36 +317,18 @@ static void provider_func(struct connection *c)
 		}
 		break;
 	}
-	{
-		struct http_transaction_status final;
-		int er = 0;
-		if (pyxis_http_status(f, &final)) {
-			if (errno != ENOTSUP || (response.flags & PYXIS_RESPONSE_HTTP))
-				er = errno ? errno : EIO;
-		} else if (final.phase != HTTP_TRANSACTION_COMPLETE ||
-		           final.framing != HTTP_FRAMING_COMPLETE || final.status != CALL_OK) {
-			er = EIO;
-		}
-		if (er) {
-			mem_free(data);
-			fclose(f);
-			setcstate(c, get_error_from_errno(er));
-			abort_connection(c);
-			return;
-		}
-	}
 	fclose(f);
 
 	head = init_str();
-	if ((response.flags & PYXIS_RESPONSE_MEDIA_TYPE) && *response.media_type) {
+	if (*response.media_type) {
 		add_to_str(&head, &head_len, cast_uchar "\r\nContent-Type: ");
 		add_to_str(&head, &head_len, cast_uchar response.media_type);
 		add_to_str(&head, &head_len, cast_uchar "\r\n");
 	} else if (looks_like_html(data, len)) {
 		add_to_str(&head, &head_len, cast_uchar "\r\nContent-Type: text/html\r\n");
 	}
-	if (response.flags & PYXIS_RESPONSE_URL) {
-		url = stracpy(cast_uchar response.url);
+	if (response.status) {
+		url = stracpy(cast_uchar response.effective_url);
 		if ((position = extract_position(url))) mem_free(position);
 		redirected = strcmp(cast_const_char url, cast_const_char c->url) != 0;
 	}
@@ -383,7 +358,7 @@ static void provider_func(struct connection *c)
 	if (e->redirect) mem_free(e->redirect), e->redirect = NULL;
 	if (e->pyxis_redirect) mem_free(e->pyxis_redirect), e->pyxis_redirect = NULL;
 	e->incomplete = 1;
-	e->http_code = response.flags & PYXIS_RESPONSE_HTTP ? (int)response.status : -1;
+	e->http_code = response.status ? (int)response.status : -1;
 	if (e->head) mem_free(e->head);
 	e->head = head;
 	if ((r = add_fragment(e, 0, data, len)) < 0) {
@@ -405,7 +380,7 @@ static void provider_func(struct connection *c)
 		alias->head = stracpy(cast_uchar "");
 		if (alias->redirect) mem_free(alias->redirect), alias->redirect = NULL;
 		if (alias->pyxis_redirect) mem_free(alias->pyxis_redirect);
-		alias->pyxis_redirect = stracpy(cast_uchar response.url);
+		alias->pyxis_redirect = stracpy(cast_uchar response.effective_url);
 		alias->http_code = e->http_code;
 		alias->incomplete = 0;
 		finish_cache_entry(e);

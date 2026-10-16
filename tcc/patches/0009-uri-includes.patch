@@ -92,7 +92,7 @@ index 82a463c..efa7f21 100644
      file = bf->prev;
      tok_flags = bf->prev_tok_flags;
      tcc_free(bf);
-@@ -821,6 +897,40 @@ static FILE *open_input(TCCState *s1, const char *filename)
+@@ -821,6 +897,42 @@ static FILE *open_input(TCCState *s1, const char *filename)
      return stream;
  }
  
@@ -101,21 +101,23 @@ index 82a463c..efa7f21 100644
 +   snapshot records its final URL for relative includes and #pragma once. */
 +ST_FUNC int tcc_open_error(TCCState *s1, const char *filename)
 +{
-+    struct pyxis_response_info response;
++    struct http_navigation response = {0};
 +
 +    if (strlen(filename) >= sizeof(file->filename))
 +        return ENAMETOOLONG;
 +    /* Link the buffer before opening: compile-error unwinding owns it. */
 +    tcc_open_bf(s1, filename, 0);
-+    file->stream = open_input(s1, filename);
++    file->stream = !strcmp(filename, "-") ? stdin : http_navigation_fopen(filename, &response);
++    if ((s1->verbose == 2 && file->stream) || s1->verbose == 3)
++        printf("%s %*s%s\n", file->stream ? "->" : "nf",
++               (int)(s1->include_stack_ptr - s1->include_stack), "", filename);
 +    if (!file->stream) {
 +        int error = errno;
 +        tcc_close();
 +        return error;
 +    }
-+    if (file->stream != stdin && !pyxis_stdio_response(file->stream, &response)
-+        && (response.flags & PYXIS_RESPONSE_URL) && tcc_network_uri(response.url))
-+        file->url = tcc_uri_normalize(response.url);
++    if (response.status)
++        file->url = tcc_uri_normalize(response.effective_url);
 +    return 0;
 +}
 +
@@ -165,7 +167,7 @@ index fa9e641..c34462c 100644
  #include <limits.h>
  #ifdef __pyxis__
  #include <sys/stat.h>
-+#include <pyxis/stdio.h>
++#include <http_navigation.h>
 +#include <strings.h>
  #endif
  #ifndef __pyxis__

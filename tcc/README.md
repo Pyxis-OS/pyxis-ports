@@ -265,3 +265,9 @@ later with its explicit unlimited-linking exception; retain that notice as well.
 The stage includes `COPYING` and the three selected runtime source files under
 `share/licenses/tcc`, preserving their individual notices. Compiler and runtime
 licensing must not be described as one blanket license.
+
+HTTP source/include snapshots opt into the provider's bounded navigation FILE
+prefix; TCC validates and consumes it before tokenizing the raw body. The final
+URL supplies redirected relative includes and `#pragma once` identity. Native
+and ordinary provider FILEs stay unframed; a definite unsupported configuration
+refusal falls back only through the same held root. Failed outcomes stay errors.
