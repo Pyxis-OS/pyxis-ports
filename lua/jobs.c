@@ -468,14 +468,17 @@ static enum call_status select_environment(lua_State *state, int options,
   return status;
 }
 
+/* Plain images only: bin://NAME.pxe, boot://NAME.pxe, then home://bin/NAME.pxe,
+ * so user programs never shadow system ones. Unlike program_open, jobs search
+ * no bundles or development catalog. */
 static enum call_status native_program(const struct path_context *context,
     const char *command, handle_t *image)
 {
   size_t length = strlen(command);
-  if (!length || length > SIZE_MAX - sizeof("boot://.pxe")) {
+  if (!length || length > SIZE_MAX - sizeof("home://bin/.pxe")) {
     return CALL_BAD_REQUEST;
   }
-  size_t capacity = length + sizeof("boot://.pxe"), slots = context->count + capacity;
+  size_t capacity = length + sizeof("home://bin/.pxe"), slots = context->count + capacity;
   if (slots < capacity || slots > SIZE_MAX / sizeof(handle_t)) {
     return CALL_LIMIT;
   }
@@ -503,6 +506,12 @@ static enum call_status native_program(const struct path_context *context,
       memcpy(path, "boot://", 7);
       memcpy(path + 7, command, length);
       memcpy(path + 7 + length, ".pxe", 5);
+      status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
+    }
+    if (status == CALL_NOT_FOUND) {
+      memcpy(path, "home://bin/", 11);
+      memcpy(path + 11, command, length);
+      memcpy(path + 11 + length, ".pxe", 5);
       status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
     }
   }

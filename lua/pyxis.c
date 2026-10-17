@@ -279,10 +279,10 @@ static enum call_status open_program(const char *command, struct resources *owne
     return status;
   }
   size_t length = strlen(command), depth = context->count;
-  if (length > SIZE_MAX - sizeof("boot://.pxe")) {
+  if (length > SIZE_MAX - PROGRAM_LOOKUP_EXTRA) {
     return CALL_LIMIT;
   }
-  size_t capacity = length + sizeof("boot://.pxe");
+  size_t capacity = length + PROGRAM_LOOKUP_EXTRA;
   if (depth > SIZE_MAX - capacity || depth + capacity > SIZE_MAX / sizeof(handle_t)) {
     return CALL_LIMIT;
   }
