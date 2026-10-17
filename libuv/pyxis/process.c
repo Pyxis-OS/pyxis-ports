@@ -6,6 +6,8 @@
 #include <abi/launcher.h>
 #include <abi/memory.h>
 #include <abi/pipe.h>
+#include <bundle.h>
+#include <bundle_launch.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <handle.h>
@@ -13,6 +15,7 @@
 #include <path.h>
 #include <pipe.h>
 #include <process.h>
+#include <program.h>
 #include <pyxis/environment.h>
 #include <pyxis/job.h>
 #include <pyxis/working_path.h>
@@ -104,16 +107,21 @@ static int grant_same(struct launch_grant *grant, handle_t source)
   return 0;
 }
 
-static int open_image(const struct path_context *context, const char *path, handle_t *image)
+/* The shell's lookup: a bare name searches bin://, the catalog, boot:// and
+ * home://bin, and a .pxb names a bundle, which owns the borrowed IMAGE. */
+static int open_program(const struct path_context *context, const char *path,
+    handle_t *image, struct bundle_program **bundle)
 {
   size_t length = strlen(path);
-  if (length == SIZE_MAX || context->count > SIZE_MAX - length - 1 ||
-      context->count + length + 1 > SIZE_MAX / sizeof(handle_t)) {
+  if (length > SIZE_MAX - PROGRAM_LOOKUP_EXTRA ||
+      context->count > SIZE_MAX - length - PROGRAM_LOOKUP_EXTRA ||
+      context->count + length + PROGRAM_LOOKUP_EXTRA > SIZE_MAX / sizeof(handle_t)) {
     return UV_EOVERFLOW;
   }
-  size_t slots = context->count + length + 1;
+  size_t capacity = length + PROGRAM_LOOKUP_EXTRA;
+  size_t slots = context->count + capacity;
   handle_t *directories = uv__malloc(slots * sizeof(*directories));
-  char *component = uv__malloc(length + 1);
+  char *component = uv__malloc(capacity);
   if (!directories || !component) {
     uv__free(component);
     uv__free(directories);
@@ -121,16 +129,49 @@ static int open_image(const struct path_context *context, const char *path, hand
   }
   struct path_workspace workspace = {
     .directories = directories, .directory_capacity = slots,
-    .component = component, .component_capacity = length + 1,
+    .component = component, .component_capacity = capacity,
   };
   environment_capability(startup_environment_handle(), "clock", &workspace.clock);
-  enum call_status status = path_open_file(context, path, FILE_RIGHT_READ, false,
-      &workspace, image);
+  enum call_status status = program_open(context, path, &workspace, image, bundle);
   if (workspace.clock != HANDLE_INVALID) {
     handle_close(workspace.clock);
   }
   uv__free(component);
   uv__free(directories);
+  return uv__pyxis_status(status);
+}
+
+/* A bundle child receives what its manifest declares from the runtime authority
+ * this process holds. The console and devices stay with the parent; the
+ * child's standard streams are the ones the caller selected. */
+static int prepare_bundle(const struct bundle_program *bundle,
+    const struct launch_request *request, const struct environment_capture *held,
+    struct bundle_launch **prepared)
+{
+  static const char *const names[] = {
+    "memory", "clock", "threads", "random", "launcher", "pipe", "system_info",
+    "tcp", "udp", "echo", "profile",
+  };
+  struct bundle_authority authority[ARRAY_SIZE(names) + BUNDLE_SOURCE_LIMIT];
+  size_t count = 0;
+  for (size_t i = 0; i < ARRAY_SIZE(names); ++i) {
+    const struct environment_value *value = environment_capture_find(held, names[i]);
+    if (!value || value->kind != ENVIRONMENT_CAP) {
+      continue;
+    }
+    struct handle_info info;
+    enum call_status status = handle_query(value->handle, &info);
+    if (status != CALL_OK) {
+      return uv__pyxis_status(status);
+    }
+    authority[count++] = (struct bundle_authority){names[i], value->handle, info.protocol};
+  }
+  size_t source_count;
+  enum call_status status = bundle_sources_from_capture(held, authority + count,
+      BUNDLE_SOURCE_LIMIT, &source_count);
+  if (status == CALL_OK) {
+    status = bundle_launch_prepare(bundle, request, authority, count + source_count, prepared);
+  }
   return uv__pyxis_status(status);
 }
 
@@ -193,9 +234,12 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       options->stdio_count < 0 || (options->stdio_count && !options->stdio)) {
     return UV_EINVAL;
   }
-  size_t file_length = strlen(options->file);
-  if (options->flags || options->stdio_count > ENVIRONMENT_STREAM_COUNT ||
-      (file_length >= 4 && !strcmp(options->file + file_length - 4, ".pxb"))) {
+  /* Windows presentation flags have no meaning here, as on other non-Windows
+   * platforms; detached, setuid and setgid children do not exist. */
+  const unsigned windows_only = UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS |
+      UV_PROCESS_WINDOWS_HIDE | UV_PROCESS_WINDOWS_HIDE_CONSOLE |
+      UV_PROCESS_WINDOWS_HIDE_GUI | UV_PROCESS_WINDOWS_FILE_PATH_EXACT_NAME;
+  if ((options->flags & ~windows_only) || options->stdio_count > ENVIRONMENT_STREAM_COUNT) {
     return UV_ENOSYS;
   }
   int error = validate_resources(extra_resources, extra_count);
@@ -213,6 +257,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     return error;
   }
   handle_t image = HANDLE_INVALID, launcher = HANDLE_INVALID;
+  struct bundle_program *bundle = NULL;
+  struct bundle_launch *bundle_launch = NULL;
   struct pyxis_working_snapshot working = {0};
   struct pyxis_environment_snapshot inherited_environment = {0};
   struct environment_capture selected = {0};
@@ -386,11 +432,14 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     error = uv__pyxis_status(snapshot_status);
     goto done;
   }
-  error = open_image(&working.context, options->file, &image);
+  error = open_program(&working.context, options->file, &image, &bundle);
   if (error) {
     goto done;
   }
-  request.image = image;
+  if (bundle) {
+    image = HANDLE_INVALID;
+  }
+  request.image = bundle ? bundle_program_image(bundle) : image;
   for (size_t i = 0; i < ENVIRONMENT_STREAM_COUNT; ++i) {
     if (streams[i].stream) {
       struct pipe_create_reply pair;
@@ -438,9 +487,17 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   }
   request.grant_count = grant_count;
   request.entry_count = entry_count;
-  handle_t observer;
-  enum call_status status = program_launch(launcher, &request,
+  if (bundle) {
+    error = prepare_bundle(bundle, &request, &selected, &bundle_launch);
+    if (error) {
+      goto done;
+    }
+  }
+  handle_t observer = HANDLE_INVALID;
+  enum call_status status = program_launch(launcher,
+      bundle_launch ? bundle_launch_request(bundle_launch) : &request,
       &working.context, &observer);
+  bundle_launch_admitted(bundle_launch, status, observer);
   if (status != CALL_OK) {
     error = uv__pyxis_status(status);
     goto done;
@@ -462,6 +519,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   error = 0;
 
 done:
+  bundle_launch_close(bundle_launch);
+  bundle_program_close(bundle);
   if (image != HANDLE_INVALID) {
     handle_close(image);
   }

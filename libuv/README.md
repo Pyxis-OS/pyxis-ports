@@ -67,8 +67,18 @@ CREATE_PIPE, inherited native PIPE/CONSOLE or native/callable-exported FILE
 descriptors, and callable-exported STREAM input. Child FILE cursors start at zero; selected FILE append policy is
 preserved with libc's non-atomic SIZE/WRITE behavior. Input outcomes use generic
 descriptions; no HTTP observation companion is delegated. Duplex/IPC pipes, extra
-slots, buffered inherited input, process flags and child bundle paths reject
-before launch. Closing a
+slots, buffered inherited input and detached, setuid or setgid flags reject
+before launch; Windows-only presentation flags are ignored, as on other
+non-Windows platforms.
+
+`options->file` is opened with libpyxis `program_open`, the shell's lookup: a
+bare name searches `bin://`, the development catalog, `boot://` and then
+`home://bin/`, and a `.pxb` path or name selects a bundle's default entry. A
+bundle child is prepared from its manifest with only the authority this process
+holds: memory, clock, threads, random, launcher, pipe, system information, TCP,
+UDP, echo, profile and configured bundle sources. The console and input devices
+are not offered; the child's streams are the selected stdio. A required grant
+this process lacks refuses the spawn. Closing a
 process handle releases observation and never terminates the child. EXITED keeps
 its signed status; FAULTED/TERMINATED report -1 and term_signal zero. The public
 `exit_reason` is the native PROCESS_* result. Numeric pid fields/accessors return
@@ -122,7 +132,8 @@ the exit callback and `exit_reason`; close releases observation only.
 Filesystem calls run only with a null callback. A supplied callback rejects
 before filesystem effects. The adapter exposes ordinary libc operations for
 open/close, read/write and explicit offsets, metadata, rename/remove/create,
-sync/resize/access, exclusive temporary files and directory enumeration.
+sync/resize/access, exclusive temporary files and directories, and directory
+enumeration.
 `uv_fs_realpath` returns libc's proved native scheme spelling in request-owned
 storage released by `uv_fs_req_cleanup`. Providers, unavailable identity and
 stale or unknown cwd ancestry fail; aliases are not collapsed. `uv_cwd` remains

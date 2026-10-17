@@ -469,8 +469,11 @@ int uv_fs_copyfile(uv_loop_t *loop, uv_fs_t *request, const char *path, const ch
 int uv_fs_mkdtemp(uv_loop_t *loop, uv_fs_t *request, const char *template,
     uv_fs_cb callback)
 {
-  (void)template;
-  return fs_unsupported(loop, request, UV_FS_MKDTEMP, callback);
+  int result = fs_begin(loop, request, UV_FS_MKDTEMP, callback);
+  if (result || (result = fs_path(request, template))) {
+    return result;
+  }
+  return fs_result(request, mkdtemp((char *)request->path) ? 0 : -1);
 }
 
 int uv_fs_mkstemp(uv_loop_t *loop, uv_fs_t *request, const char *template,
