@@ -74,7 +74,8 @@ return {
   patches = { "patches/0001-pyxis-platform.patch", "patches/0002-pyxis-files.patch",
     "patches/0003-pyxis-tui.patch", "patches/0004-pyxis-core.patch",
     "patches/0005-pyxis-undo-mode.patch", "patches/0006-pyxis-static-parsers.patch",
-    "patches/0007-pyxis-no-passwd.patch", "patches/0008-pyxis-file-selection.patch" },
+    "patches/0007-pyxis-no-passwd.patch", "patches/0008-pyxis-file-selection.patch",
+    "patches/0009-pyxis-external-jobs.patch" },
   outputs = {
     manifest = "bin/nvim.pxb/manifest.json",
     executable = "bin/nvim.pxb/app/bin/nvim.pxe",

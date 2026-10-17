@@ -58,7 +58,10 @@ changed timestamp or unavailable comparison metadata requires explicit `:w!`.
 Force still respects native write authority. References do not freeze names or
 contents, and equal timestamps do not prove equal bytes.
 
-External jobs, `system()`, `:terminal`, PTYs, socket listeners, Unix signals,
+External jobs and shell commands run as native children over pipes:
+`'shell'` is the Pyxis `shell -c`, executable checks use the shared program
+lookup, `jobstop` and Ctrl+C terminate at once, and temporary files live in
+`tmp://`. `:terminal`, PTY and detached jobs, socket listeners, Unix signals,
 numeric PID operations, workers, asynchronous filesystem calls and watches are
 outside this profile. Swap/backup recovery and patchmode are unavailable.
 Dynamic Lua modules, dynamic grammar loading, LSP and true-colour output
