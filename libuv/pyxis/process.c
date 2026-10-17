@@ -134,6 +134,17 @@ static int open_image(const struct path_context *context, const char *path, hand
   return uv__pyxis_status(status);
 }
 
+static bool resource_named(const uv_pyxis_resource_t *resources, size_t count,
+    const char *name)
+{
+  for (size_t i = 0; i < count; ++i) {
+    if (!strcmp(name, resources[i].name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static int validate_resources(const uv_pyxis_resource_t *resources, size_t count)
 {
   if (count && !resources) {
@@ -278,6 +289,10 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
            !strcmp(value->name, "job_provisioner") || !strcmp(value->name, "staging")))) {
       continue;
     }
+    /* An explicit record replaces this name's inherited forward and mask. */
+    if (resource_named(extra_resources, extra_count, value->name)) {
+      continue;
+    }
     uint64_t rights = info.rights;
     bool runtime_resource = false;
     for (size_t role = 0; role < ARRAY_SIZE(resource_names); ++role) {
@@ -305,12 +320,6 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     if ((resource->rights & ~rights) || (resource->transport & ~transport)) {
       error = UV_EACCES;
       goto done;
-    }
-    for (size_t j = 0; j < entry_count; ++j) {
-      if (!strcmp(resource->name, (const char *)(uintptr_t)entries[j].name)) {
-        error = UV_EINVAL;
-        goto done;
-      }
     }
     entries[entry_count++] = (struct launch_environment_entry){
       (uintptr_t)resource->name, ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, grant_count, 0};

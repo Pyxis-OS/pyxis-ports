@@ -15,7 +15,8 @@ typedef struct {
 } uv_pyxis_resource_t;
 
 /* Additional child resources; memory/clock/launcher retain ordinary attenuation.
- * Names memory, clock, launcher and script are reserved. Arrays, names and
+ * A record replaces an inherited capability of the same name. Names must be
+ * unique; memory, clock, launcher and script are reserved. Arrays, names and
  * source handles are borrowed until return; source grants survive all outcomes.
  * Native launch capture/startup budgets apply. Close process after failure too. */
 UV_EXTERN int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,

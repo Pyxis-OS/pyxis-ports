@@ -81,7 +81,9 @@ name, source handle, rights and transport. Ordinary spawn forwards explicitly
 exported named capabilities, including native FILEs and controllers, with their
 actual masks and transport. The fixed memory/clock/launcher roles retain their
 narrowed masks; stdio and bundle-owned context keep their selected handoffs.
-The additional records augment these selected grants. Empty or duplicate
+A record replaces the inherited forward of the same name, so a caller can
+narrow an exported capability, such as a create-only pipe service; other
+records add to the selected grants. Empty or duplicate record
 names and reserved names `memory`, `clock`, `launcher` and `script` reject before
 pipe creation or child publication. Requested rights/transport must be held by
 the source. Native capture and startup budgets apply; there is no separate
@@ -110,7 +112,7 @@ uses the existing native `exit_reason` and exit callback. Failure leaves an
 inactive process handle that still requires `uv_close`. Native uncertain
 admission maps to `UV_EIO`; launch errors must not cause automatic replay.
 Close releases observation without terminating or waiting for the child.
-Ordinary `uv_spawn` and additive `uv_pyxis_spawn` retain their existing behavior.
+Ordinary `uv_spawn` and `uv_pyxis_spawn` retain their existing behavior.
 
 `uv_pyxis_process_terminate` requests termination using the process handle's
 held native observer and its TERMINATE authority. It does not wait for cleanup,
