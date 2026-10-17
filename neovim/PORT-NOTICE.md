@@ -34,7 +34,7 @@ licence and SHA-256 are recorded in `app/metadata/source.txt`. Generated C
 parsers and scanners are compiled directly, without fetching or regenerating
 grammars during the target build.
 
-Local changes are recorded as ten ordered upstream-derived patches, retaining
+Local changes are recorded as eleven ordered upstream-derived patches, retaining
 the licences of the files they modify:
 
 1. `0001-pyxis-platform.patch`: native process observation/termination, explicit
@@ -65,8 +65,13 @@ the licences of the files they modify:
 10. `0010-pyxis-file-uris.patch`: file URIs carry the native root name as their
     first path segment (`home://a.c` is `file:///home/a.c`) in `vim.uri`, so LSP
     never sends a native path as a URI.
+11. `0011-pyxis-language-servers.patch`: language servers are never detached;
+    `vim.fs` parents, absolute paths and joins stop at a native root; a buffer
+    name under a root the editor does not hold is kept as given rather than
+    proved native; `vim.uri` treats server root views as native paths.
 
-Original recipe, host wrapper, configuration, colourscheme and documentation
+Original recipe, host wrapper, configuration, runtime Lua (`lsp/clangd.lua`,
+`lua/vim/_pyxis_roots.lua`), colourscheme and documentation
 are MPL-2.0 under the packaged `app/metadata/licenses/MPL-2.0` notice. The host help-tag wrapper
 uses real GNU find directory enumeration with NUL-framed names/types, then runs
 the unmodified upstream help-tag generator. Host generation adds no target

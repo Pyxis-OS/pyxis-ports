@@ -67,7 +67,10 @@ outside this profile. Swap/backup recovery and patchmode are unavailable.
 `vim.uri` maps a native path to a file URI with its root name as the first
 segment, `home://test/a.c` to `file:///home/test/a.c` and back; a buffer name
 is a native path only when the editor holds that root.
-Dynamic Lua modules, dynamic grammar loading, LSP and true-colour output
+Language servers run as attached children. The port ships an opt-in clangd
+configuration (`vim.lsp.enable('clangd')`) that shows the server bundle's own
+roots, such as `sysroot://`, as read-only views.
+Dynamic Lua modules, dynamic grammar loading and true-colour output
 are excluded. Seven upstream-bundled grammars are statically linked: `c`, `lua`,
 `vim`, `vimdoc`, `query`, `markdown` and `markdown_inline`. Language registration
 checks their actual Tree-sitter ABI and never uses `dlopen`. Lua, Markdown, help

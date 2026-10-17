@@ -1,0 +1,112 @@
+diff --git a/runtime/lua/vim/fs.lua b/runtime/lua/vim/fs.lua
+--- a/runtime/lua/vim/fs.lua
++++ b/runtime/lua/vim/fs.lua
+@@ -47,6 +47,9 @@ local M = {}
+ -- Lua's compiled path separator also works without a uname operation or editor API.
+ local iswin = package.config:sub(1, 1) == '\\'
+ local os_sep = iswin and '\\' or '/'
++local ispyxis = vim.fn.has('pyxis') == 1
++-- A Pyxis path is ROOT://rest, and its root is the top of the path.
++local PYXIS_ROOT_PATTERN = '^[%w._+-]+://'
+ 
+ --- Iterate over all the parents of the given path (not expanded/resolved, the caller must do that).
+ ---
+@@ -101,6 +104,12 @@ function M.dirname(file)
+       return file
+     end
+   end
++  local root = ispyxis and file:match(PYXIS_ROOT_PATTERN)
++  if root then
++    local rest = file:sub(#root + 1):gsub('/+$', '')
++    local parent = rest:match('^(.*)/')
++    return parent and root .. parent or root
++  end
+   if not file:match('/') then
+     return '.'
+   elseif file == '/' or file:match('^/[^/]+$') then
+@@ -159,8 +168,9 @@ function M.joinpath(...)
+ 
+   local path = table.concat(segments, '/')
+ 
+-  if vim.fn.has('pyxis') == 1 then
+-    return path
++  if ispyxis then
++    -- Joining onto a bare root, such as host://, adds no separator of its own.
++    return (path:gsub('^([%w._+-]+://)/+', '%1'))
+   end
+   return (path:gsub(iswin and '[/\\][/\\]*' or '//+', '/'))
+ end
+@@ -825,6 +835,10 @@ function M.abspath(path)
+   -- Expand ~ to user's home directory
+   path = expand_home(path)
+ 
++  if ispyxis and path:match(PYXIS_ROOT_PATTERN) then
++    return path
++  end
++
+   -- Convert path separator to `/`
+   path = path:gsub(os_sep, '/')
+ 
+diff --git a/runtime/lua/vim/lsp/_transport.lua b/runtime/lua/vim/lsp/_transport.lua
+--- a/runtime/lua/vim/lsp/_transport.lua
++++ b/runtime/lua/vim/lsp/_transport.lua
+@@ -43,7 +43,8 @@ function TransportRun:run(cmd, extra_spawn_params, on_read, on_exit)
+     assert(is_dir(extra_spawn_params.cwd), 'cwd must be a directory')
+   end
+ 
+-  local detached = not is_win
++  -- Pyxis has no detached children; the server stops with the editor.
++  local detached = not is_win and vim.fn.has('pyxis') == 0
+   if extra_spawn_params.detached ~= nil then
+     detached = extra_spawn_params.detached
+   end
+diff --git a/runtime/lua/vim/uri.lua b/runtime/lua/vim/uri.lua
+--- a/runtime/lua/vim/uri.lua
++++ b/runtime/lua/vim/uri.lua
+@@ -131,10 +131,11 @@ end
+ function M.uri_from_bufnr(buf)
+   local fname = vim.api.nvim_buf_get_name(buf)
+   if is_pyxis() then
+-    -- A name is a native file path only when this process holds its root;
+-    -- other schemes, such as man:// or term:// buffers, remain URIs.
++    -- A name is a native file path only when this process holds its root or
++    -- shows a language server's root read-only (vim._pyxis_roots); other
++    -- schemes, such as man:// or term:// buffers, remain URIs.
+     local root = fname:match(PYXIS_PATH_PATTERN)
+-    if root and vim.uv.fs_stat(root .. '://') then
++    if root and (vim.uv.fs_stat(root .. '://') or require('vim._pyxis_roots').views[root]) then
+       return pyxis_uri_from_fname(fname)
+     end
+     if fname:match(URI_SCHEME_PATTERN) then
+diff --git a/src/nvim/path.c b/src/nvim/path.c
+--- a/src/nvim/path.c
++++ b/src/nvim/path.c
+@@ -1931,6 +1931,16 @@ char *fix_fname(const char *fname)
+ }
+ 
+ #ifdef __pyxis__
++// A root is held when its own directory opens, such as home:// for home://a.
++static bool path_native_root_held(const char *fname)
++{
++  char root[MAXPATHL];
++  size_t len = (size_t)(strchr(fname, ':') + 3 - fname);
++  memcpy(root, fname, len);
++  root[len] = NUL;
++  return os_isdir(root);
++}
++
+ // File selection must anchor a possibly absent leaf to a proved existing parent.
+ char *path_native_file_name(const char *fname)
+ {
+@@ -1944,6 +1954,11 @@ char *path_native_file_name(const char *fname)
+   char *full = xmalloc(MAXPATHL);
+   if (path_to_absolute(fname, full, MAXPATHL, true) == FAIL) {
+     xfree(full);
++    // As with URLs elsewhere, a root this process does not hold names no
++    // native file; Lua may still show the buffer, e.g. a language server root.
++    if (path_is_absolute(fname) && !path_native_root_held(fname)) {
++      return xstrdup(fname);
++    }
+     emsg(_("E212: Cannot prove native file parent"));
+     return NULL;
+   }
