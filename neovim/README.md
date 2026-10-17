@@ -64,6 +64,9 @@ lookup, `jobstop` and Ctrl+C terminate at once, and temporary files live in
 `tmp://`. `:terminal`, PTY and detached jobs, socket listeners, Unix signals,
 numeric PID operations, workers, asynchronous filesystem calls and watches are
 outside this profile. Swap/backup recovery and patchmode are unavailable.
+`vim.uri` maps a native path to a file URI with its root name as the first
+segment, `home://test/a.c` to `file:///home/test/a.c` and back; a buffer name
+is a native path only when the editor holds that root.
 Dynamic Lua modules, dynamic grammar loading, LSP and true-colour output
 are excluded. Seven upstream-bundled grammars are statically linked: `c`, `lua`,
 `vim`, `vimdoc`, `query`, `markdown` and `markdown_inline`. Language registration

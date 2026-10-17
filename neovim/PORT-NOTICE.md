@@ -34,7 +34,7 @@ licence and SHA-256 are recorded in `app/metadata/source.txt`. Generated C
 parsers and scanners are compiled directly, without fetching or regenerating
 grammars during the target build.
 
-Local changes are recorded as nine ordered upstream-derived patches, retaining
+Local changes are recorded as ten ordered upstream-derived patches, retaining
 the licences of the files they modify:
 
 1. `0001-pyxis-platform.patch`: native process observation/termination, explicit
@@ -62,6 +62,9 @@ the licences of the files they modify:
 9. `0009-pyxis-external-jobs.patch`: external jobs and shell commands as native
    children over pipes, immediate native termination on stop, and executable
    checks through the shared program lookup; PTY and detached jobs reject.
+10. `0010-pyxis-file-uris.patch`: file URIs carry the native root name as their
+    first path segment (`home://a.c` is `file:///home/a.c`) in `vim.uri`, so LSP
+    never sends a native path as a URI.
 
 Original recipe, host wrapper, configuration, colourscheme and documentation
 are MPL-2.0 under the packaged `app/metadata/licenses/MPL-2.0` notice. The host help-tag wrapper

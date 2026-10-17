@@ -1,0 +1,92 @@
+diff --git a/runtime/lua/vim/uri.lua b/runtime/lua/vim/uri.lua
+--- a/runtime/lua/vim/uri.lua
++++ b/runtime/lua/vim/uri.lua
+@@ -56,10 +56,59 @@ function M.uri_decode(str)
+   return (str:gsub('%%([a-fA-F0-9][a-fA-F0-9])', hex_to_char)) -- clamped to 1 retval with ()
+ end
+ 
++-- Pyxis paths are ROOT://rest, and each process names its own roots. A file URI
++-- carries the root name as its first path segment: home://test/a.c is
++-- file:///home/test/a.c. A Pyxis path is never sent as a URI itself, since
++-- home://test/... would parse "test" as a host.
++local PYXIS_PATH_PATTERN = '^([%w._+-]+)://(.*)$'
++
++local pyxis ---@type boolean?
++
++-- Checked once, so later conversions also work in fast callbacks.
++---@return boolean
++local function is_pyxis()
++  if pyxis == nil then
++    pyxis = vim.fn.has('pyxis') == 1
++  end
++  return pyxis
++end
++
++---@param path string
++---@return string URI
++local function pyxis_uri_from_fname(path)
++  local root, rest = path:match(PYXIS_PATH_PATTERN)
++  if not root and path:sub(1, 1) ~= '/' then
++    -- A relative name is resolved against the editor's working directory.
++    path = vim.fn.fnamemodify(path, ':p')
++    root, rest = path:match(PYXIS_PATH_PATTERN)
++  end
++  if not root then
++    error('Pyxis path has no root: ' .. path)
++  end
++  return 'file:///' .. M.uri_encode(root) .. '/' .. M.uri_encode(rest)
++end
++
++---@param uri string file URI without a fragment
++---@return string filename
++local function pyxis_uri_to_fname(uri)
++  local authority, path = uri:match('^file://([^/]*)(/.*)$')
++  if authority ~= '' then
++    error('Pyxis file URI must have an empty authority and an absolute path: ' .. uri)
++  end
++  local root, rest = path:match('^/([^/]+)/?(.*)$')
++  if not root then
++    error('Pyxis file URI has no root segment: ' .. uri)
++  end
++  return M.uri_decode(root) .. '://' .. M.uri_decode(rest)
++end
++
+ ---Gets a URI from a file path.
+ ---@param path string Path to file
+ ---@return string URI
+ function M.uri_from_fname(path)
++  if is_pyxis() then
++    return pyxis_uri_from_fname(path)
++  end
+   local volume_path, fname = path:match('^([a-zA-Z]:)(.*)') ---@type string?, string?
+   local is_windows = volume_path ~= nil
+   if is_windows then
+@@ -81,6 +130,18 @@ end
+ ---@return string URI
+ function M.uri_from_bufnr(buf)
+   local fname = vim.api.nvim_buf_get_name(buf)
++  if is_pyxis() then
++    -- A name is a native file path only when this process holds its root;
++    -- other schemes, such as man:// or term:// buffers, remain URIs.
++    local root = fname:match(PYXIS_PATH_PATTERN)
++    if root and vim.uv.fs_stat(root .. '://') then
++      return pyxis_uri_from_fname(fname)
++    end
++    if fname:match(URI_SCHEME_PATTERN) then
++      return fname
++    end
++    return pyxis_uri_from_fname(fname)
++  end
+   local volume_path = fname:match('^([a-zA-Z]:).*')
+   local is_windows = volume_path ~= nil
+   local scheme ---@type string?
+@@ -109,6 +170,9 @@ function M.uri_to_fname(uri)
+   if fragment_index ~= nil then
+     uri = uri:sub(1, fragment_index - 1)
+   end
++  if is_pyxis() then
++    return pyxis_uri_to_fname(uri)
++  end
+   uri = M.uri_decode(uri)
+   --TODO improve this.
+   if is_windows_file_uri(uri) then
