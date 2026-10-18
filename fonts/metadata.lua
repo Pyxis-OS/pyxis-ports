@@ -91,7 +91,7 @@ local assets = {
     style = "Bold",
   },
   {
-    key = "cascadia_license",
+    key = "license",
     family = "caskaydia-cove",
     source = "main",
     path = "LICENSE",
@@ -313,8 +313,6 @@ end
 for _, family in ipairs(families) do
   outputs[family.source .. "_provenance"] = "share/fonts/" .. family.name .. "/source.txt"
 end
--- The runner requires the primary upstream licence output.
-outputs.license = outputs.cascadia_license
 
 return {
   source = {
