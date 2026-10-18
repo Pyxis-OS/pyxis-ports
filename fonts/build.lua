@@ -2,10 +2,15 @@ return function(ctx)
   local metadata = ctx.metadata
   local roots = { main = ctx.source, sans = ctx.extra.sans,
     serif = ctx.extra.serif, recipe = ctx.recipe }
+  local checksums = assert(io.open(ctx.build .. "/assets.sha256", "w"))
   for _, asset in ipairs(metadata.assets) do
     ctx.run({ "install", "-D", "-m", "644", roots[asset.source] .. "/" .. asset.path,
       ctx.stage .. "/" .. metadata.outputs[asset.key] })
+    assert(checksums:write(asset.sha256, "  ", ctx.stage, "/",
+      metadata.outputs[asset.key], "\n"))
   end
+  assert(checksums:close())
+  ctx.run({ "sha256sum", "--check", "--status", ctx.build .. "/assets.sha256" })
 
   for _, family in ipairs(metadata.families) do
     local archive = metadata.source.archive

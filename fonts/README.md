@@ -17,7 +17,8 @@ already provide Python 3; no compiler-container rebuild is needed. No font
 compiler, patcher, subsetting, renaming or target compilation is involved.
 
 `metadata.lua` is the staged-file inventory and records exact archive and member
-hashes. It selects the plain NerdFont files, excluding Mono/Propo variants, and
+hashes. Staged copies are checked against those hashes before provenance is
+written. It selects the plain NerdFont files, excluding Mono/Propo variants, and
 Plex's `fonts/complete/ttf/` files. CaskaydiaCove text is monospaced; some icons
 have wider advances. Each family directory includes its original OFL notice
 and generated `source.txt` with styles, byte counts, hashes and upstream URLs.
