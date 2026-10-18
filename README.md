@@ -43,6 +43,9 @@ A recipe may use `source.archive = { url = "https://...", mirror =
 upstream file and `mirror` its cached copy under `https://repo.internal/`,
 which the runner downloads. The checksum is mandatory and verified before tar
 extraction, which removes the release archive's single top-level directory.
+Set `archive.strip_components = 0` for a flat tar archive. Set
+`archive.format = "zip"` to extract with Python 3's standard-library `zipfile`,
+preserving ZIP paths instead; list `python3` as a host dependency in that case.
 `source.url` and the exact `source.commit` remain upstream provenance; the
 archive checksum identifies the actual build input. Archive recipes list curl,
 sha256sum, tar and the relevant decompressor as host dependencies.

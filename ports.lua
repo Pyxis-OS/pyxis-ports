@@ -8,6 +8,7 @@ return {
   eduke32 = "eduke32",
   fastfetch = "fastfetch",
   fmt = "fmt",
+  fonts = "fonts",
   kilo = "kilo",
   jq = "jq",
   links = "links",

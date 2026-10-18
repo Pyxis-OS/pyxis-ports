@@ -49,10 +49,18 @@ local function download_file(download, file)
     "source download checksum mismatch: " .. download.mirror)
 end
 
--- Extract a release archive without its single top-level directory.
-local function extract_archive(file, directory)
-  run({ "tar", "--extract", "--file", file, "--directory", directory,
-    "--strip-components=1", "--no-same-owner" })
+-- Tar releases normally have one enclosing directory; ZIPs retain their paths.
+local function extract_archive(file, directory, archive)
+  if archive.format == "zip" then
+    assert(archive.strip_components == nil, "ZIP extraction preserves archive paths")
+    run({ "python3", "-m", "zipfile", "--extract", file, directory })
+  else
+    assert(archive.format == nil or archive.format == "tar", "unknown archive format")
+    local strip = archive.strip_components or 1
+    assert(strip == 0 or strip == 1, "tar strip_components must be 0 or 1")
+    run({ "tar", "--extract", "--file", file, "--directory", directory,
+      "--strip-components=" .. strip, "--no-same-owner" })
+  end
   -- git apply resolves paths from the enclosing repository, which may be
   -- the checkout holding the work directory; give the source its own.
   run({ "git", "init", "--quiet", directory })
@@ -232,7 +240,7 @@ local function main()
     local downloaded = source_file and source .. "/" .. source_file.name or work .. "/source.tar"
     download_file(download, downloaded)
     if archive then
-      extract_archive(downloaded, source)
+      extract_archive(downloaded, source, archive)
     end
   else
     fetch_commit(metadata.source.mirror, revision, source)
@@ -247,7 +255,7 @@ local function main()
     if entry.archive then
       local downloaded = work .. "/extra/" .. entry.name .. ".tar"
       download_file(entry.archive, downloaded)
-      extract_archive(downloaded, directory)
+      extract_archive(downloaded, directory, entry.archive)
     else
       fetch_commit(entry.mirror, entry.commit, directory)
     end

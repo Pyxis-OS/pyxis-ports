@@ -21,6 +21,12 @@ those recipes fetch, adapt or package.
 
 - Each port's `metadata.lua`, README and source notices identify its upstream
   license, pinned revision and local changes.
+- `fonts/notices/` contains verbatim third-party notices, pinned by original
+  URL and SHA-256 in [fonts/metadata.lua](fonts/metadata.lua). The staged font
+  files retain OFL-1.1 and their embedded Nerd icon terms: MIT, CC-BY-4.0,
+  Apache-2.0, OFL-1.1, Bitstream Vera and Unlicense. See
+  [fonts/README.md](fonts/README.md) and the staged per-family `source.txt`
+  attribution; the original recipe and documentation remain MPL-2.0.
 - `libuv/patches/` and `libuv/pyxis/watchers.c` retain upstream libuv's MIT
   license. Its other native platform files, recipe and documentation are original
   MPL-2.0 material; see `libuv/PORT-NOTICE`.
