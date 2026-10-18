@@ -59,7 +59,8 @@ Force still respects native write authority. References do not freeze names or
 contents, and equal timestamps do not prove equal bytes.
 
 External jobs and shell commands run as native children over pipes:
-`'shell'` is the Pyxis `shell -c`, executable checks use the shared program
+`'shell'` is the Pyxis `shell -c`; collection uses `>%s 2>&1` for stdout
+and stderr. Executable checks use the shared program
 lookup, `jobstop` and Ctrl+C terminate at once, and temporary files live in
 `tmp://`. `:terminal`, PTY and detached jobs, socket listeners, Unix signals,
 numeric PID operations, workers, asynchronous filesystem calls and watches are
@@ -107,3 +108,4 @@ or a shell-owned writable FAT mount named `fat32://`; it grants no disk or mount
 management authority. Without that source, ordinary startup is unchanged. Open
 `edit://FILE` explicitly to edit the selected scratch volume; inherited FAT views
 remain read-only. Device identifiers belong only in local configuration.
+
