@@ -1,0 +1,12 @@
+diff --git a/src/nvim/tui/terminfo.c b/src/nvim/tui/terminfo.c
+--- a/src/nvim/tui/terminfo.c
++++ b/src/nvim/tui/terminfo.c
+@@ -45,6 +45,8 @@ static const TerminfoEntry pyxis_terminfo = {
+     [kTerm_exit_ca_mode] = "\x1b[?1049l",
+     [kTerm_enter_reverse_mode] = "\x1b[7m",
+     [kTerm_enter_standout_mode] = "\x1b[7m",
++    // Every underline style, undercurl included, falls back to this; SGR 0 ends it.
++    [kTerm_enter_underline_mode] = "\x1b[4m",
+     [kTerm_exit_attribute_mode] = "\x1b[0m",
+     [kTerm_insert_line] = "\x1b[L",
+     [kTerm_parm_delete_line] = "\x1b[%p1%dM",
