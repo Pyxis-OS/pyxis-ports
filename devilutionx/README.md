@@ -9,7 +9,7 @@ data is included.
 License, and the executable links libmpq under the GPL. Nobody who distributes
 the combined program can meet both licences, so an image containing it is for
 the person who built it. `PORT-NOTICE` explains this and lists every licence
-staged with it. Pyxis builds this recipe only when `DIABLO_DATA` asks for it.
+staged with it. Pyxis builds this recipe only when `DEVILUTIONX=1` asks for the program, without game data.
 
 ```sh
 lua build.lua devilutionx --sdk /path/to/pyxis/build/sdk \

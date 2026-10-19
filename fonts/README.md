@@ -3,8 +3,8 @@
 This data-only recipe stages nine unchanged static TrueType fonts under
 `share/fonts/`: CaskaydiaCove Nerd Font Regular, Bold, Italic and Bold Italic
 (Nerd Fonts v3.5.1), IBM Plex Sans Regular and Bold (1.1.0), and IBM Plex Serif
-Regular, Bold and Italic (2.0.0). Pyxis includes this shared data in its ordinary
-boot archive. The SDK exports libfont separately; these files are runtime data.
+Regular, Bold and Italic (2.0.0). Pyxis prepares this tree only for the `fonts`
+package, outside the boot archive. The SDK exports libfont separately; these files are runtime data.
 
 ```sh
 lua build.lua fonts --sdk /path/to/pyxis/build/sdk
@@ -36,6 +36,6 @@ verified. The already patched release supplies the renamed CaskaydiaCove
 family; this recipe makes no modified font.
 
 The nine fonts total 12,629,928 bytes. Original notices add 94,098 bytes, before
-the generated provenance and boot-archive headers/padding. A 13 MiB planning
+the generated provenance and package headers/padding. A 13 MiB planning
 allowance is an estimate, not a runtime limit. No terminal integration, font
 discovery, default selection or hosted-Clang example is included here.
