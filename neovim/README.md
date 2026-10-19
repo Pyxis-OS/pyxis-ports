@@ -69,8 +69,13 @@ outside this profile. Swap/backup recovery and patchmode are unavailable.
 segment, `home://test/a.c` to `file:///home/test/a.c` and back; a buffer name
 is a native path only when the editor holds that root.
 Language servers run as attached children. The port ships an opt-in clangd
-configuration (`vim.lsp.enable('clangd')`) that shows the server bundle's own
-roots, such as `sysroot://`, as read-only views.
+configuration (`vim.lsp.enable('clangd')`) that resolves bare `clangd` through
+the held command list. Resource views such as `sysroot://` come from the exact
+retained selection libuv launched, without reopening its manifest or resolving
+the command again. The editor's own roots take precedence. Header buffers pin
+read-only directory copies through package switches and server exit; a new read
+with conflicting active server roots refuses as ambiguous. Server exit removes
+only its active bindings; wiping a buffer releases its retained view.
 Dynamic Lua modules, dynamic grammar loading and true-colour output
 are excluded. Seven upstream-bundled grammars are statically linked: `c`, `lua`,
 `vim`, `vimdoc`, `query`, `markdown` and `markdown_inline`. Language registration

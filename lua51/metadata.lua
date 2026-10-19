@@ -20,7 +20,8 @@ return {
           mirror = "https://repo.internal/repository/raw-github/luvit/luv/archive/1.52.1-0.tar.gz",
           sha256 = "e8b8774b31d24be4fcf2b021b90599ecccc8e476c61efcc59c3c10cab813a885",
         },
-        patches = { "patches/luv-0001-pyxis-native.patch" } },
+        patches = { "patches/luv-0001-pyxis-native.patch",
+          "patches/luv-0002-pyxis-resources.patch" } },
       { name = "compat53", url = "https://github.com/lunarmodules/lua-compat-5.3",
         archive = {
           url = "https://github.com/lunarmodules/lua-compat-5.3/archive/v0.13.tar.gz",

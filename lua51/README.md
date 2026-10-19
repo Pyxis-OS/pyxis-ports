@@ -126,3 +126,11 @@ console streams, child processes and synchronous filesystem calls.
 - compat-5.3's Lua modules and LPeg's `re.lua` are not staged.
 
 Lua, LPeg and lua-compat-5.3 are MIT; luv is Apache-2.0.
+
+On Pyxis, `process:pyxis_resources()` copies declared resource roots from the
+exact command selection libuv launched. Its table maps root names to owned
+read-only directory userdata. `root:read(relative_path)` reads within that held
+root, including native traversal boundary checks; `root:same(other)` compares
+held domain/object identity, returning `nil` when unavailable. Garbage collection
+releases copies independently of process exit or handle close. The private app
+root and external authority are not exposed. Image-backed jobs return no roots.

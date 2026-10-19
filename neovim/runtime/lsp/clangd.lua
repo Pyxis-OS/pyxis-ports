@@ -9,7 +9,7 @@ local markers = { 'compile_commands.json', 'compile_flags.txt', '.git' }
 --- @type vim.lsp.Config
 return {
   cmd = {
-    'home://toolchain/clang/payload/clangd.pxb',
+    'clangd',
     '--resource-dir=clang_resources://',
     '-j=4',
     '--background-index=false',
@@ -28,10 +28,5 @@ return {
       return
     end
     on_dir(vim.fs.root(bufnr, markers) or vim.fs.dirname(name))
-  end,
-  before_init = function(_, config)
-    if type(config.cmd) == 'table' then
-      require('vim._pyxis_roots').add_bundle(config.cmd[1])
-    end
   end,
 }

@@ -20,3 +20,7 @@ unsupported binary-mode `freopen` operation. Upstream-derived changes retain
 the licences of their files; original recipe and documentation are MPL-2.0
 under the packaged `licenses/MPL-2.0` notice. Native libuv adapter files also
 retain their MPL-2.0 notices.
+
+`luv-0002-pyxis-resources.patch` exposes read-only declared bundle resource roots
+from libuv's exact retained process selection, with GC ownership, confined file
+reads and held directory identity comparison for editor resource views.

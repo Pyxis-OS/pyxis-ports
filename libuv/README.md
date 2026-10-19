@@ -71,10 +71,13 @@ slots, buffered inherited input and detached, setuid or setgid flags reject
 before launch; Windows-only presentation flags are ignored, as on other
 non-Windows platforms.
 
-`options->file` is opened with libpyxis `program_open`, the shell's lookup: a
-bare name searches `bin://`, the development catalog, `boot://` and then
-`home://bin/`, and a `.pxb` path or name selects a bundle's default entry. A
-bundle child is prepared from its manifest with only the authority this process
+`options->file` uses shared libpyxis lookup over one captured held command
+list. Bare names have no fallback roots or development catalog; explicit paths
+keep their meaning. A supplied `commands` resource selects that same list for
+lookup and child inheritance. Absent `PATH` uses the list; a supplied or inherited
+`PATH` must equal its colon-joined diagnostic labels for a bare-name launch.
+Unsupported textual search refuses instead of being ignored. A bundle child
+retains its selected command and full manifest policy, prepared with only the authority this process
 holds: memory, clock, threads, random, launcher, pipe, system information, TCP,
 UDP, echo, profile and configured bundle sources. The console and input devices
 are not offered; the child's streams are the selected stdio. A required grant
@@ -99,8 +102,10 @@ pipe creation or child publication. Requested rights/transport must be held by
 the source. Native capture and startup budgets apply; there is no separate
 resource-count policy. CAP/TEXT name collisions refuse before launch; standard
 stream choices replace or omit those names in child staging. The array, names and source handles are borrowed until
-return and preserved on success and failure. No extra reference survives launch
-capture in the parent. Ordinary `uv_spawn` continues to delegate no pipe/create
+return and preserved on success and failure. `uv_pyxis_process_selection` borrows
+that successful launch's exact selection until process close, including bundle
+resources and fixed package provenance. Resource consumers must retain their own
+read-only copies to outlive the process handle. Ordinary `uv_spawn` continues to delegate no pipe/create
 resource. Neovim selects that resource only for its same-image internal `--embed`
 server, allowing both event loops to create their own wake pipes.
 
@@ -181,7 +186,8 @@ and `uv_os_environ` returns a separately owned enumeration. Spawn captures the
 current cwd/environment. A supplied cwd resolves in an independent child context,
 and a supplied environment replaces inheritance, including an empty array.
 Relative executable and script interpreter paths resolve in the child context;
-there is no colon-separated PATH search or Unix slash-root namespace.
+textual PATH cannot add directory authority, and there is no Unix slash-root
+namespace.
 `uv_print_all_handles` walks actual loop handles and prints their live state;
 `uv_freeaddrinfo` releases the upstream contiguous result allocation, although
 address lookup itself remains unsupported.

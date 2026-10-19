@@ -77,6 +77,7 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
 
 #define UV_PROCESS_PRIVATE_FIELDS \
   handle_t observer; \
+  struct command_selection *selection; \
   uint64_t exit_reason; \
   unsigned admitted;
 

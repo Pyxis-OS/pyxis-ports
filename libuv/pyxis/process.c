@@ -108,10 +108,11 @@ static int grant_same(struct launch_grant *grant, handle_t source)
   return 0;
 }
 
-/* The shell's lookup: a bare name searches bin://, the catalog, boot:// and
- * home://bin, and a .pxb names a bundle, which owns the borrowed IMAGE. */
-static int open_program(const struct path_context *context, const char *path,
-    handle_t *image, struct bundle_program **bundle)
+/* The retained list determines bare-name lookup; explicit paths keep their
+ * ordinary meaning. The returned selection owns the image and bundle policy. */
+static int open_program(const struct path_context *context,
+    const struct command_search_capture *search, const char *path,
+    struct command_selection **selection)
 {
   size_t length = strlen(path);
   if (length > SIZE_MAX - PROGRAM_LOOKUP_EXTRA ||
@@ -133,7 +134,7 @@ static int open_program(const struct path_context *context, const char *path,
     .component = component, .component_capacity = capacity,
   };
   environment_capability(startup_environment_handle(), "clock", &workspace.clock);
-  enum call_status status = program_open(context, path, &workspace, image, bundle);
+  enum call_status status = program_open_search(context, search, path, &workspace, selection);
   if (workspace.clock != HANDLE_INVALID) {
     handle_close(workspace.clock);
   }
@@ -227,6 +228,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
    * observer or wait admission until publication succeeds. */
   uv__handle_init(loop, (uv_handle_t *)process, UV_PROCESS);
   process->observer = HANDLE_INVALID;
+  process->selection = NULL;
   process->exit_reason = 0;
   process->pid = UV_ENOSYS;
   process->exit_cb = options->exit_cb;
@@ -257,8 +259,10 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   if (error) {
     return error;
   }
-  handle_t image = HANDLE_INVALID, launcher = HANDLE_INVALID;
-  struct bundle_program *bundle = NULL;
+  handle_t launcher = HANDLE_INVALID;
+  struct command_selection *selection = NULL;
+  struct command_search_capture search = {0};
+  const char *search_path = NULL;
   struct bundle_launch *bundle_launch = NULL;
   struct pyxis_working_snapshot working = {0};
   struct pyxis_environment_snapshot inherited_environment = {0};
@@ -277,6 +281,32 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   if (snapshot_status != CALL_OK) {
     error = uv__pyxis_status(snapshot_status);
     goto done;
+  }
+  handle_t command_list = HANDLE_INVALID;
+  bool explicit_commands = false;
+  for (size_t i = 0; i < extra_count; ++i) {
+    if (!strcmp(extra_resources[i].name, "commands")) {
+      command_list = extra_resources[i].source;
+      explicit_commands = true;
+      break;
+    }
+  }
+  if (!explicit_commands) {
+    const struct environment_value *value = environment_capture_find(&selected, "commands");
+    if (value) {
+      if (value->kind != ENVIRONMENT_CAP) {
+        error = uv__pyxis_status(CALL_WRONG_TYPE);
+        goto done;
+      }
+      command_list = value->handle;
+    }
+  }
+  if (command_list != HANDLE_INVALID) {
+    snapshot_status = command_search_capture_list(command_list, &search);
+    if (snapshot_status != CALL_OK) {
+      error = uv__pyxis_status(snapshot_status);
+      goto done;
+    }
   }
   if (options->env) {
     while (options->env[environment_count]) {
@@ -414,6 +444,9 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       name = inherited_environment.capture.values[i].name;
       value = inherited_environment.capture.values[i].text;
     }
+    if (!strcmp(name, "PATH")) {
+      search_path = value;
+    }
     /* Explicit descriptor selection replaces/removes standard names and the
      * stream companions only in this child's entry staging. */
     if (!strcmp(name, "commands")) {
@@ -436,6 +469,13 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     entries[entry_count++] = (struct launch_environment_entry){(uintptr_t)name,
       ENVIRONMENT_TEXT, ENVIRONMENT_EXPORTED, (uintptr_t)value, strlen(value)};
   }
+  if (!program_is_explicit(options->file)) {
+    snapshot_status = program_search_path_validate(search_path, &search);
+    if (snapshot_status != CALL_OK) {
+      error = uv__pyxis_status(snapshot_status);
+      goto done;
+    }
+  }
   struct launch_request request = {
     .grants = (uintptr_t)grants,
     .entries = (uintptr_t)entries,
@@ -452,14 +492,11 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     error = uv__pyxis_status(snapshot_status);
     goto done;
   }
-  error = open_program(&working.context, options->file, &image, &bundle);
+  error = open_program(&working.context, &search, options->file, &selection);
   if (error) {
     goto done;
   }
-  if (bundle) {
-    image = HANDLE_INVALID;
-  }
-  request.image = bundle ? bundle_program_image(bundle) : image;
+  request.image = selection->image;
   for (size_t i = 0; i < ENVIRONMENT_STREAM_COUNT; ++i) {
     if (streams[i].stream) {
       struct pipe_create_reply pair;
@@ -507,8 +544,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   }
   request.grant_count = grant_count;
   request.entry_count = entry_count;
-  if (bundle) {
-    error = prepare_bundle(bundle, &request, &selected, &bundle_launch);
+  if (selection->bundle) {
+    error = prepare_bundle(selection->bundle, &request, &selected, &bundle_launch);
     if (error) {
       goto done;
     }
@@ -523,6 +560,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     goto done;
   }
   process->observer = observer;
+  process->selection = selection;
+  selection = NULL;
   process->admitted = 1;
   uv__handle_start(process);
   for (size_t i = 0; i < ENVIRONMENT_STREAM_COUNT; ++i) {
@@ -540,10 +579,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
 
 done:
   bundle_launch_close(bundle_launch);
-  bundle_program_close(bundle);
-  if (image != HANDLE_INVALID) {
-    handle_close(image);
-  }
+  command_selection_close(selection);
+  command_search_capture_close(&search);
   if (launcher != HANDLE_INVALID) {
     handle_close(launcher);
   }
@@ -580,6 +617,7 @@ int uv_pyxis_spawn_job(uv_loop_t *loop, uv_process_t *process,
   }
   uv__handle_init(loop, (uv_handle_t *)process, UV_PROCESS);
   process->observer = HANDLE_INVALID;
+  process->selection = NULL;
   process->exit_reason = 0;
   process->pid = UV_ENOSYS;
   process->exit_cb = exit_cb;
@@ -619,8 +657,15 @@ void uv__pyxis_process_dispatch(uv_process_t *process)
   }
 }
 
+const struct command_selection *uv_pyxis_process_selection(const uv_process_t *process)
+{
+  return process && process->type == UV_PROCESS ? process->selection : NULL;
+}
+
 void uv__pyxis_process_close(uv_process_t *process)
 {
+  command_selection_close(process->selection);
+  process->selection = NULL;
   if (process->observer != HANDLE_INVALID) {
     handle_close(process->observer);
     process->observer = HANDLE_INVALID;

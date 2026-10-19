@@ -1,0 +1,174 @@
+--- a/src/process.c
++++ b/src/process.c
+@@ -33,6 +33,8 @@
+ }
+ 
+ #ifdef __pyxis__
++#include "pyxis-resources.h"
++
+ /* Pyxis: the native result says how the child ended. A fault or termination
+  * reports status -1 and signal 0, which the status alone cannot tell apart
+  * from exit(-1), so the callback gets the reason as a third argument. */
+--- a/src/luv.c
++++ b/src/luv.c
+@@ -145,6 +145,9 @@
+   {"disable_stdio_inheritance", luv_disable_stdio_inheritance},
+   {"spawn", luv_spawn},
+   {"process_kill", luv_process_kill},
++#ifdef __pyxis__
++  {"process_pyxis_resources", luv_process_pyxis_resources},
++#endif
+ #if LUV_UV_VERSION_GEQ(1, 19, 0)
+   {"process_get_pid", luv_process_get_pid},
+ #endif
+@@ -555,6 +558,9 @@
+ };
+ 
+ static const luaL_Reg luv_process_methods[] = {
++#ifdef __pyxis__
++  {"pyxis_resources", luv_process_pyxis_resources},
++#endif
+   {"kill", luv_process_kill},
+ #if LUV_UV_VERSION_GEQ(1, 19, 0)
+   {"get_pid", luv_process_get_pid},
+--- /dev/null
++++ b/src/pyxis-resources.h
+@@ -0,0 +1,138 @@
++/* Retained read-only roots from the program selection that this process ran. */
++#include <uv/pyxis-native.h>
++#include <command_selection.h>
++#include <file.h>
++#include <handle.h>
++#include <path.h>
++
++struct luv_pyxis_root {
++  handle_t handle;
++};
++
++static int luv_pyxis_root_close(lua_State* L) {
++  struct luv_pyxis_root* root = lua_touserdata(L, 1);
++  if (root->handle != HANDLE_INVALID) {
++    handle_close(root->handle);
++    root->handle = HANDLE_INVALID;
++  }
++  return 0;
++}
++
++static int luv_pyxis_root_read(lua_State* L) {
++  struct luv_pyxis_root* root = luaL_checkudata(L, 1, "luv_pyxis_root");
++  size_t length;
++  const char* path = luaL_checklstring(L, 2, &length);
++  luaL_argcheck(L, length && path[0] != '/' && !memchr(path, ':', length)
++      && !memchr(path, '\0', length), 2, "expected relative file path");
++  if (length > SIZE_MAX / sizeof(handle_t) - 2) {
++    return luaL_error(L, "resource path too long");
++  }
++  /* Lua owns scratch and the provisional FILE before any fallible Lua allocation. */
++  handle_t* directories = lua_newuserdata(L, (length + 2) * sizeof(handle_t));
++  char* component = lua_newuserdata(L, length + 1);
++  struct luv_pyxis_root* file = lua_newuserdata(L, sizeof(*file));
++  file->handle = HANDLE_INVALID;
++  if (luaL_newmetatable(L, "luv_pyxis_file")) {
++    lua_pushcfunction(L, luv_pyxis_root_close);
++    lua_setfield(L, -2, "__gc");
++  }
++  lua_setmetatable(L, -2);
++  struct path_context context = {
++    .directories = &root->handle, .count = 1, .capacity = 1,
++  };
++  struct path_workspace workspace = {
++    .directories = directories, .directory_capacity = length + 2,
++    .component = component, .component_capacity = length + 1,
++  };
++  enum call_status status = path_open_file(&context, path, FILE_RIGHT_READ, false,
++      &workspace, &file->handle);
++  if (status != CALL_OK) {
++    return luaL_error(L, "resource open failed (native status %d)", (int)status);
++  }
++  luaL_Buffer buffer;
++  luaL_buffinit(L, &buffer);
++  uint64_t offset = 0;
++  for (;;) {
++    char bytes[LUAL_BUFFERSIZE];
++    size_t count;
++    status = file_read(file->handle, offset, bytes, sizeof(bytes), &count);
++    if (status != CALL_OK) {
++      handle_close(file->handle);
++      file->handle = HANDLE_INVALID;
++      return luaL_error(L, "resource read failed (native status %d)", (int)status);
++    }
++    if (!count) {
++      break;
++    }
++    luaL_addlstring(&buffer, bytes, count);
++    if (count > UINT64_MAX - offset) {
++      handle_close(file->handle);
++      file->handle = HANDLE_INVALID;
++      return luaL_error(L, "resource read offset overflow");
++    }
++    offset += count;
++  }
++  handle_close(file->handle);
++  file->handle = HANDLE_INVALID;
++  luaL_pushresult(&buffer);
++  return 1;
++}
++
++/* Identity is useful only while both owned roots remain held. Unavailable
++ * identity cannot prove that two servers expose the same resource tree. */
++static int luv_pyxis_root_same(lua_State* L) {
++  struct luv_pyxis_root* a = luaL_checkudata(L, 1, "luv_pyxis_root");
++  struct luv_pyxis_root* b = luaL_checkudata(L, 2, "luv_pyxis_root");
++  struct file_info_reply first, second;
++  enum call_status status = directory_info(a->handle, &first);
++  if (status == CALL_OK) {
++    status = directory_info(b->handle, &second);
++  }
++  if (status != CALL_OK) {
++    return luaL_error(L, "resource identity failed (native status %d)", (int)status);
++  }
++  uint64_t identity = FILE_INFO_DOMAIN_VALID | FILE_INFO_OBJECT_VALID;
++  if ((first.valid & identity) != identity || (second.valid & identity) != identity) {
++    lua_pushnil(L);
++  } else {
++    lua_pushboolean(L, first.domain == second.domain && first.object == second.object);
++  }
++  return 1;
++}
++
++static int luv_process_pyxis_resources(lua_State* L) {
++  uv_process_t* process = luv_check_process(L, 1);
++  const struct command_selection* selection = uv_pyxis_process_selection(process);
++  lua_newtable(L);
++  if (!selection || !selection->bundle) {
++    return 1;
++  }
++  size_t count;
++  const struct environment_value* entries = bundle_program_entries(selection->bundle, &count);
++  for (size_t i = 0; i < count; ++i) {
++    /* app is the bundle's private program root, not a declared resource view. */
++    if (entries[i].kind != ENVIRONMENT_CAP || !strcmp(entries[i].name, "app")) {
++      continue;
++    }
++    struct luv_pyxis_root* root = lua_newuserdata(L, sizeof(*root));
++    root->handle = HANDLE_INVALID;
++    if (luaL_newmetatable(L, "luv_pyxis_root")) {
++      lua_pushcfunction(L, luv_pyxis_root_close);
++      lua_setfield(L, -2, "__gc");
++      lua_newtable(L);
++      lua_pushcfunction(L, luv_pyxis_root_read);
++      lua_setfield(L, -2, "read");
++      lua_pushcfunction(L, luv_pyxis_root_same);
++      lua_setfield(L, -2, "same");
++      lua_setfield(L, -2, "__index");
++    }
++    lua_setmetatable(L, -2);
++    enum call_status status = handle_copy_restricted(entries[i].handle,
++        DIRECTORY_RIGHT_LOOKUP | DIRECTORY_RIGHT_READ_FILES, 0, &root->handle);
++    if (status != CALL_OK) {
++      return luaL_error(L, "resource retention failed (native status %d)", (int)status);
++    }
++    lua_setfield(L, -2, entries[i].name);
++  }
++  return 1;
++}

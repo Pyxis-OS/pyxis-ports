@@ -23,6 +23,14 @@ UV_EXTERN int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     const uv_process_options_t *options, const uv_pyxis_resource_t *resources,
     size_t resource_count);
 
+struct command_selection;
+
+/* The exact successful name/path selection, borrowed until process close.
+ * Includes full bundle policy and fixed package provenance; NULL for native
+ * image-backed jobs and unsuccessful spawns. Copy resources to retain views. */
+UV_EXTERN const struct command_selection *uv_pyxis_process_selection(
+    const uv_process_t *process);
+
 struct pyxis_job_options;
 
 /* Exact native job inventory, with libc FILE/descriptor preparation and audit.

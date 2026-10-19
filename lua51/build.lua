@@ -51,7 +51,7 @@ return function(ctx)
       entry.name .. "_sha256=" .. entry.archive.sha256 .. "\n"))
   end
   assert(provenance:write("patches=0001-pyxis-runtime.patch 0002-pyxis-file-abandonment.patch",
-    " luv-0001-pyxis-native.patch",
+    " luv-0001-pyxis-native.patch luv-0002-pyxis-resources.patch",
     " compat53-0001-no-reopen.patch\n",
     "license=MIT (Lua, LPeg, lua-compat-5.3), Apache-2.0 (luv)\n"))
   assert(provenance:close())

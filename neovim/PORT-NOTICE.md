@@ -73,6 +73,10 @@ the licences of the files they modify:
     for underline, which every underline style falls back to, so diagnostics are
     underlined.
 
+13. `0013-pyxis-command-selection.patch`: executable probes use shared held-list
+    resolution; language-server resource views copy the actual admitted process
+    selection and retain each buffer's read-only root.
+
 Original recipe, host wrapper, configuration, runtime Lua (`lsp/clangd.lua`,
 `lua/vim/_pyxis_roots.lua`), colourscheme and documentation
 are MPL-2.0 under the packaged `app/metadata/licenses/MPL-2.0` notice. The host help-tag wrapper
