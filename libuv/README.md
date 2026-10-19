@@ -74,7 +74,9 @@ non-Windows platforms.
 `options->file` uses shared libpyxis lookup over one captured held command
 list. Bare names have no fallback roots or development catalog; explicit paths
 keep their meaning. A supplied `commands` resource selects that same list for
-lookup and child inheritance. Absent `PATH` uses the list; a supplied or inherited
+lookup and child inheritance, replacing even a malformed inherited `commands`
+entry. The supplied list is still validated; explicit TEXT `commands` refuses.
+Absent `PATH` uses the list; a supplied or inherited
 `PATH` must equal its colon-joined diagnostic labels for a bare-name launch.
 Unsupported textual search refuses instead of being ignored. A bundle child
 retains its selected command and full manifest policy, prepared with only the authority this process

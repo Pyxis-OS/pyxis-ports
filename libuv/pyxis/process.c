@@ -344,6 +344,10 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   const uint64_t resource_rights[] = {MEMORY_RIGHT_MANAGE, CLOCK_RIGHTS, LAUNCHER_RIGHT_LAUNCH};
   for (size_t i = 0; i < selected.count; ++i) {
     const struct environment_value *value = &selected.values[i];
+    /* Replaced entries do not participate in validation or inheritance. */
+    if (resource_named(extra_resources, extra_count, value->name)) {
+      continue;
+    }
     if (!strcmp(value->name, "commands")) {
       enum call_status status = value->kind == ENVIRONMENT_CAP ?
           command_list_validate(value->handle) : CALL_WRONG_TYPE;
@@ -372,10 +376,6 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
         (info.kind != HANDLE_KIND_EXPORTED &&
           (!strcmp(value->name, "app") || !strcmp(value->name, "job_work") ||
            !strcmp(value->name, "job_provisioner") || !strcmp(value->name, "staging")))) {
-      continue;
-    }
-    /* An explicit record replaces this name's inherited forward and mask. */
-    if (resource_named(extra_resources, extra_count, value->name)) {
       continue;
     }
     uint64_t rights = info.rights;
@@ -450,6 +450,9 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     /* Explicit descriptor selection replaces/removes standard names and the
      * stream companions only in this child's entry staging. */
     if (!strcmp(name, "commands")) {
+      if (!options->env && explicit_commands) {
+        continue;
+      }
       error = uv__pyxis_status(CALL_WRONG_TYPE);
       goto done;
     }
