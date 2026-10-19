@@ -200,7 +200,7 @@ are not hard backing quotas.
 
 Omitted resources select the present `memory`, `threads`, `clock` and `random`
 roles. An explicit dense list selects only its named held grants; supported
-names also include `tcp`, `udp`, `pipe` and `system_info`. Missing explicit
+names also include `tcp`, `udp`, `dns_udp`, `net_registry`, `pipe` and `system_info`. Missing explicit
 selections fail. Omitted roots/cwd/environment take owned current snapshots.
 An explicit root list uses `{name="home", access="read"}` or `"read-write"`;
 rights intersect held authority, and read access strips mutations. The cwd
@@ -354,3 +354,7 @@ reading raises an error; it never substitutes a clock value.
 Native child launches preserve the held `dns_udp` resolver factory and read-only
 `net_registry` grant when declared. Packet grants retain their immutable
 interface scope; registry access does not grant packet or configuration rights.
+
+The shipped Lua bundle requests the optional `dns_udp` path alongside its existing
+UDP grant. It does not request registry observation; custom declared grants can
+supply that separately. Its manifest remains within the native 20-request limit.
