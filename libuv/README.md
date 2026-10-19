@@ -194,3 +194,7 @@ libc errno values, adds stat validity and omits unsupported socket address layou
 Upstream timer, queue/heap helpers, version, data accessors and string-copy code
 are reused. `pyxis/watchers.c` retains the upstream loop-watcher implementation
 and MIT notice; the other adapter files are original MPL-2.0 material.
+
+Bundle-child launch can deliver held `dns_udp` and read-only `net_registry`
+authority when the child's manifest declares them. Packet scope is retained;
+this does not add network authority to applications that hold none.

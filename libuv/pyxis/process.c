@@ -150,7 +150,7 @@ static int prepare_bundle(const struct bundle_program *bundle,
 {
   static const char *const names[] = {
     "memory", "clock", "threads", "random", "launcher", "pipe", "system_info",
-    "tcp", "udp", "echo", "profile",
+    "tcp", "udp", "dns_udp", "net_registry", "echo", "profile",
   };
   struct bundle_authority authority[ARRAY_SIZE(names) + BUNDLE_SOURCE_LIMIT];
   size_t count = 0;

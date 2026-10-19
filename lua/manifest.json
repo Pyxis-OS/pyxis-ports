@@ -16,6 +16,8 @@
     {"name": "echo", "resource": "echo", "rights": ["send"], "required": false},
     {"name": "tcp", "resource": "tcp", "rights": ["connect"], "required": false},
     {"name": "udp", "resource": "udp", "rights": ["open"], "required": false},
+    {"name": "dns_udp", "resource": "dns_udp", "rights": ["open"], "required": false},
+    {"name": "net_registry", "resource": "net_registry", "rights": ["read"], "required": false},
     {"name": "display", "resource": "display", "rights": ["draw"], "required": false},
     {"name": "profile", "resource": "profile", "rights": ["memory", "host"], "required": false},
     {"name": "input", "resource": "input", "rights": ["read"], "required": false},
