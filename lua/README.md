@@ -176,8 +176,9 @@ snapshots opened through the caller's declared provider root.
 stages. Both return `job, status`, including an owned job with a nonzero native
 start status when cleanup remains unresolved. They need the declared private
 RAM `job_work`, clock, pipe and launcher grants. Missing context returns
-`nil, CALL_UNAVAILABLE` before admission. No shared temporary-directory fallback
-or bundle/catalog/shebang expansion is used by these entry points.
+`nil, CALL_UNAVAILABLE` before admission. There is no shared temporary-directory
+fallback. Bundle selections retain their full manifest, stack and resource
+policy; shebang expansion is not supported by these entry points.
 
 ```lua
 local job, status = pyxis.job({"echo", "captured"}, {timeout_ms = 1000})
@@ -213,11 +214,15 @@ sources are excluded.
 Capability and text selections share exact names; collisions refuse admission.
 Text rejects NUL; finite stdin and captured output remain binary.
 
-Image lookup uses the caller's held native path context, independently of child
-roots/cwd. Bare names select `bin://name.pxe`, then `boot://name.pxe` only on
-absence; explicit FILE paths resolve from the caller's cwd. Thus `roots={}` and
-`cwd=false` can select a held image without passing its content roots to the
-child. Captured stages never inherit terminal/display, launcher or `job_work`.
+Image lookup uses the caller's captured `commands` list, independently of child
+roots/cwd. Missing and empty lists refuse bare-name lookup. Explicit paths resolve
+from the caller's held path context; use `./name.pxe` for a relative filename.
+Thus `roots={}` and `cwd=false` can select a held image without passing its
+content roots to the child. Bundle resource requests use only selected roles
+and roots, selected providers, and configured manifest sources; required requests
+that cannot be satisfied refuse admission. Selected role masks remain bounds on
+bundle requests. Captured stages never inherit terminal/display, launcher,
+`commands` or `job_work`.
 The caller must keep private-tree, provider and credential reachability
 consistent with the core's capture audit for the job's lifetime.
 
@@ -256,24 +261,26 @@ and failed writes/flushes are never replayed. `capture`/`pipeline` return partia
 known bytes on read failure, without trimming. Explicit `LUA_PATH` still controls
 file module search, including this module.
 
-`pyxis.run` uses libpyxis's shared command lookup: a bare name checks
-`bin://name.pxe`, then `bin://name.pxb`'s default entry, then the optional
-`PYXIS_BUNDLE_CATALOG`, then `boot://name.pxe`. Only an absent candidate permits
-fallback; a denied, malformed or incomplete candidate reports its error.
-Direct hits do not consult the catalog. `bin://name` retains literal FILE
-lookup first, then the same bin candidates and catalog without rescue fallback;
-a `.pxb` path, including a trailing slash, selects that bundle's default entry.
-Catalog lookup reads the shared mutable environment and preserves allocation
-errors. Child launch captures an owned snapshot of the current libc cwd and
-environment, keeping parent mutations separate from launch metadata.
-Explicitly exported named capabilities, including native FILEs and controllers,
-retain their actual rights and transport in plain children. Fixed runtime roles
-keep their protocol checks, narrowed masks and conditional input selection;
-stdio and bundle-owned entries follow their separate selected handoffs.
-Invalid catalogs or manifests raise native errors. Bundles receive their
-manifest's requested resources from Lua's existing grants and read-only
-app/resource roots. Plain children omit an
-inherited `app` root. Bundled scripts and ZIP bundles are not supported.
+`pyxis.run`, `pyxis.job` and `pyxis.pipeline` use libpyxis's shared command
+selection. Bare names walk the captured ordered `commands` capability list;
+missing or empty lists provide no search. Only an absent command permits the
+next entry. A denied, malformed, incomplete or conflicting plain/bundle target
+reports its error. There is no implicit bin, boot, home, cwd or development
+catalog search. Explicit URI and relative paths keep their held path authority;
+a `.pxb` path selects the bundle's default command. These native APIs do not
+interpret textual `PATH`; child environment text does not alter parent lookup.
+
+`pyxis.run` captures the current libc cwd and environment for child launch.
+It forwards the exported command list used for lookup. Explicitly exported
+named capabilities, including native FILEs and controllers, retain their actual
+rights and transport in plain children. Fixed runtime roles keep their protocol
+checks, narrowed masks and conditional input selection; stdio and bundle-owned
+entries follow their separate selected handoffs. Bundles receive their complete
+manifest's requested resources from Lua's held grants and read-only app/resource
+roots. Package selections retain the captured set for image, stack and resources;
+other package grants still require an independently held matching source.
+Plain children omit an inherited `app` root. Bundled scripts and ZIP bundles
+are not supported.
 
 `pyxis.run` inherits live C stdin/stdout/stderr, omitting closed streams.
 `io.input`/`io.output` rebinding remains Lua-local. Standard files retain upstream Lua's protection against

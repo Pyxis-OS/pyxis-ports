@@ -50,7 +50,8 @@ enum { RESOURCE_LIMIT = 16 };
 
 struct resources {
   handle_t object, child;
-  struct bundle_program *bundle;
+  struct command_selection *selection;
+  struct command_search_capture search;
   struct bundle_launch *launch;
   char **argv;
   char *argument_bytes;
@@ -148,10 +149,9 @@ static enum call_status release_resources(struct resources *owned)
     bundle_launch_close(owned->launch);
     owned->launch = NULL;
   }
-  if (owned->bundle) {
-    bundle_program_close(owned->bundle);
-    owned->bundle = NULL;
-  }
+  command_selection_close(owned->selection);
+  owned->selection = NULL;
+  command_search_capture_close(&owned->search);
   if (owned->object != HANDLE_INVALID) {
     if (handle_close(owned->object) != 0) {
       status = CALL_BAD_HANDLE;
@@ -300,11 +300,8 @@ static enum call_status open_program(const char *command, struct resources *owne
     .directories = directories, .directory_capacity = slots,
     .component = component, .component_capacity = capacity,
   };
-  handle_t image;
-  status = program_open(context, command, &workspace, &image, &owned->bundle);
-  if (status == CALL_OK && !owned->bundle) {
-    owned->object = image;
-  }
+  status = program_open_search(context, &owned->search, command, &workspace,
+      &owned->selection);
   free(directories);
   free(component);
   return status;
@@ -570,7 +567,7 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
   if (status != CALL_OK) {
     return status;
   }
-  return bundle_launch_prepare(owned->bundle, request, inventory, count + source_count,
+  return bundle_launch_prepare(owned->selection->bundle, request, inventory, count + source_count,
       &owned->launch);
 }
 
@@ -632,14 +629,21 @@ static int run_program(lua_State *state)
     status = CALL_DENIED;
   }
   struct launch_request request = {.argv = (uintptr_t)owned->argv, .argc = count};
+  if (status == CALL_OK && !program_is_explicit(owned->argv[0])) {
+    const struct environment_value *commands = environment_capture_find(&owned->parent, "commands");
+    if (commands) {
+      status = commands->kind == ENVIRONMENT_CAP ?
+          command_search_capture_list(commands->handle, &owned->search) : CALL_WRONG_TYPE;
+    }
+  }
   if (status == CALL_OK) {
     status = open_program(owned->argv[0], owned);
   }
   if (status == CALL_OK) {
-    request.image = owned->bundle ? bundle_program_image(owned->bundle) : owned->object;
+    request.image = owned->selection->image;
     status = prepare_grants(owned, &request);
   }
-  if (status == CALL_OK && owned->bundle) {
+  if (status == CALL_OK && owned->selection->bundle) {
     status = prepare_bundle_launch(owned, &request);
   }
   if (status == CALL_OK) {
@@ -654,8 +658,9 @@ static int run_program(lua_State *state)
    * waiting for child completion. The observer alone owns collection. */
   bundle_launch_close(owned->launch);
   owned->launch = NULL;
-  bundle_program_close(owned->bundle);
-  owned->bundle = NULL;
+  command_selection_close(owned->selection);
+  owned->selection = NULL;
+  command_search_capture_close(&owned->search);
   environment_capture_close(&owned->parent);
   pyxis_environment_snapshot_close(&owned->environment);
   pyxis_working_snapshot_close(&owned->working);

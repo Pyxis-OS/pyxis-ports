@@ -10,6 +10,7 @@
 #include <abi/thread.h>
 #include <abi/udp.h>
 #include <clock.h>
+#include <program.h>
 #include <bundle_launch.h>
 #include <directory.h>
 #include <file.h>
@@ -37,6 +38,11 @@ struct selected_root {
 
 struct preparation {
   struct pyxis_job_options stages[LAUNCH_BATCH_MAX];
+  struct command_selection *selections[LAUNCH_BATCH_MAX];
+  struct bundle_launch *launches[LAUNCH_BATCH_MAX];
+  struct command_search_capture search;
+  struct bundle_authority *authority;
+  size_t authority_count, authority_owned_count;
   const char **argv[LAUNCH_BATCH_MAX];
   struct selected_root *roots;
   size_t root_count;
@@ -123,11 +129,18 @@ static int discard_preparation(lua_State *state)
   for (size_t i = 0; i < LAUNCH_BATCH_MAX; ++i) {
     free(owned->argv[i]);
     owned->argv[i] = NULL;
-    if (owned->stages[i].image != HANDLE_INVALID) {
-      handle_close(owned->stages[i].image);
-      owned->stages[i].image = HANDLE_INVALID;
-    }
+    bundle_launch_close(owned->launches[i]);
+    owned->launches[i] = NULL;
+    command_selection_close(owned->selections[i]);
+    owned->selections[i] = NULL;
   }
+  command_search_capture_close(&owned->search);
+  for (size_t i = 0; i < owned->authority_owned_count; ++i) {
+    handle_close(owned->authority[i].source);
+  }
+  free(owned->authority);
+  owned->authority = NULL;
+  owned->authority_count = owned->authority_owned_count = 0;
   for (size_t i = 0; i < owned->root_count; ++i) {
     handle_close(owned->roots[i].handle);
   }
@@ -471,57 +484,95 @@ static enum call_status select_environment(lua_State *state, int options,
   return status;
 }
 
-/* Plain images only: bin://NAME.pxe, boot://NAME.pxe, then home://bin/NAME.pxe,
- * so user programs never shadow system ones. Unlike program_open, jobs search
- * no bundles or development catalog. */
+/* Resolve with the captured caller search, independently of the leaf's roots. */
 static enum call_status native_program(const struct path_context *context,
-    const char *command, handle_t *image)
+    const struct command_search_capture *search, const char *command,
+    struct command_selection **selection)
 {
   size_t length = strlen(command);
-  if (!length || length > SIZE_MAX - sizeof("home://bin/.pxe")) {
+  if (!length || length > SIZE_MAX - PROGRAM_LOOKUP_EXTRA) {
     return CALL_BAD_REQUEST;
   }
-  size_t capacity = length + sizeof("home://bin/.pxe"), slots = context->count + capacity;
-  if (slots < capacity || slots > SIZE_MAX / sizeof(handle_t)) {
+  size_t capacity = length + PROGRAM_LOOKUP_EXTRA;
+  if (context->count > SIZE_MAX - capacity ||
+      context->count + capacity > SIZE_MAX / sizeof(handle_t)) {
     return CALL_LIMIT;
   }
+  size_t slots = context->count + capacity;
   struct path_workspace workspace = {
     .directories = malloc(slots * sizeof(handle_t)), .directory_capacity = slots,
     .component = malloc(capacity), .component_capacity = capacity,
   };
-  char *path = malloc(capacity);
-  if (!workspace.directories || !workspace.component || !path) {
-    free(workspace.directories);
-    free(workspace.component);
-    free(path);
-    return CALL_NO_MEMORY;
-  }
-  enum call_status status;
-  if (strchr(command, '/') || strchr(command, ':') ||
-      (length >= 4 && !strcmp(command + length - 4, ".pxe"))) {
-    status = path_resolve_native(context, command, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
-  } else {
-    memcpy(path, "bin://", 6);
-    memcpy(path + 6, command, length);
-    memcpy(path + 6 + length, ".pxe", 5);
-    status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
-    if (status == CALL_NOT_FOUND) {
-      memcpy(path, "boot://", 7);
-      memcpy(path + 7, command, length);
-      memcpy(path + 7 + length, ".pxe", 5);
-      status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
-    }
-    if (status == CALL_NOT_FOUND) {
-      memcpy(path, "home://bin/", 11);
-      memcpy(path + 11, command, length);
-      memcpy(path + 11 + length, ".pxe", 5);
-      status = path_resolve_native(context, path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &workspace, image);
-    }
-  }
+  enum call_status status = workspace.directories && workspace.component ?
+      program_open_search(context, search, command, &workspace, selection) : CALL_NO_MEMORY;
   free(workspace.directories);
   free(workspace.component);
-  free(path);
   return status;
+}
+
+static enum call_status bundle_authority(struct preparation *owned)
+{
+  size_t capacity = owned->entry_count + BUNDLE_SOURCE_LIMIT;
+  owned->authority = calloc(capacity, sizeof(*owned->authority));
+  if (!owned->authority) {
+    return CALL_NO_MEMORY;
+  }
+  for (size_t i = 0; i < owned->entry_count; ++i) {
+    const struct launch_environment_entry *entry = &owned->entries[i];
+    if (entry->kind != ENVIRONMENT_CAP) {
+      continue;
+    }
+    const struct launch_grant *grant = &owned->grants[entry->value];
+    struct handle_info info;
+    enum call_status status = handle_query(grant->source, &info);
+    if (status != CALL_OK) {
+      return status;
+    }
+    handle_t source;
+    status = handle_copy_restricted(grant->source, grant->rights, grant->transport, &source);
+    if (status != CALL_OK) {
+      return status;
+    }
+    owned->authority[owned->authority_count++] = (struct bundle_authority){
+      (const char *)(uintptr_t)entry->name, source, info.protocol};
+    ++owned->authority_owned_count;
+  }
+  size_t sources;
+  enum call_status status = bundle_sources_from_capture(&owned->parent,
+      owned->authority + owned->authority_count, BUNDLE_SOURCE_LIMIT, &sources);
+  if (status == CALL_OK) {
+    owned->authority_count += sources;
+  }
+  return status;
+}
+
+static enum call_status prepare_bundle(struct preparation *owned, size_t index)
+{
+  if (!owned->authority) {
+    enum call_status status = bundle_authority(owned);
+    if (status != CALL_OK) {
+      return status;
+    }
+  }
+  struct pyxis_job_options *stage = &owned->stages[index];
+  struct launch_request source = {
+    .image = stage->image, .argv = (uintptr_t)stage->argv, .argc = stage->argc,
+    .grants = (uintptr_t)stage->grants, .grant_count = stage->grant_count,
+    .entries = (uintptr_t)stage->entries, .entry_count = stage->entry_count,
+  };
+  enum call_status status = bundle_launch_prepare(owned->selections[index]->bundle,
+      &source, owned->authority, owned->authority_count, &owned->launches[index]);
+  if (status != CALL_OK) {
+    return status;
+  }
+  const struct launch_request *request = bundle_launch_request(owned->launches[index]);
+  stage->image = request->image;
+  stage->grants = (const void *)(uintptr_t)request->grants;
+  stage->grant_count = request->grant_count;
+  stage->entries = (const void *)(uintptr_t)request->entries;
+  stage->entry_count = request->entry_count;
+  stage->initial_stack_bytes = request->initial_stack_bytes;
+  return CALL_OK;
 }
 
 static void arguments(lua_State *state, int index, struct preparation *owned, size_t stage)
@@ -679,16 +730,33 @@ static int start(lua_State *state, bool pipeline)
       }
     }
   }
+  bool bare = false;
+  for (size_t i = 0; i < count; ++i) {
+    bare |= !program_is_explicit(owned->stages[i].argv[0]);
+  }
+  if (status == CALL_OK && bare) {
+    const struct environment_value *commands = environment_capture_find(&owned->parent, "commands");
+    if (commands) {
+      status = commands->kind == ENVIRONMENT_CAP ?
+          command_search_capture_list(commands->handle, &owned->search) : CALL_WRONG_TYPE;
+    }
+  }
   for (size_t i = 0; i < count && status == CALL_OK; ++i) {
     struct pyxis_job_options *stage = &owned->stages[i];
     /* Image selection uses held caller authority; only the final child
      * inventory uses the selected content roots and independent cwd. */
-    status = native_program(current, stage->argv[0], &stage->image);
+    status = native_program(current, &owned->search, stage->argv[0], &owned->selections[i]);
+    if (status == CALL_OK) {
+      stage->image = owned->selections[i]->image;
+    }
     stage->grants = owned->grants;
     stage->grant_count = owned->grant_count;
     stage->entries = owned->entries;
     stage->entry_count = owned->entry_count;
     stage->working = &owned->working;
+    if (status == CALL_OK && owned->selections[i]->bundle) {
+      status = prepare_bundle(owned, i);
+    }
     for (size_t stream = 0; stream < ENVIRONMENT_STREAM_COUNT; ++stream) {
       stage->streams[stream] = -1;
     }
