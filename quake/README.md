@@ -2,9 +2,10 @@
 
 Pinned erysdren/quakegeneric (the GPL WinQuake software renderer behind a small
 platform interface), built with the Pyxis SDK and Clang. The recipe produces
-`bin/quake.pxe` and preserves upstream's GPL license. Game data is not
-downloaded or included by the recipe; the parent Pyxis build stages the pinned
-shareware pak or a locally supplied `QUAKE_DATA` directory.
+`bin/quake.pxb` (`manifest.json` and `app/bin/quake.pxe`) and preserves
+upstream's GPL license. Game data is not downloaded or included by the recipe.
+The bundle requires the read-only `quake-data` package as `quake_data://`;
+a missing package refuses launch on both live and installed systems.
 
 The adapter replaces upstream's `sys_null.c` and `quakegeneric.c`:
 
@@ -43,7 +44,7 @@ Only the first three buttons have engine bindings; extra buttons and horizontal
 scroll have no action.
 `+mlook` is queued at every start, and a first run without `config.cfg` binds
 the middle button to `impulse 10`.
-Defaults are `-basedir boot://share/quake` and `-writedir home://quake`, inserted
+Defaults are `-basedir quake_data://` and `-writedir home://quake`, inserted
 before the caller's arguments so trailing `+commands` stay intact.
 
 Ordered patches:

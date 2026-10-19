@@ -111,8 +111,8 @@ index 62152a3..9d1b3bf 100644
 +#if defined(_WIN32)
      return ".";
 +#elif defined(__pyxis__)
-+    // The image stages Quake's data here for both Quake programs.
-+    return "boot://share/quake";
++    // Both Quake programs declare the same data package.
++    return "quake_data://";
  #else
      static char base_dir[MAX_OSPATH] = {0};
      if (base_dir[0]) {

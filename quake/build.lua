@@ -4,6 +4,8 @@ return function(ctx)
     "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/quake.pxe",
     ctx.stage .. "/" .. ctx.metadata.outputs.executable })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/manifest.json",
+    ctx.stage .. "/" .. ctx.metadata.outputs.manifest })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
 end

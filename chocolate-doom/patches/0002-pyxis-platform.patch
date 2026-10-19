@@ -25,8 +25,8 @@ index 5b6db20..62066af 100644
      CheckSteamGUSPatches();
  
 +#elif defined(__pyxis__)
-+    // The image stages its IWAD here.
-+    AddIWADDir("boot://share/doom");
++    // The bundle declares the installed Doom data package.
++    AddIWADDir("doom_data://");
  #else
      AddXdgDirs();
  #ifndef __MACOSX__

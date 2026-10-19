@@ -22,8 +22,8 @@ index 6253e87..cb0472a 100644
  	if (!basePath) {
 -		basePath = FromSDL(SDL_GetBasePath());
 +#ifdef __pyxis__
-+		// Pyxis has no executable path; the shareware data is in the boot archive.
-+		basePath = std::string("boot://share/diablo/");
++		// The bundle declares the installed Diablo data package.
++		basePath = std::string("diablo_data://");
 +#else
 +		basePath = FromSDL(SDL_GetBasePath());
 +#endif
@@ -50,17 +50,13 @@ index 6253e87..cb0472a 100644
  		if (FileExistsAndIsWriteable("diablo.ini")) {
  			configPath = std::string("." DIRECTORY_SEPARATOR_STR);
  		}
-@@ -123,6 +130,13 @@ const std::string &AssetsPath()
+@@ -123,6 +130,9 @@ const std::string &AssetsPath()
  		assetsPath.emplace("D:\\assets\\");
  #elif defined(__3DS__) || defined(__SWITCH__)
  		assetsPath.emplace("romfs:/");
 +#elif defined(__pyxis__)
-+		// The boot archive's assets come first. A standalone bundle keeps them in
-+		// assets/ inside its data directory, because Pyxis has no executable path.
-+		if (DirectoryExists("boot://share/devilutionx/assets/"))
-+			assetsPath.emplace("boot://share/devilutionx/assets/");
-+		else
-+			assetsPath.emplace(BasePath() + "assets/");
++		// Program assets belong to the selected bundle.
++		assetsPath.emplace("devilution_assets://");
  #elif defined(__APPLE__) && defined(USE_SDL1)
  		// In `Info.plist` we have
  		//

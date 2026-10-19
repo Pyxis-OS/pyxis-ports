@@ -6,8 +6,10 @@ to the `chocolate-quake-2.1.0` release archive (commit
 toolchain file against the [SDL2 port](../sdl2/README.md). The recipe stages
 the program bundle `bin/chocolate-quake.pxb` (`manifest.json` and
 `app/bin/chocolate-quake.pxe`), upstream's licence, SDL2's licence and the port
-notice. Game data is not part of the recipe; the image stages one set of Quake
-data for both this and the native [Quake](../quake/README.md).
+notice. Game data is not part of the recipe. This and the native
+[Quake](../quake/README.md) require the same read-only `quake-data` package,
+exposed as `quake_data://`. A missing package refuses launch on both live and
+installed systems; explicit `-basedir` keeps its upstream meaning.
 
 ```sh
 lua build.lua chocolate-quake --sdk /path/to/build/sdk --sdl2 /path/to/sdl2/dev
@@ -23,7 +25,7 @@ patch removes them from the build. There is no network play or music.
 declares the grants the game uses; nothing is obtained at runtime:
 
 - required: `memory/manage`, `clock` read and sleep, `display/draw` and
-  `keyboard/input`;
+  `keyboard/input` and the read-only `quake-data` package;
 - optional: `pointer/input` for mouse look, and for sound `audio/create`,
   `threads/manage` (SDL's audio callback thread) and `pipe/create` (SDL's
   cross-thread event wakeup).
@@ -48,8 +50,8 @@ fails with SDL's error and the game runs silent, as with `-nosound`.
      fail. It no longer does: `SDL_INIT_TIMER` starts no thread, and the first
      callback timer starts one lazily. Quake only reads the performance counter,
      so Pyxis still skips the call.
-   - **Data:** the default base directory is `boot://share/quake`, where the
-     image stages the data. Upstream uses `SDL_GetPrefPath`, which would keep
+   - **Data:** the default base directory is `quake_data://`, from the
+     declared package. Upstream uses `SDL_GetPrefPath`, which would keep
      data and generated files together under `home://`.
    - **Generated files:** `-writedir PATH`, default `home://chocolate-quake`,
      sends config, saves, screenshots, demos and the `-condebug` log to

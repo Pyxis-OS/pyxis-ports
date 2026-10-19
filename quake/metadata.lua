@@ -15,7 +15,8 @@ return {
     "patches/0003-atomic-file-replacement.patch",
   },
   outputs = {
-    executable = "bin/quake.pxe",
+    executable = "bin/quake.pxb/app/bin/quake.pxe",
+    manifest = "bin/quake.pxb/manifest.json",
     license = "share/licenses/quake/LICENSE",
   },
 }

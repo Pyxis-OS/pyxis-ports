@@ -1,9 +1,10 @@
 # Doom
 
 Pinned ozkl/doomgeneric, built with the Pyxis SDK and Clang. The recipe produces
-`bin/doom.pxe` and preserves upstream's GPL license. Game data is not downloaded
-or included by the recipe. The parent Pyxis build can stage a locally supplied
-WAD and the two development demos separately.
+`bin/doom.pxb` (`manifest.json` and `app/bin/doom.pxe`) and preserves
+upstream's GPL license. Game data is not downloaded or included by the recipe.
+The bundle requires the read-only `doom-data` package as `doom_data://`;
+a missing package refuses launch on both live and installed systems.
 
 The Pyxis adapter uses a display DRAW grant, keyboard INPUT grant and clock
 READ/SLEEP grant, plus the normal file/directory resources. It draws a 320x200
@@ -26,7 +27,7 @@ another space is selected. Explicit game pause remains available. Input is polle
 continuously; focus changes and input resets release all held Doom keys, including
 modifiers shared by left/right keys. Returning to graphics requires fresh presses.
 
-The default IWAD path is `boot://share/doom/DOOM.WAD`; `-iwad` overrides it.
+The default IWAD path is `doom_data://DOOM.WAD`; `-iwad` overrides it.
 `-playdemo path` plays a demo and returns to the shell when it finishes.
 
 The ordered runtime patch removes unused Unix headers and desktop error-dialog

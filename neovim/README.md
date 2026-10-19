@@ -69,9 +69,11 @@ outside this profile. Swap/backup recovery and patchmode are unavailable.
 segment, `home://test/a.c` to `file:///home/test/a.c` and back; a buffer name
 is a native path only when the editor holds that root.
 Language servers run as attached children. The port ships an opt-in clangd
-configuration (`vim.lsp.enable('clangd')`) keeps the existing explicit hosted
-payload path until the packages consumer task moves its default. Bare custom
-commands use the held list. Resource views such as `sysroot://` come from the exact
+configuration (`vim.lsp.enable('clangd')`) using the bare `clangd` command
+exported by the installed `clang-hosted` package. It resolves through the held
+command list's live package view, so the next server launch sees a package switch
+without restarting the space. A missing command refuses without an archive or
+home-directory fallback. Resource views such as `sysroot://` come from the exact
 retained selection libuv launched, without reopening its manifest or resolving
 the command again. The editor's own roots take precedence. Header buffers pin
 read-only directory copies through package switches and server exit; a new read

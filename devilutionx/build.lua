@@ -12,7 +12,7 @@ return function(ctx)
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/manifest.json",
     ctx.stage .. "/" .. ctx.metadata.outputs.manifest })
   ctx.run({ "mkdir", "-p", "--", ctx.stage .. "/share/devilutionx" })
-  ctx.run({ "cp", "-R", "--", ctx.build .. "/assets", ctx.stage .. "/share/devilutionx/" })
+  ctx.run({ "cp", "-R", "--", ctx.build .. "/assets", ctx.stage .. "/bin/devilutionx.pxb/app/" })
 
   -- The program ships with every license of the code linked into it; zlib's
   -- and libpng's are already staged by their own ports.

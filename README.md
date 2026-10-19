@@ -78,6 +78,9 @@ dependency as a port of its own. The recipe must keep the build offline, for exa
 `FETCHCONTENT_FULLY_DISCONNECTED`, and record each dependency's pin and license.
 
 Boot-archive inclusion is handled by Pyxis; this repository only stages files.
+The six game bundles declare required read-only data packages on live and
+installed systems; launch never downloads data or searches the boot archive.
+Install the package with `pkg` before launching its game.
 
 [Native libuv](libuv/README.md) exports a static development library and an
 explicit child-output relay bundle. It needs a current SDK and declared native

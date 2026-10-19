@@ -49,7 +49,7 @@ return {
   outputs = {
     executable = "bin/devilutionx.pxb/app/bin/devilutionx.pxe",
     manifest = "bin/devilutionx.pxb/manifest.json",
-    assets = "share/devilutionx/assets/ui_art/diablo.pal",
+    assets = "bin/devilutionx.pxb/app/assets/ui_art/diablo.pal",
     license = "share/licenses/devilutionx/LICENSE.md",
     notice = "share/licenses/devilutionx/PORT-NOTICE",
     provenance = "share/devilutionx/source.txt",

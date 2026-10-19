@@ -45,7 +45,7 @@ The build uses CMake's FetchContent with downloads turned off
 at runtime:
 
 - required: `memory/manage`, `clock` read and sleep, `display/draw` and
-  `keyboard/input`;
+  `keyboard/input` and the read-only `diablo-data` package as `diablo_data://`;
 - optional: `pointer/input`; for sound `audio/create`, `threads/manage`
   (SDL's audio callback thread) and `pipe/create` (SDL's cross-thread event
   wakeup); and `clipboard_local` and `clipboard_shared` (`publish`, `paste`)
@@ -69,17 +69,17 @@ the game runs silent. Without a clipboard grant, Copy and Paste refuse.
 
    It also keeps `_POSIX_C_SOURCE` off, since Pyxis libc is not POSIX.
 2. `0002-pyxis-file-checks` gives `file_util.cpp` Pyxis branches:
-   - file and directory existence use `stat`, so read-only `boot://` data
+   - file and directory existence use `stat`, so read-only package data
      counts as present;
    - resizing a save uses `ftruncate`.
 3. `0003-libcxx-fmt12` makes the build fixes for libc++ and fmt 12:
    `<new>` for `std::launder`, `<cstdlib>` for `std::getenv`, and
    `<fmt/format.h>` in `xpbar.cpp`.
 4. `0004-pyxis-paths-and-defaults` sets Pyxis paths and defaults:
-   - **Paths:** data in `boot://share/diablo/` unless `--data-dir` says
-     otherwise. Assets come from `boot://share/devilutionx/assets/`, or, when
-     the boot archive has none, from `assets/` inside the data directory, for
-     a standalone bundle.
+   - **Paths:** data in `diablo_data://` unless `--data-dir` says otherwise.
+     A missing `diablo-data` package refuses launch on both live and installed
+     systems. Program assets come from the bundle's `app/assets/` through its
+     read-only `devilution_assets://` resource root.
    - **Preferences:** saves and `diablo.ini` always go to SDL's preference path,
      `home://devilution/`. A writable `diablo.ini` in the working directory no
      longer redirects them.
@@ -114,9 +114,9 @@ The game data and asset inputs stay unchanged.
 | --- | --- |
 | `bin/devilutionx.pxb/manifest.json` | the bundle manifest |
 | `bin/devilutionx.pxb/app/bin/devilutionx.pxe` | the game |
-| `share/devilutionx/assets/` | DevilutionX's own assets |
+| `bin/devilutionx.pxb/app/assets/` | DevilutionX's own assets |
 | `share/devilutionx/source.txt` | commit, patches and dependency pins |
 | `share/licenses/devilutionx/` | the notice and every licence of the code linked in |
 
-The game data, `share/diablo/spawn.mpq`, is staged by Pyxis from
-`DIABLO_DATA`, not by this recipe.
+The `diablo-data` package supplies the game data, such as `spawn.mpq`;
+this recipe never stages it.

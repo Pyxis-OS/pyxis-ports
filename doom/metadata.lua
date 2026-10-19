@@ -15,7 +15,8 @@ return {
     "patches/0003-save-games.patch",
   },
   outputs = {
-    executable = "bin/doom.pxe",
+    executable = "bin/doom.pxb/app/bin/doom.pxe",
+    manifest = "bin/doom.pxb/manifest.json",
     license = "share/licenses/doom/LICENSE",
   },
 }

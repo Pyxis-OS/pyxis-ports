@@ -9,7 +9,7 @@ local markers = { 'compile_commands.json', 'compile_flags.txt', '.git' }
 --- @type vim.lsp.Config
 return {
   cmd = {
-    'home://toolchain/clang/payload/clangd.pxb',
+    'clangd',
     '--resource-dir=clang_resources://',
     '-j=4',
     '--background-index=false',
