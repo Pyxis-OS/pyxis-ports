@@ -19,6 +19,7 @@
 #include <bundle.h>
 #include <bundle_launch.h>
 #include <clock.h>
+#include <command_search.h>
 #include <directory.h>
 #include <file.h>
 #include <handle.h>
@@ -401,6 +402,15 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   request->working_path = (uintptr_t)owned->working.path;
   for (size_t i = 0; i < owned->parent.count; ++i) {
     const struct environment_value *value = &owned->parent.values[i];
+    if (!strcmp(value->name, "commands") && (value->flags & ENVIRONMENT_EXPORTED)) {
+      if (value->kind != ENVIRONMENT_CAP) {
+        return CALL_WRONG_TYPE;
+      }
+      status = command_list_validate(value->handle);
+      if (status != CALL_OK) {
+        return status;
+      }
+    }
     if (value->kind != ENVIRONMENT_CAP || !(value->flags & ENVIRONMENT_EXPORTED) ||
         runtime_resource_name(value->name) ||
         !strcmp(value->name, "script") ||
@@ -438,6 +448,9 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   /* Live descriptor selection replaces all standard names in child staging. */
   for (size_t i = 0; i < owned->environment.capture.count; ++i) {
     const struct environment_value *value = &owned->environment.capture.values[i];
+    if (!strcmp(value->name, "commands")) {
+      return CALL_WRONG_TYPE;
+    }
     if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
         !strcmp(value->name, "stderr") ||
         !strcmp(value->name, "stdin.append") || !strcmp(value->name, "stdout.append") ||

@@ -8,6 +8,7 @@
 #include <abi/pipe.h>
 #include <bundle.h>
 #include <bundle_launch.h>
+#include <command_search.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <handle.h>
@@ -313,6 +314,14 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   const uint64_t resource_rights[] = {MEMORY_RIGHT_MANAGE, CLOCK_RIGHTS, LAUNCHER_RIGHT_LAUNCH};
   for (size_t i = 0; i < selected.count; ++i) {
     const struct environment_value *value = &selected.values[i];
+    if (!strcmp(value->name, "commands")) {
+      enum call_status status = value->kind == ENVIRONMENT_CAP ?
+          command_list_validate(value->handle) : CALL_WRONG_TYPE;
+      if (status != CALL_OK) {
+        error = uv__pyxis_status(status);
+        goto done;
+      }
+    }
     if (value->kind != ENVIRONMENT_CAP) {
       continue;
     }
@@ -357,6 +366,13 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   }
   for (size_t i = 0; i < extra_count; ++i) {
     const uv_pyxis_resource_t *resource = &extra_resources[i];
+    if (!strcmp(resource->name, "commands")) {
+      enum call_status status = command_list_validate(resource->source);
+      if (status != CALL_OK || !(resource->rights & COMMAND_LIST_RIGHT_READ) || resource->transport) {
+        error = uv__pyxis_status(status != CALL_OK ? status : CALL_DENIED);
+        goto done;
+      }
+    }
     uint64_t rights, transport;
     enum call_status status = handle_rights(resource->source, &rights, &transport);
     if (status != CALL_OK) {
@@ -400,6 +416,10 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     }
     /* Explicit descriptor selection replaces/removes standard names and the
      * stream companions only in this child's entry staging. */
+    if (!strcmp(name, "commands")) {
+      error = uv__pyxis_status(CALL_WRONG_TYPE);
+      goto done;
+    }
     if (!strcmp(name, "stdin") || !strcmp(name, "stdout") ||
         !strcmp(name, "stderr") ||
         !strcmp(name, "stdin.append") || !strcmp(name, "stdout.append") ||
