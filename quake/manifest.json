@@ -8,6 +8,7 @@
     {"name": "quake_package", "resource": "directory", "package": "quake-data", "root": "quake_data", "rights": ["lookup", "enumerate", "read-files"], "required": true},
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
     {"name": "clock", "resource": "clock", "rights": ["read", "sleep"], "required": true},
+    {"name": "random", "resource": "random", "rights": ["read"], "required": true},
     {"name": "display", "resource": "display", "rights": ["draw"], "required": true},
     {"name": "keyboard", "resource": "keyboard", "rights": ["input"], "required": true},
     {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false}

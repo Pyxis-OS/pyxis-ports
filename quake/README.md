@@ -6,6 +6,8 @@ platform interface), built with the Pyxis SDK and Clang. The recipe produces
 upstream's GPL license. Game data is not downloaded or included by the recipe.
 The bundle requires the read-only `quake-data` package as `quake_data://`;
 a missing package refuses launch on both live and installed systems.
+The required `random/read` grant lets libc `mkstemp` reserve names for atomic
+configuration, save and screenshot replacement.
 
 The adapter replaces upstream's `sys_null.c` and `quakegeneric.c`:
 
