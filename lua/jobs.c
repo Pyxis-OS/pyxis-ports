@@ -2,6 +2,7 @@
 #include "lauxlib.h"
 #include <abi/clock.h>
 #include <abi/memory.h>
+#include <abi/net_config.h>
 #include <abi/pipe.h>
 #include <abi/random.h>
 #include <abi/system_info.h>
@@ -60,6 +61,8 @@ static const struct resource_role roles[] = {
   {"random", PROTOCOL_RANDOM, RANDOM_RIGHT_READ},
   {"tcp", PROTOCOL_TCP_SERVICE, TCP_SERVICE_RIGHTS},
   {"udp", PROTOCOL_UDP_SERVICE, UDP_SERVICE_RIGHT_OPEN},
+  {"dns_udp", PROTOCOL_UDP_SERVICE, UDP_SERVICE_RIGHT_OPEN},
+  {"net_registry", PROTOCOL_NET_REGISTRY, NET_REGISTRY_RIGHT_READ},
   {"pipe", PROTOCOL_PIPE_SERVICE, PIPE_SERVICE_RIGHT_CREATE},
   {"system_info", PROTOCOL_SYSTEM_INFO, SYSTEM_INFO_RIGHT_READ},
 };

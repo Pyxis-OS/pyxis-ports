@@ -8,6 +8,7 @@
 #include <abi/keyboard.h>
 #include <abi/stream.h>
 #include <abi/memory.h>
+#include <abi/net_config.h>
 #include <abi/pipe.h>
 #include <abi/pointer.h>
 #include <abi/profile.h>
@@ -44,7 +45,7 @@
 #define ENTROPY_WAIT_NS UINT64_C(2000000000)
 #define HASH_CHUNK_SIZE 4096
 
-enum { RESOURCE_LIMIT = 14 };
+enum { RESOURCE_LIMIT = 16 };
 
 struct resources {
   handle_t object, child;
@@ -322,6 +323,8 @@ static const struct resource_policy ordinary_resources[] = {
   {"system_info", PROTOCOL_SYSTEM_INFO, SYSTEM_INFO_RIGHT_READ},
   {"echo", PROTOCOL_ECHO, ECHO_RIGHT_SEND},
   {"udp", PROTOCOL_UDP_SERVICE, UDP_SERVICE_RIGHT_OPEN},
+  {"dns_udp", PROTOCOL_UDP_SERVICE, UDP_SERVICE_RIGHT_OPEN},
+  {"net_registry", PROTOCOL_NET_REGISTRY, NET_REGISTRY_RIGHT_READ},
   {"tcp", PROTOCOL_TCP_SERVICE, TCP_SERVICE_RIGHT_CONNECT},
   {"random", PROTOCOL_RANDOM, RANDOM_RIGHT_READ},
   {"profile", PROTOCOL_PROFILE, PROFILE_RIGHT_MEMORY | PROFILE_RIGHT_HOST},
@@ -531,7 +534,7 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
 {
   static const char *names[] = {
     "input", "output", "memory", "display", "clock", "system_info", "echo",
-    "udp", "tcp", "random", "profile", "launcher", "audio", "screen_capture",
+    "udp", "dns_udp", "net_registry", "tcp", "random", "profile", "launcher", "audio", "screen_capture",
     "threads", "pipe", "keyboard", "pointer",
   };
   struct bundle_authority inventory[sizeof(names) / sizeof(names[0]) + BUNDLE_SOURCE_LIMIT];

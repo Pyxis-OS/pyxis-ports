@@ -350,3 +350,7 @@ is evaluated by the separate userland launcher, using the exported Lua library.
 `pyxis.monotonic_ns()` reads the declared CLOCK READ grant and returns an exact
 Lua integer for absolute monotonic deadlines. Missing authority or an unrepresentable
 reading raises an error; it never substitutes a clock value.
+
+Native child launches preserve the held `dns_udp` resolver factory and read-only
+`net_registry` grant when declared. Packet grants retain their immutable
+interface scope; registry access does not grant packet or configuration rights.
