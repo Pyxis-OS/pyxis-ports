@@ -16,6 +16,7 @@ return {
     "patches/0004-declare-wc-tail-sort-helpers.patch",
     "patches/0005-refuse-tail-follow.patch",
     "patches/0006-grep-recursive-search.patch",
+    "patches/0007-count-pipe-values-by-size.patch",
   },
   outputs = {
     executable = "bin/cksum.pxe",

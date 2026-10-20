@@ -26,9 +26,9 @@ need: `UTF8_POINT`, `MIN`/`MAX`, `concat`, `unescape`, `memmem` and the
 `reallocarray` family, as upstream wrote them. The header retains its license
 notice and avoids unrelated regex and offset APIs. Patch 0005 removes tail's
 follow mode (see below). Patch 0006 adds grep's recursive search, replaces its
-`fmemopen` and restores the regex helper declaration (see below). Cksum, uniq,
-sha256sum, wc, sort, helper bodies and
-arg.h are unchanged. Conventional I/O, `getline`, `isblank`, `bsearch` (used by
+`fmemopen` and restores the regex helper declaration (see below). Patch 0007
+lets `wc -c` count pipe values by size (see below). Cksum, uniq, sha256sum, sort,
+helper bodies and arg.h are unchanged. Conventional I/O, `getline`, `isblank`, `bsearch` (used by
 libutf's rune classification), BUFSIZ and PRIu32 come from the real Pyxis SDK. No compatibility headers are installed, and the SDK is never modified.
 
 ## Cksum
@@ -170,6 +170,13 @@ counts; with none, it prints lines, words and bytes. Characters are decoded
 UTF-8; bytes that are not valid UTF-8 are not counted by `-m`. Words are
 separated by libutf's Unicode space table. There is no locale support.
 A missing operand is reported and counting continues with status 1.
+
+Patch 0007: with `-c` alone, wc takes each pipe value (see Pyxis's
+`docs/interfaces/pipes.md`, Value segments) with `pyxis_input_take()` and adds
+its size from `fstat` without reading it, so `cat big | wc -c` reads nothing.
+Byte runs around values are read and counted as before. A failed value (such
+as a 404) stops wc with its error and status 1, as a read error does. Other
+options read values as ordinary bytes.
 
 ## Tail
 

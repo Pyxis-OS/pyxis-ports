@@ -1,0 +1,86 @@
+--- a/wc.c
++++ b/wc.c
+@@ -1,5 +1,11 @@
+ /* See LICENSE file for copyright and license details. */
++#include <sys/stat.h>
++
+ #include <string.h>
++#include <unistd.h>
++
++#include <pyxis/descriptor.h>
++#include <pyxis/stdio.h>
+ 
+ #include "utf.h"
+ #include "util.h"
+@@ -60,6 +66,41 @@ wc(FILE *fp, const char *str)
+ 	output(str, nc, nl, nw);
+ }
+ 
++/*
++ * Pyxis: with only -c, a value in the input pipe is counted from its size
++ * without reading it. fread_some stops at the next value, so each byte run is
++ * read and counted as before.
++ */
++static void
++wcbytes(FILE *fp, const char *str)
++{
++	char buf[BUFSIZ];
++	struct stat st;
++	handle_t value;
++	size_t nc = 0, n;
++	int fd, r;
++
++	for (;;) {
++		if ((r = pyxis_input_take(fp, &value)) < 0)
++			eprintf("%s:", str ? str : "<stdin>");
++		if (r) {
++			if ((fd = pyxis_descriptor_adopt(&value, PYXIS_DESCRIPTOR_READ)) < 0 ||
++			    fstat(fd, &st) < 0)
++				eprintf("%s:", str ? str : "<stdin>");
++			nc += st.st_size;
++			close(fd);
++			continue;
++		}
++		if (!(n = fread_some(buf, sizeof(buf), fp)))
++			break;
++		nc += n;
++	}
++	if (ferror(fp))
++		eprintf("%s:", str ? str : "<stdin>");
++	tc += nc;
++	output(str, nc, 0, 0);
++}
++
+ static void
+ usage(void)
+ {
+@@ -69,6 +110,7 @@ usage(void)
+ int
+ main(int argc, char *argv[])
+ {
++	void (*count)(FILE *, const char *) = wc;
+ 	FILE *fp;
+ 	int many;
+ 	int ret = 0;
+@@ -96,8 +138,11 @@ main(int argc, char *argv[])
+ 		wflag = 1;
+ 	}
+ 
++	if (cmode == 'c' && !lflag && !wflag)
++		count = wcbytes;
++
+ 	if (!argc) {
+-		wc(stdin, NULL);
++		count(stdin, NULL);
+ 	} else {
+ 		for (many = (argc > 1); *argv; argc--, argv++) {
+ 			if (!strcmp(*argv, "-")) {
+@@ -108,7 +153,7 @@ main(int argc, char *argv[])
+ 				ret = 1;
+ 				continue;
+ 			}
+-			wc(fp, *argv);
++			count(fp, *argv);
+ 			if (fp != stdin && fshut(fp, *argv))
+ 				ret = 1;
+ 		}
