@@ -83,8 +83,10 @@ Dynamic Lua modules, dynamic grammar loading and true-colour output
 are excluded. Seven upstream-bundled grammars are statically linked: `c`, `lua`,
 `vim`, `vimdoc`, `query`, `markdown` and `markdown_inline`. Language registration
 checks their actual Tree-sitter ABI and never uses `dlopen`. Lua, Markdown, help
-and query use upstream Tree-sitter defaults; C and Vim retain legacy syntax,
-with parsers available to explicit `vim.treesitter.start()`. A start request for
+and query use upstream Tree-sitter defaults. `sysinit.vim` also starts it for
+`c` and `vim` buffers (`runtime/lua/vim/_pyxis_treesitter.lua`, one `FileType`
+autocommand in the `pyxis_treesitter` group, which `init.lua` can clear) and sets
+`g:c_syntax_for_h`, so `.h` files are `c`. A start request for
 a language without a built-in parser quietly leaves/restores legacy syntax;
 `language.add()` still returns no parser and its reason. Explicit dynamic paths
 remain unsupported. Arbitrary

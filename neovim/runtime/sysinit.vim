@@ -7,4 +7,7 @@ set shell=shell shellcmdflag=-c shellpipe=>%s\ 2>&1 shellredir=>%s\ 2>&1 noshell
 set notermguicolors
 filetype plugin indent on
 syntax enable
+" Headers are C, and every bundled grammar highlights through Tree-sitter.
+let g:c_syntax_for_h = 1
+lua require('vim._pyxis_treesitter')
 colorscheme pyxis
