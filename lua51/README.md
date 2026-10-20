@@ -88,7 +88,9 @@ console streams, child processes and synchronous filesystem calls.
   `"faulted"` or `"terminated"`; a fault or termination reports code -1 and
   signal 0. `process:get_pid()`, `uv.os_getpid()`, `uv.os_getppid()` and
   `uv.getpid()` return `nil, err, "ENOSYS"`. Children inherit console and pipe
-  descriptors, not files (libuv rejects FILE cursor inheritance). Spawn's
+  descriptors. Spawning with an inherited FILE descriptor is not qualified through
+  luv, although the [libuv adapter](../libuv/README.md) accepts native and exported
+  FILE descriptors for the standard streams, each with a cursor at zero. Spawn's
   `cwd` and `env` options work; without them a child gets the current working
   directory and environment.
 - **Working directory and environment:** `uv.cwd`, `uv.chdir`, `uv.os_getenv`,

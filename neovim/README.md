@@ -99,9 +99,11 @@ reaching any uv call. QEMU
 qualification covers local editing, highlighting, save and `:cd` with the
 16-colour profile; it does not establish physical-host qualification.
 
-The eight ordered patches adapt platform/process APIs, native paths and file
+The thirteen ordered patches adapt platform/process APIs, native paths and file
 comparison, the console TUI, core/runtime assumptions, persistent undo, static parser registration, anchored file selection and the swapfile prompt, which no
-longer indexes the passwd record Pyxis refuses to supply. Undo
+longer indexes the passwd record Pyxis refuses to supply. Patches 0009–0013 add native
+external jobs, `ROOT://` file URIs, language-server launch and path handling, the
+`CSI 4 m` underline capability and command lookup through the held command list. Undo
 files are created with libc's 0666 creation mode instead of the edited
 file's permission bits. Exact pins,
 checksums and patch order are in `metadata.lua` and the bundle's
