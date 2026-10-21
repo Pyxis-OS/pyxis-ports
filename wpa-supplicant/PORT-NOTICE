@@ -1,0 +1,14 @@
+wpa_supplicant 2.12
+Upstream: https://w1.fi/releases/wpa_supplicant-2.12.tar.gz
+Archive SHA-256: 08e23937e16d0155e55cab2b51f51fbe10d80a1aa91c4e15442645059b737ef6
+
+Upstream and its Pyxis selection patch retain BSD-3-Clause terms; the complete
+terms are in the unmodified README. COPYING explains the historical licence
+change. Internal Rijndael, MD5, SHA-1 and SHA-256 implementations retain their
+embedded public-domain notices, reproduced in SOURCE-NOTICES along with the
+copyright notices from every compiled source and exported upstream header.
+The upstream names/copyrights are not changed by the Pyxis profile.
+
+Original recipe, build profile, integration header and documentation are
+MPL-2.0 under the ports repository LICENSE. No daemon, kernel cryptography,
+socket driver or configuration writer is supplied by this static library.

@@ -92,6 +92,10 @@ Neovim and Lua 5.1 stage their bundles in `bin/` with application and linked
 dependency notices under `app/metadata/`. The supporting development prefixes
 also carry notices and provenance under `share/` for static-library consumers.
 
+[The native WPA2 RSN library](wpa-supplicant/README.md) stages a private static
+supplicant/crypto closure for a native worker; it adds no daemon or ordinary
+image dependency.
+
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's
 manifest runner. It includes executables, notices and TCC target support, while
 excluding the host compiler and intermediate build files.

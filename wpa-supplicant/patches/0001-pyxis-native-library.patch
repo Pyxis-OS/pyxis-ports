@@ -1,0 +1,58 @@
+--- a/src/utils/build_config.h
++++ b/src/utils/build_config.h
+@@ -16,6 +16,9 @@
+ #define BUILD_CONFIG_H
+ 
+ /* Insert configuration defines, e.g., #define EAP_MD5, here, if needed. */
++#ifdef __pyxis__
++#include <wpa-rsn-config.h>
++#endif
+ 
+ #ifdef CONFIG_WIN32_DEFAULTS
+ #define CONFIG_NATIVE_WINDOWS
+--- a/src/utils/includes.h
++++ b/src/utils/includes.h
+@@ -33,7 +33,7 @@
+ #include <unistd.h>
+ #endif /* _MSC_VER */
+ 
+-#ifndef CONFIG_NATIVE_WINDOWS
++#if !defined(CONFIG_NATIVE_WINDOWS) && !defined(__pyxis__)
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+--- a/src/utils/common.c
++++ b/src/utils/common.c
+@@ -241,6 +241,8 @@
+ }
+ 
+ 
++#ifndef __pyxis__
++/* Not part of the native RSN library; no wall-clock adapter is provided. */
+ void wpa_get_ntp_timestamp(u8 *buf)
+ {
+ 	struct os_time now;
+@@ -258,6 +260,8 @@
+ 	tmp = host_to_be32(usec);
+ 	os_memcpy(buf + 4, (u8 *) &tmp, 4);
+ }
++
++#endif /* !__pyxis__ */
+ 
+ /**
+  * wpa_scnprintf - Simpler-to-use snprintf function
+--- a/src/utils/common.h
++++ b/src/utils/common.h
+@@ -524,7 +524,12 @@
+ int hexstr2bin(const char *hex, u8 *buf, size_t len);
+ void inc_byte_array(u8 *counter, size_t len);
+ void buf_shift_right(u8 *buf, size_t len, size_t bits);
++#ifdef __pyxis__
++void wpa_get_ntp_timestamp(u8 *buf)
++	__attribute__((unavailable("not part of the native RSN library")));
++#else
+ void wpa_get_ntp_timestamp(u8 *buf);
++#endif
+ int wpa_scnprintf(char *buf, size_t size, const char *fmt, ...)
+ 	PRINTF_FORMAT(3, 4);
+ int wpa_snprintf_hex_sep(char *buf, size_t buf_size, const u8 *data, size_t len,

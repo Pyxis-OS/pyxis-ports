@@ -28,5 +28,6 @@ return {
   utf8proc = "utf8proc",
   tzdata = "tzdata",
   usbids = "usbids",
+  ["wpa-supplicant"] = "wpa-supplicant",
   zlib = "zlib",
 }

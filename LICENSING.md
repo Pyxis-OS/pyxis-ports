@@ -81,6 +81,11 @@ those recipes fetch, adapt or package.
 - Fastfetch's new native adapter/build files and project ASCII logo are original
   Pyxis material under MPL-2.0, as marked in the patch and `fastfetch/PORT-NOTICE`.
   Bundled yyjson remains MIT; its staged header preserves its notice.
+- `wpa-supplicant/patches/` retain the upstream files' BSD-3-Clause terms.
+  The reached internal AES/hash sources include public-domain implementation
+  notices; the recipe stages those and all reached copyright notices with the
+  upstream README and COPYING. Its original native profile/recipe/documentation
+  remain MPL-2.0; see `wpa-supplicant/PORT-NOTICE`.
 - Imported libraries, generated trust/zone data, staged headers, game assets and
   other downloaded inputs retain their individual upstream terms. Consult each
   recipe and staged license directory rather than treating a bundle as all MPL.
