@@ -6,8 +6,9 @@ release tags), built with its own GNU Make build against the
 [SDL2 port](../sdl2/README.md). The recipe stages the program bundle
 `bin/eduke32.pxb` (`manifest.json` and `app/bin/eduke32.pxe`), the GPL and
 Build licences, SDL2's licence and the port notice. It is a personal-use
-build: Pyxis builds it only when given the owner's `duke3d.grp`, and never
-installs it with the ordinary ports. Game data is not part of the recipe.
+build: Pyxis builds it only for the owner's personal `duke3d` game package
+(`make game-packages GAMES=duke3d` with a private recipe), and never installs it
+with the ordinary ports or in an image. Game data is not part of the recipe.
 
 ```sh
 lua build.lua eduke32 --sdk /path/to/build/sdk --sdl2 /path/to/sdl2/dev
@@ -19,7 +20,7 @@ lua build.lua eduke32 --sdk /path/to/build/sdk --sdl2 /path/to/sdl2/dev
 declares the grants the game uses; nothing is obtained at runtime:
 
 - required: `memory/manage`, `clock` read and sleep, `display/draw` and
-  `keyboard/input` and the read-only `duke3d-data` package as `duke3d_data://`;
+  `keyboard/input` and the read-only `duke3d` package as `duke3d_data://`;
 - optional: `pointer/input` for the mouse, and for sound `audio/create`,
   `threads/manage` (SDL's audio callback thread) and `pipe/create` (SDL's
   cross-thread event wakeup), and `clipboard_local` and `clipboard_shared`
@@ -77,7 +78,7 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
 3. **Paths.**
    - **Locations:** the data is `duke3d_data://` and generated files go to
      `home://eduke32/`, created on first run and searched first. A missing
-     `duke3d-data` package refuses launch on live and installed systems. Explicit
+     `duke3d` package refuses launch on live and installed systems. Explicit
      data and working-directory options keep their upstream meaning. Upstream
      uses the executable's directory and the XDG or Steam paths.
    - **Working directory:** `buildvfs_chdir` and `buildvfs_getcwd` use libc's

@@ -5,7 +5,7 @@
   "commands": {"devilutionx": "bin/devilutionx.pxe"},
   "resource_dirs": {"devilution_assets": "assets"},
   "grants": [
-    {"name": "diablo_package", "resource": "directory", "package": "diablo-data", "root": "diablo_data", "rights": ["lookup", "enumerate", "read-files"], "required": true},
+    {"name": "diablo_package", "resource": "directory", "package": "diablo", "root": "diablo_data", "rights": ["lookup", "enumerate", "read-files"], "required": true},
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
     {"name": "clock", "resource": "clock", "rights": ["read", "sleep"], "required": true},
     {"name": "display", "resource": "display", "rights": ["draw"], "required": true},

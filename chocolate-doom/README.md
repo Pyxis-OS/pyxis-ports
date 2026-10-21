@@ -6,8 +6,9 @@
 toolchain file against the [SDL2 port](../sdl2/README.md). The recipe stages
 `bin/chocolate-doom.pxb` (`manifest.json` and `app/bin/chocolate-doom.pxe`),
 upstream's licence, SDL2's licence and the port notice. Game data is not part
-of the recipe. This and the native [Doom](../doom/README.md) require the same
-read-only `doom-data` package, exposed as `doom_data://`. A missing package
+of the recipe. This and the native [Doom](../doom/README.md) are both packed into the
+`doom` game package with the data, and read it as `doom_data://`, read-only. A
+missing package
 refuses launch on both live and installed systems; explicit `-iwad` keeps its
 upstream meaning.
 

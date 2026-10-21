@@ -3,7 +3,8 @@
 Pinned ozkl/doomgeneric, built with the Pyxis SDK and Clang. The recipe produces
 `bin/doom.pxb` (`manifest.json` and `app/bin/doom.pxe`) and preserves
 upstream's GPL license. Game data is not downloaded or included by the recipe.
-The bundle requires the read-only `doom-data` package as `doom_data://`;
+The bundle ships in the `doom` game package with the data and reads that
+package, read-only, as `doom_data://`;
 a missing package refuses launch on both live and installed systems.
 
 The Pyxis adapter uses a display DRAW grant, keyboard INPUT grant and clock

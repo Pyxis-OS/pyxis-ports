@@ -7,9 +7,11 @@ data is included.
 
 **Licensing.** DevilutionX is under the non-commercial Sustainable Use
 License, and the executable links libmpq under the GPL. Nobody who distributes
-the combined program can meet both licences, so an image containing it is for
+the combined program can meet both licences, so a package containing it is for
 the person who built it. `PORT-NOTICE` explains this and lists every licence
-staged with it. Pyxis builds this recipe only when `DEVILUTIONX=1` asks for the program, without game data.
+staged with it. Pyxis builds this recipe only for the owner's personal `diablo`
+game package (`make game-packages GAMES=diablo` with a private recipe), never
+for an image, and without game data.
 
 ```sh
 lua build.lua devilutionx --sdk /path/to/pyxis/build/sdk \
@@ -45,7 +47,7 @@ The build uses CMake's FetchContent with downloads turned off
 at runtime:
 
 - required: `memory/manage`, `clock` read and sleep, `display/draw` and
-  `keyboard/input` and the read-only `diablo-data` package as `diablo_data://`;
+  `keyboard/input` and the read-only `diablo` package as `diablo_data://`;
 - optional: `pointer/input`; for sound `audio/create`, `threads/manage`
   (SDL's audio callback thread) and `pipe/create` (SDL's cross-thread event
   wakeup); and `clipboard_local` and `clipboard_shared` (`publish`, `paste`)
@@ -77,7 +79,7 @@ the game runs silent. Without a clipboard grant, Copy and Paste refuse.
    `<fmt/format.h>` in `xpbar.cpp`.
 4. `0004-pyxis-paths-and-defaults` sets Pyxis paths and defaults:
    - **Paths:** data in `diablo_data://` unless `--data-dir` says otherwise.
-     A missing `diablo-data` package refuses launch on both live and installed
+     A missing `diablo` package refuses launch on both live and installed
      systems. Program assets come from the bundle's `app/assets/` through its
      read-only `devilution_assets://` resource root.
    - **Preferences:** saves and `diablo.ini` always go to SDL's preference path,
@@ -118,5 +120,5 @@ The game data and asset inputs stay unchanged.
 | `share/devilutionx/source.txt` | commit, patches and dependency pins |
 | `share/licenses/devilutionx/` | the notice and every licence of the code linked in |
 
-The `diablo-data` package supplies the game data, such as `spawn.mpq`;
-this recipe never stages it.
+The personal `diablo` game package carries this bundle and the game data, such
+as `spawn.mpq`; this recipe never stages the data.

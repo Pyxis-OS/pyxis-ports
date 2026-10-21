@@ -13,9 +13,9 @@ declarations and others) carry their licences in their source files. The
 patched files remain under their original licences. The program links the
 Pyxis SDL2 port statically; SDL2's zlib licence is SDL2-LICENSE.txt.
 
-An image containing EDuke32 is for the person who built it, with their own
-game data, and must not be shared. Ordinary images, CI and build bundles never
-contain it.
+A package containing EDuke32 is for the person who built it, with their own
+game data, and must not be shared. Images, CI, build bundles and the public
+package repository never contain it.
 
 The build leaves out OpenGL, Polymer, audio codecs, network play, mimalloc
 and the startup window. Sound effects and OPL-emulated music play through the

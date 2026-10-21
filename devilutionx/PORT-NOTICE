@@ -24,9 +24,10 @@ The executable also contains, with their licenses staged beside this notice:
 
 The GPL's terms for libmpq and the Sustainable Use License's non-commercial
 terms cannot both be met by someone who distributes the combined executable.
-An image containing this program is therefore for the person who built it and
-must not be shared, for example as a published PXE or installation image.
-Pyxis builds it only on request, with local game data; CI and ordinary images
+A package or image containing this program is therefore for the person who
+built it and must not be shared, for example in a public package repository or
+as a published PXE or installation image. Pyxis builds it only on request, for
+the builder's personal diablo package; CI, images and the public repository
 never contain it.
 
 The five patches modify DevilutionX and remain under its license, and the
