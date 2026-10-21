@@ -50,7 +50,7 @@ return function(ctx)
     "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
     "version=" .. ctx.metadata.version .. "\n",
     "license=" .. ctx.metadata.license .. "\n",
-    "patches=0001-pyxis-native-library.patch\n",
+    "patches=0001-pyxis-native-library.patch,0002-native-secret-erasure.patch\n",
     "profile=RSN supplicant static library; native caller owns policy/events/random\n",
     "omitted=daemon, socket drivers, EAP, config writer, control sockets, entropy pool, NTP helper\n"))
   for _, source in ipairs(sources) do

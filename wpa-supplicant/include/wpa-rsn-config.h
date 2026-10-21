@@ -12,6 +12,8 @@
 #define CONFIG_NO_CONFIG_BLOBS
 #define CONFIG_NO_ROAMING
 #define CONFIG_NO_SCAN_PROCESSING
+/* Upstream clears key arrays through os_memset; retain those writes at -O2. */
+#define os_memset(destination, value, count) memset_explicit((destination), (value), (count))
 #define CONFIG_CRYPTO_INTERNAL
 #define CONFIG_INTERNAL_AES
 #define CONFIG_INTERNAL_SHA1

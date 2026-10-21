@@ -33,6 +33,9 @@ return {
     host = { "make", "curl", "sha256sum", "tar", "gzip", "install", "patch" },
     pyxis = { "libc" },
   },
-  patches = { "patches/0001-pyxis-native-library.patch" },
+  patches = {
+    "patches/0001-pyxis-native-library.patch",
+    "patches/0002-native-secret-erasure.patch",
+  },
   outputs = outputs,
 }
