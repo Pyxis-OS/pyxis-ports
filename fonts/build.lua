@@ -1,7 +1,9 @@
 return function(ctx)
   local metadata = ctx.metadata
-  local roots = { main = ctx.source, sans = ctx.extra.sans,
-    serif = ctx.extra.serif, recipe = ctx.recipe }
+  local roots = { main = ctx.source, recipe = ctx.recipe }
+  for name, directory in pairs(ctx.extra) do
+    roots[name] = directory
+  end
   local checksums = assert(io.open(ctx.build .. "/assets.sha256", "w"))
   for _, asset in ipairs(metadata.assets) do
     ctx.run({ "install", "-D", "-m", "644", roots[asset.source] .. "/" .. asset.path,
