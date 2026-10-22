@@ -100,12 +100,12 @@ image dependency.
 manifest runner. It includes executables, notices and TCC target support, while
 excluding the host compiler and intermediate build files.
 
-## License
-
-Original Pyxis material is licensed under [MPL-2.0](LICENSE). See
-[LICENSING.md](LICENSING.md) for scope and third-party exceptions.
-
 Bundles using standard/precise clock APIs declare `read` and `precise`; relative
 sleep helpers additionally need `sleep`. Rebuild independent bundles after SDK
 clock-authority changes. Fastfetch uptime uses explicit coarse observation while
 its benchmark tick remains precise.
+
+## License
+
+Original Pyxis material is licensed under [MPL-2.0](LICENSE). See
+[LICENSING.md](LICENSING.md) for scope and third-party exceptions.
