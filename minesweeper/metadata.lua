@@ -11,7 +11,7 @@ return {
   version = "upstream-d5f81cc",
   license = "MIT",
   dependencies = {
-    host = { "make", "curl", "sha256sum", "tar", "install" },
+    host = { "make", "curl", "sha256sum", "tar", "gzip", "install" },
     pyxis = { "libc", "libpyxis" },
   },
   patches = { "patches/0001-pyxis-runtime.patch" },
