@@ -14,7 +14,7 @@ the upstream raylib license. THIRD-PARTY-LICENSES contains the selected bundled
 component licenses and notices reached by this profile. Preserve upstream
 source notices when distributing source.
 
-Compiled translation units: rcore, rshapes, rtextures, rtext and rmodels.
+Compiled translation units: rcore, rshapes, rtextures, rtext, rmodels and raudio.
 Renderer/platform: GRAPHICS_API_OPENGL_SOFTWARE (bundled rlsw 1.6), SDL2.
 SDL2 is a separate build/link dependency with separately distributed notices.
 No OpenGL driver, GLAD, GLFW, X11 or GPU library is selected by this profile.
@@ -27,7 +27,12 @@ SplitMix64), sinfl, sdefl, stb_image, stb_image_resize2, stb_perlin,
 stb_rect_pack and stb_truetype. The raymath and rcamera header notices are
 also retained. rlsw SIMD is disabled in this initial profile.
 
-Omitted: raudio, miniaudio and audio decoders; every image decoder except PNG;
+Audio: miniaudio custom SDL output with real native synchronization, float
+stereo mixing, generated Sound/AudioStream and dr_wav WAV decoding. SDL converts
+48 kHz float stereo callbacks to its fixed native 48 kHz S16LE stereo session.
+Miniaudio and dr_wav use their MIT-0 alternatives. No null backend fallback.
+
+Omitted: audio capture, device selection, non-WAV audio decoders; every image decoder except PNG;
 compressed texture containers; image export; FNT/BDF font loaders; external
 model/animation format loaders; mesh generation; GPU skinning; gestures,
 automation, screenshot hotkeys and clipboard-image loading. External font,

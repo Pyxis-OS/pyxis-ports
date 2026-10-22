@@ -1,14 +1,14 @@
 include $(SDK)/share/pyxis.mk
 
-SOURCES := rcore rshapes rtextures rtext rmodels
+SOURCES := rcore rshapes rtextures rtext rmodels raudio
 OBJECTS := $(addprefix $(BUILD)/,$(addsuffix .o,$(SOURCES)))
-CPPFLAGS := $(PYXIS_CPPFLAGS) -I$(SOURCE)/src -I$(SDL2)/include -include $(RECIPE)/pyxis_config.h
+CPPFLAGS := $(PYXIS_CPPFLAGS) -I$(SOURCE)/src -I$(RECIPE) -I$(SDL2)/include -include $(RECIPE)/pyxis_config.h
 CFLAGS := $(PYXIS_CFLAGS) -ffunction-sections -fdata-sections
 
 .PHONY: all
 all: $(BUILD)/libraylib.a $(BUILD)/raylib-shapes.pxe
 
-$(BUILD)/%.o: $(SOURCE)/src/%.c $(RECIPE)/pyxis_config.h $(RECIPE)/Makefile
+$(BUILD)/%.o: $(SOURCE)/src/%.c $(RECIPE)/pyxis_config.h $(RECIPE)/pyxis_miniaudio.h $(RECIPE)/Makefile
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/libraylib.a: $(OBJECTS)

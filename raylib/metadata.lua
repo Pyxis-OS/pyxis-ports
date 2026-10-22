@@ -17,6 +17,7 @@ return {
   patches = {
     "patches/0001-native-file-paths-and-metadata.patch",
     "patches/0002-pyxis-sdl-software-platform.patch",
+    "patches/0003-pyxis-sdl-audio.patch",
   },
   outputs = {
     pc_raylib = "dev/lib/pkgconfig/raylib.pc",

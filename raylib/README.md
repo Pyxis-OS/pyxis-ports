@@ -3,8 +3,8 @@
 Static SDL2/rlsw drawing library: shapes, textures, default/TTF text and basic
 filled 3D. The Pyxis platform uses a fixed logical canvas and aspect-fit point
 scaling into the real display area. QEMU checks are recorded in the parent
-raylib experiment; native ThinkPad/vela qualification is pending. Audio is
-omitted: raudio calls do not link.
+raylib experiment. Drawing has native ThinkPad/vela checks; audio has QEMU
+qualification and still needs coordinated native listening.
 
 ## Build and link
 
@@ -29,8 +29,8 @@ standalone `RLGL_IMPLEMENTATION` is not an exported header-only product.
 
 `pyxis_config.h` is the single explicit configuration. It selects portable scalar
 rlsw, shapes, textures, text/default font, direct basic 3D, PNG/TTF, generated
-images, and compression. Model-file loaders, image export, SIMD requirements,
-GPU/shader features, audio and shared objects are omitted. Software render-texture
+images, compression, generated sound/streams and WAV decoding. Model-file loaders, image export, SIMD requirements,
+GPU/shader features, capture, non-WAV audio decoders and shared objects are omitted. Software render-texture
 helpers need separate qualification; this is not full OpenGL support.
 
 File helpers preserve native `name://` roots and use real libc paths. Missing
@@ -77,3 +77,21 @@ cursor lock, W requests centre positioning, and Escape exits. RGBY corners make
 orientation visible. The near orange cube is drawn before the distant blue one,
 so depth occlusion is visible. Exit prints frames, elapsed time and mean FPS;
 this measures the capped application, not exclusive renderer/CPU cost.
+
+## Audio
+
+`InitAudioDevice` selects only a custom miniaudio backend over Pyxis SDL2.
+SDL owns one normal-priority joinable callback thread and the native PCM session;
+miniaudio creates no second worker. Raudio mixes float stereo at 48 kHz, SDL
+converts to the fixed native S16LE stereo stream in 1,024-frame buffers.
+Generated `Wave`/`Sound`, `AudioStream`, and WAV decoding are selected. Other
+file decoders, capture, enumeration and device selection remain outside the
+qualified profile; no null or host backend can report success.
+
+Audio consumers must declare audio CREATE, threads MANAGE, clock
+READ/PRECISE/SLEEP and pipe CREATE. Missing authority or a device failure leaves
+`IsAudioDeviceReady()` false. A lost device also reports not ready; callers must
+still stop/unload their sounds/streams and call `CloseAudioDevice()` to join
+callbacks and release resources. Close joins before destroying mixer state;
+reopen creates a fresh session. SDL's documented queue/pause latency remains.
+The shapes example still requests no audio/thread grants and stays silent.
