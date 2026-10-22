@@ -6,7 +6,7 @@
   "resource_dirs": {"nvim_runtime": "share/nvim/runtime"},
   "grants": [
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
-    {"name": "clock", "resource": "clock", "rights": ["read", "sleep"], "required": true},
+    {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
     {"name": "launcher", "resource": "launcher", "rights": ["launch"], "required": true},
     {"name": "pipe", "resource": "pipe", "rights": ["create"], "required": true},
     {"name": "threads", "resource": "threads", "rights": ["manage"], "required": false},

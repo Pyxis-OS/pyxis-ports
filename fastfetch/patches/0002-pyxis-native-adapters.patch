@@ -472,7 +472,7 @@ index 0000000..1c63451
 +    return "Missing clock READ grant";
 +  }
 +  uint64_t nanoseconds;
-+  enum call_status status = clock_now(handle, &nanoseconds);
++  enum call_status status = clock_coarse_now(handle, &nanoseconds);
 +  handle_close(handle);
 +  if (status != CALL_OK) {
 +    return "Native monotonic clock query failed";
