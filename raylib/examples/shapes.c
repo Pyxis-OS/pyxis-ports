@@ -97,7 +97,8 @@ int main(int argc, char **argv)
     ++frames;
   }
   double elapsed = GetTime() - started;
-  fprintf(stderr, "raylib-shapes: %lu frames in %.3f seconds (%dx%d canvas)", frames, elapsed, width, height);
+  fprintf(stderr, "raylib-shapes: canvas=%dx%d output=%dx%d frames=%lu elapsed=%.3f s",
+      width, height, GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor()), frames, elapsed);
   if (elapsed > 0.0) fprintf(stderr, "; average %.1f FPS", frames/elapsed);
   fputc('\n', stderr);
   UnloadTexture(checker);
