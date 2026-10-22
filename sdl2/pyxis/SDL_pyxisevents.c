@@ -247,10 +247,26 @@ static void update_pointer_state(uint64_t flags, bool reset)
   SDL_SetMouseFocus(pointer_focused && (pointer_inside || locked) ? pyxis_video.window : NULL);
 }
 
+struct pointer_geometry_snapshot {
+  struct pointer_geometry value;
+  uint64_t event_generation, event_mapping_identity;
+  bool attempted, available;
+};
+
 static bool ordinary_geometry(const struct pointer_event *event,
-    struct pointer_geometry *geometry)
+    struct pointer_geometry_snapshot *snapshot)
 {
-  return pointer_geometry(pyxis_video.pointer, geometry) == CALL_OK &&
+  if (!snapshot->attempted || snapshot->event_generation != event->generation ||
+      snapshot->event_mapping_identity != event->mapping_identity) {
+    snapshot->attempted = true;
+    snapshot->event_generation = event->generation;
+    snapshot->event_mapping_identity = event->mapping_identity;
+    /* GEOMETRY parks through the BSP. Reuse its snapshot within this pump/key,
+     * including a refused query, but validate every event against it below. */
+    snapshot->available = pointer_geometry(pyxis_video.pointer, &snapshot->value) == CALL_OK;
+  }
+  const struct pointer_geometry *geometry = &snapshot->value;
+  return snapshot->available &&
       event->generation == geometry->generation &&
       event->mapping_identity == geometry->mapping_identity &&
       geometry->generation == pyxis_video.generation &&
@@ -266,13 +282,13 @@ static void send_ordinary_position(const struct pointer_event *event)
       (int)event->x, (int)event->y);
 }
 
-static void restore_ordinary_position(const struct pointer_event *event)
+static void restore_ordinary_position(const struct pointer_event *event,
+    struct pointer_geometry_snapshot *snapshot)
 {
-  struct pointer_geometry geometry;
-  if (!pointer_focused || !ordinary_geometry(event, &geometry) ||
+  if (!pointer_focused || !ordinary_geometry(event, snapshot) ||
       event->x < 0 || event->y < 0 ||
-      (uint64_t)event->x >= SDL_min(geometry.width, geometry.mapping_width) ||
-      (uint64_t)event->y >= SDL_min(geometry.height, geometry.mapping_height)) {
+      (uint64_t)event->x >= SDL_min(snapshot->value.width, snapshot->value.mapping_width) ||
+      (uint64_t)event->y >= SDL_min(snapshot->value.height, snapshot->value.mapping_height)) {
     return;
   }
   /* State events carry the native parked position. Restore it even when no
@@ -280,7 +296,8 @@ static void restore_ordinary_position(const struct pointer_event *event)
   send_ordinary_position(event);
 }
 
-static void handle_pointer(const struct pointer_event *event)
+static void handle_pointer(const struct pointer_event *event,
+    struct pointer_geometry_snapshot *snapshot)
 {
   bool locked = (event->flags & POINTER_EVENT_LOCKED) != 0;
   if (!locked && (event->type == POINTER_ENTER || event->type == POINTER_ACTIVATED)) {
@@ -290,13 +307,14 @@ static void handle_pointer(const struct pointer_event *event)
     pointer_inside = false;
   }
   if (event->type != POINTER_INPUT) {
+    snapshot->attempted = false;
     reset_scroll();
     bool keep_buttons = locked && event->type == POINTER_GEOMETRY_CHANGED;
     update_pointer_state(event->flags, !keep_buttons);
     if (!locked && (event->type == POINTER_ENTER ||
         event->type == POINTER_GEOMETRY_CHANGED || event->type == POINTER_LOCK_CHANGED ||
         event->type == POINTER_STATE_RESET || event->type == POINTER_ACTIVATED)) {
-      restore_ordinary_position(event);
+      restore_ordinary_position(event, snapshot);
     }
     return;
   }
@@ -312,8 +330,7 @@ static void handle_pointer(const struct pointer_event *event)
       SDL_SendMouseMotion(pyxis_video.window, 0, SDL_TRUE, event->dx, event->dy);
     }
   } else {
-    struct pointer_geometry geometry;
-    if (!ordinary_geometry(event, &geometry)) {
+    if (!ordinary_geometry(event, snapshot)) {
       reset_scroll();
       return;
     }
@@ -531,10 +548,11 @@ void PYXIS_PumpEvents(SDL_VideoDevice *device)
     }
   }
 
+  struct pointer_geometry_snapshot geometry = {0};
   struct pointer_event motion;
   while (pointer_ready && pyxis_video.pointer_owned &&
          pointer_read(pyxis_video.pointer, POINTER_READ_POLL, &motion) == CALL_OK) {
-    handle_pointer(&motion);
+    handle_pointer(&motion, &geometry);
   }
   uint64_t flags;
   if (pyxis_video.pointer_owned && pointer_state(pyxis_video.pointer, &flags) == CALL_OK) {

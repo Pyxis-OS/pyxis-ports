@@ -57,6 +57,9 @@ The files in `pyxis/` are the platform layer:
   - **Pointer.** Ordinary motion uses native surface-local positions with matching
     destination and mapping identities, including anchored drags outside the
     window. SDL does not integrate device counts or scale ordinary motion.
+    The pump reuses one lazily queried geometry snapshot for matching events,
+    refreshing on state/geometry boundaries; identities and extents are still
+    checked per event. No motion, button or wheel events are removed.
     `SDL_WarpMouseInWindow` requests native bounded owner warp; refusal sets
     SDL's error and preserves position. Success arrives through native input.
     Relative mode requests native lock and returns an error when refused,
