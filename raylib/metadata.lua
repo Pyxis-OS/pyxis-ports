@@ -29,7 +29,6 @@ return {
     rlgl_header = "dev/include/rlgl.h",
     configuration = "dev/share/raylib/pyxis_config.h",
     package = "dev/lib/cmake/raylib/raylibConfig.cmake",
-    pkg_config = "dev/lib/pkgconfig/raylib.pc",
     license = "dev/share/licenses/raylib/LICENSE",
     third_party = "dev/share/licenses/raylib/THIRD-PARTY-LICENSES",
     notice = "dev/share/licenses/raylib/PORT-NOTICE",

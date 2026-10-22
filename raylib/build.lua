@@ -11,7 +11,6 @@ return function(ctx)
   for _, name in ipairs({ "raylib", "raymath", "rlgl" }) do
     install(ctx.source .. "/src/" .. name .. ".h", "dev/include/" .. name .. ".h")
   end
-  install(ctx.recipe .. "/pkgconfig/raylib.pc", outputs.pkg_config)
   install(ctx.recipe .. "/pyxis_config.h", outputs.configuration)
   install(ctx.recipe .. "/cmake/raylibConfig.cmake", outputs.package)
   install(ctx.source .. "/LICENSE", outputs.license)

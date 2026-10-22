@@ -23,7 +23,7 @@ link flags. Link application objects, `libraylib.a`, `libSDL2.a`, then the SDK
 runtime group. The development packages also install `raylib.pc` and `sdl2.pc`
 in the shared `sdk://lib/pkgconfig` view. `pkg-config --static --cflags --libs
 raylib` emits `-Isdk://include -Isdk://include/SDL2 -Lsdk://lib -lraylib -lSDL2`;
-raylib's private `sdl2` module dependency comes from the separate `sdl2-dev`
+raylib's `sdl2` module dependency comes from the separate `sdl2-dev`
 package, not an embedded copy. A host cross-build can override `prefix` with
 an absolute relocated SDK directory ending in `/`; use the ordinary SDK
 start/link/runtime flags as well. No host OpenGL, X11 or system library is used. CMake consumers use
