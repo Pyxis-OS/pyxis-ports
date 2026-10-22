@@ -1,0 +1,267 @@
+Bundled notices for the Pyxis raylib 6.2 profile
+
+The recipe's pyxis_config.h selects the reached sources listed below. MIT is
+selected where a bundled dependency offers MIT or public domain. Public-domain
+dedications embedded in rprand are retained as supplied by upstream. The raylib
+root license is shipped separately as LICENSE; SDL2 has its own package notices.
+These notices do not relicense the complete upstream archive.
+
+rlsw - MIT
+Source: src/external/rlsw.h:64-84
+
+LICENSE: MIT
+
+  Copyright (c) 2025-2026 Le Juez Victor (@Bigfoot71), reviewed by Ramon Santamaria (@raysan5)
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+rprand - zlib/libpng
+Source: src/external/rprand.h:41-58
+
+LICENSE: zlib/libpng
+
+  Copyright (c) 2023 Ramon Santamaria (@raysan5)
+
+  This software is provided "as-is", without any express or implied warranty. In no event
+  will the authors be held liable for any damages arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose, including commercial
+  applications, and to alter it and redistribute it freely, subject to the following restrictions:
+
+    1. The origin of this software must not be misrepresented; you must not claim that you
+    wrote the original software. If you use this software in a product, an acknowledgment
+    in the product documentation would be appreciated but is not required.
+
+    2. Altered source versions must be plainly marked as such, and must not be misrepresented
+    as being the original software.
+
+    3. This notice may not be removed or altered from any source distribution.
+
+rprand: Xoshiro128** - bundled public-domain dedication
+Source: src/external/rprand.h:256-262
+
+//   Written in 2018 by David Blackman and Sebastiano Vigna (vigna@acm.org)
+//
+//   To the extent possible under law, the author has dedicated all copyright
+//   and related and neighboring rights to this software to the public domain
+//   worldwide. This software is distributed without any warranty.
+//
+//   See <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+rprand: SplitMix64 - bundled public-domain dedication
+Source: src/external/rprand.h:296-302
+
+//   Written in 2015 by Sebastiano Vigna (vigna@acm.org)
+//
+//   To the extent possible under law, the author has dedicated all copyright
+//   and related and neighboring rights to this software to the public domain
+//   worldwide. This software is distributed without any warranty.
+//
+//   See <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+sinfl - MIT selected
+Source: src/external/sinfl.h:74-90
+
+ALTERNATIVE A - MIT License
+Copyright (c) 2020-2023 Micha Mettke
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+sdefl - MIT selected
+Source: src/external/sdefl.h:73-89
+
+ALTERNATIVE A - MIT License
+Copyright (c) 2020-2023 Micha Mettke
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+stb_image - MIT selected
+Source: src/external/stb_image.h:7952-7968
+
+ALTERNATIVE A - MIT License
+Copyright (c) 2017 Sean Barrett
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+stb_image_resize2 - MIT selected
+Source: src/external/stb_image_resize2.h:10643-10659
+
+ALTERNATIVE A - MIT License
+Copyright (c) 2017 Sean Barrett
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+stb_perlin - MIT selected
+Source: src/external/stb_perlin.h:392-408
+
+ALTERNATIVE A - MIT License
+Copyright (c) 2017 Sean Barrett
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+stb_rect_pack - MIT selected
+Source: src/external/stb_rect_pack.h:587-603
+
+ALTERNATIVE A - MIT License
+Copyright (c) 2017 Sean Barrett
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+stb_truetype - MIT selected
+Source: src/external/stb_truetype.h:5043-5059
+
+ALTERNATIVE A - MIT License
+Copyright (c) 2017 Sean Barrett
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+rcamera - zlib/libpng
+Source: src/rcamera.h:21-38
+
+LICENSE: zlib/libpng
+
+  Copyright (c) 2022-2026 Christoph Wagner (@Crydsch) and Ramon Santamaria (@raysan5)
+
+  This software is provided "as-is", without any express or implied warranty. In no event
+  will the authors be held liable for any damages arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose, including commercial
+  applications, and to alter it and redistribute it freely, subject to the following restrictions:
+
+    1. The origin of this software must not be misrepresented; you must not claim that you
+    wrote the original software. If you use this software in a product, an acknowledgment
+    in the product documentation would be appreciated but is not required.
+
+    2. Altered source versions must be plainly marked as such, and must not be misrepresented
+    as being the original software.
+
+    3. This notice may not be removed or altered from any source distribution.
+
+raymath - zlib/libpng
+Source: src/raymath.h:38-55
+
+LICENSE: zlib/libpng
+
+  Copyright (c) 2015-2026 Ramon Santamaria (@raysan5)
+
+  This software is provided "as-is", without any express or implied warranty. In no event
+  will the authors be held liable for any damages arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose, including commercial
+  applications, and to alter it and redistribute it freely, subject to the following restrictions:
+
+    1. The origin of this software must not be misrepresented; you must not claim that you
+    wrote the original software. If you use this software in a product, an acknowledgment
+    in the product documentation would be appreciated but is not required.
+
+    2. Altered source versions must be plainly marked as such, and must not be misrepresented
+    as being the original software.
+
+    3. This notice may not be removed or altered from any source distribution.

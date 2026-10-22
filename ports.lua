@@ -21,6 +21,7 @@ return {
   pciids = "pciids",
   picohttpparser = "picohttpparser",
   quake = "quake",
+  raylib = "raylib",
   sbase = "sbase",
   sdl2 = "sdl2",
   tcc = "tcc",

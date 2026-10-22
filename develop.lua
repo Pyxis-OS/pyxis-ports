@@ -13,5 +13,6 @@ return function(inputs)
     { tree = inputs.ports .. "/wpa-supplicant/stage/dev", at = "wpa-supplicant" },
     { tree = inputs.ports .. "/fmt/stage/dev", at = "fmt" },
     { tree = inputs.ports .. "/sdl2/stage/dev", at = "sdl2" },
+    { tree = inputs.ports .. "/raylib/stage/dev", at = "raylib" },
   }
 end

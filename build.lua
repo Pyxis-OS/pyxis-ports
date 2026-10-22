@@ -81,7 +81,7 @@ local function main()
     print("Lua also requires --mbedtls PATH to its configured development prefix.")
     print("Libpng also requires --zlib PATH to its development prefix.")
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
-    print("Chocolate Doom, Chocolate Quake and EDuke32 also require --sdl2 PATH to its development prefix.")
+    print("Raylib, Chocolate Doom, Chocolate Quake and EDuke32 also require --sdl2 PATH to its development prefix.")
     print("Lua 5.1 also requires --libuv PATH to its development prefix.")
     print("Neovim also requires --lua51, --libuv, --utf8proc and --tree-sitter development prefixes.")
     return
@@ -92,7 +92,7 @@ local function main()
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
-      name == "chocolate-quake" or name == "eduke32", ["--libuv"] = name == "lua51" or name == "neovim",
+      name == "chocolate-quake" or name == "eduke32" or name == "raylib", ["--libuv"] = name == "lua51" or name == "neovim",
     ["--lua51"] = name == "neovim", ["--utf8proc"] = name == "neovim",
     ["--tree-sitter"] = name == "neovim" }
   for i = 2, #arg, 2 do
@@ -189,7 +189,7 @@ local function main()
     require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
   end
   if name == "devilutionx" or name == "chocolate-doom" or name == "chocolate-quake" or
-      name == "eduke32" then
+      name == "eduke32" or name == "raylib" then
     assert(options["--sdl2"], name .. " needs --sdl2 PATH to its development prefix")
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
