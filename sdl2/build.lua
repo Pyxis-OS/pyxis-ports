@@ -10,8 +10,6 @@ return function(ctx)
     ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/cmake/" .. name,
       ctx.stage .. "/dev/lib/cmake/SDL2/" .. name })
   end
-  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/pkgconfig/sdl2.pc",
-    ctx.stage .. "/" .. ctx.metadata.outputs.pkg_config })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE.txt",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/PORT-NOTICE",

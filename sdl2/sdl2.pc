@@ -1,6 +1,6 @@
 prefix=sdk://
-includedir=sdk://include
-libdir=sdk://lib
+includedir=${prefix}include
+libdir=${prefix}lib
 
 Name: SDL2
 Description: Simple DirectMedia Layer
