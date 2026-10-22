@@ -102,7 +102,10 @@ excluding the host compiler and intermediate build files.
 
 Bundles using standard/precise clock APIs declare `read` and `precise`; relative
 sleep helpers additionally need `sleep`. Rebuild independent bundles after SDK
-clock-authority changes. Fastfetch uptime uses explicit coarse observation while
+clock-authority changes. Libc also uses precise deadline anchors for entropy,
+temporary-file name creation and transactional opens: these can return `EACCES`
+with a READ-only clock even if a port does not call a clock API directly.
+Fastfetch uptime uses explicit coarse observation while
 its benchmark tick remains precise.
 
 ## License
