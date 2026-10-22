@@ -1,0 +1,772 @@
+--- a/src/rcore.c
++++ b/src/rcore.c
+@@ -1666,6 +1666,22 @@
+ // REF: http://www.geisswerks.com/ryan/FAQS/timing.html --> All about timing on Win32!
+ void WaitTime(double seconds)
+ {
++#if defined(__pyxis__)
++    if (seconds == 0.0) return;
++    if (!(seconds > 0.0) || !isfinite(seconds) || (seconds >= (double)INT64_MAX))
++    {
++        TRACELOG(LOG_WARNING, "TIMER: Invalid sleep duration");
++        return;
++    }
++    struct timespec delay = { .tv_sec = (time_t)seconds,
++        .tv_nsec = (long)((seconds - (time_t)seconds)*1000000000.0) };
++    if (nanosleep(&delay, NULL) != 0)
++    {
++        TRACELOG(LOG_WARNING, "TIMER: Sleep failed (errno %i)", errno);
++        CORE.Window.shouldClose = true;
++    }
++    return;
++#endif
+     if (seconds < 0) return;    // Security check
+ 
+ #if SUPPORT_BUSY_WAIT_LOOP || SUPPORT_PARTIALBUSY_WAIT_LOOP
+--- a/src/platforms/rcore_desktop_sdl.c
++++ b/src/platforms/rcore_desktop_sdl.c
+@@ -108,6 +108,10 @@
+     SDL_GameController *gamepad[MAX_GAMEPADS];
+     SDL_JoystickID gamepadId[MAX_GAMEPADS]; // Joystick instance ids, they do not start from 0
+     SDL_Cursor *cursor;
++#if defined(__pyxis__)
++    SDL_Surface *canvas;              // Packed, top-down BGRA readback; owns pixels separately.
++    SDL_Rect viewport;               // Logical canvas fitted inside the actual content area.
++#endif
+ 
+ #if defined(__linux__)
+     // Local storage for the window handle (X11)
+@@ -123,6 +127,112 @@
+ extern CoreData CORE;                   // Global CORE state context
+ 
+ static PlatformData platform = { 0 };   // Platform specific data
++
++
++#if defined(__pyxis__)
++static bool PyxisUpdateOutput(void)
++{
++    int width, height;
++    SDL_GetWindowSize(platform.window, &width, &height);
++    int logicalWidth = CORE.Window.screen.width;
++    int logicalHeight = CORE.Window.screen.height;
++    if ((width <= 0) || (height <= 0) || (logicalWidth <= 0) || (logicalHeight <= 0)) return false;
++    CORE.Window.display.width = width;
++    CORE.Window.display.height = height;
++    SDL_Rect *view = &platform.viewport;
++    if ((int64_t)width*logicalHeight <= (int64_t)height*logicalWidth)
++    {
++        view->w = width;
++        view->h = (int)((int64_t)width*logicalHeight/logicalWidth);
++    }
++    else
++    {
++        view->h = height;
++        view->w = (int)((int64_t)height*logicalWidth/logicalHeight);
++    }
++    if ((view->w <= 0) || (view->h <= 0)) return false;
++    view->x = (width - view->w)/2;
++    view->y = (height - view->h)/2;
++    return true;
++}
++
++static SDL_Surface *PyxisCreateCanvas(int width, int height)
++{
++    // rlsw stores framebuffer byte counts in signed int.
++    if ((width <= 0) || (height <= 0) || (width > INT_MAX/4) || (height > INT_MAX/(width*4)))
++    {
++        SDL_SetError("Invalid Pyxis logical canvas dimensions");
++        return NULL;
++    }
++    void *pixels = RL_MALLOC((size_t)width*height*4);
++    if (pixels == NULL) { SDL_OutOfMemory(); return NULL; }
++    // rlsw's default readback flips its bottom-up RGBA storage to top-down BGRA.
++    SDL_Surface *canvas = SDL_CreateRGBSurfaceWithFormatFrom(pixels, width, height, 32,
++        width*4, SDL_PIXELFORMAT_BGRA32);
++    if ((canvas == NULL) || (SDL_SetSurfaceBlendMode(canvas, SDL_BLENDMODE_NONE) != 0))
++    {
++        SDL_FreeSurface(canvas);
++        RL_FREE(pixels);
++        return NULL;
++    }
++    return canvas;
++}
++
++static void PyxisFreeCanvas(SDL_Surface *canvas)
++{
++    if (canvas == NULL) return;
++    void *pixels = canvas->pixels;
++    SDL_FreeSurface(canvas);
++    RL_FREE(pixels);
++}
++
++static void PyxisClearMouseButtons(void)
++{
++    memset(CORE.Input.Mouse.currentButtonState, 0, sizeof(CORE.Input.Mouse.currentButtonState));
++    memset(CORE.Input.Touch.currentTouchState, 0, sizeof(CORE.Input.Touch.currentTouchState));
++}
++
++static void PyxisMousePosition(int x, int y)
++{
++    SDL_Rect view = platform.viewport;
++    bool inside = (x >= view.x) && (y >= view.y) &&
++        (x < view.x + view.w) && (y < view.y + view.h);
++    CORE.Input.Mouse.cursorOnScreen = inside;
++    if (inside)
++    {
++        CORE.Input.Mouse.currentPosition = (Vector2){
++            (float)(x - view.x)*CORE.Window.screen.width/view.w,
++            (float)(y - view.y)*CORE.Window.screen.height/view.h };
++    }
++    else
++    {
++        CORE.Input.Mouse.currentPosition = (Vector2){ -1.0f, -1.0f };
++        PyxisClearMouseButtons();
++        CORE.Input.Mouse.currentWheelMove = (Vector2){ 0 };
++    }
++    CORE.Input.Touch.position[0] = CORE.Input.Mouse.currentPosition;
++}
++
++static void PyxisSyncMouseMode(void)
++{
++    bool locked = SDL_GetRelativeMouseMode() == SDL_TRUE;
++    if (locked != CORE.Input.Mouse.cursorLocked)
++    {
++        CORE.Input.Mouse.cursorLocked = locked;
++        CORE.Input.Mouse.currentPosition = (Vector2){ 0 };
++        CORE.Input.Mouse.previousPosition = (Vector2){ 0 };
++        PyxisClearMouseButtons();
++        if (!locked)
++        {
++            int x, y;
++            SDL_GetMouseState(&x, &y);
++            PyxisMousePosition(x, y);
++            CORE.Input.Mouse.previousPosition = CORE.Input.Mouse.currentPosition;
++        }
++    }
++    CORE.Input.Mouse.cursorHidden = locked || (SDL_ShowCursor(SDL_QUERY) == SDL_DISABLE);
++}
++#endif
+ 
+ static const KeyboardKey mapScancodeToKey[SCANCODE_MAPPED_NUM] = {
+     KEY_NULL,           // SDL_SCANCODE_UNKNOWN
+@@ -469,6 +579,9 @@
+ // Toggle fullscreen mode
+ void ToggleFullscreen(void)
+ {
++#if defined(__pyxis__)
++    TRACELOG(LOG_WARNING, "WINDOW: ToggleFullscreen is unavailable on Pyxis");
++#else
+     const int monitor = SDL_GetWindowDisplayIndex(platform.window);
+ 
+ #if defined(USING_VERSION_SDL3) // SDL3 Migration: Monitor is an id instead of index now, returns 0 on failure
+@@ -489,11 +602,15 @@
+         }
+     }
+     else TRACELOG(LOG_WARNING, "SDL: Failed to find selected monitor");
++#endif
+ }
+ 
+ // Toggle borderless windowed mode
+ void ToggleBorderlessWindowed(void)
+ {
++#if defined(__pyxis__)
++    TRACELOG(LOG_WARNING, "WINDOW: ToggleBorderlessWindowed is unavailable on Pyxis");
++#else
+     const int monitor = SDL_GetWindowDisplayIndex(platform.window);
+ 
+ #if defined(USING_VERSION_SDL3) // SDL3 Migration: Monitor is an id instead of index now, returns 0 on failure
+@@ -514,32 +631,50 @@
+         }
+     }
+     else TRACELOG(LOG_WARNING, "SDL: Failed to find selected monitor");
++#endif
+ }
+ 
+ // Set window state: maximized, if resizable
+ void MaximizeWindow(void)
+ {
++#if defined(__pyxis__)
++    TRACELOG(LOG_WARNING, "WINDOW: MaximizeWindow is unavailable on Pyxis");
++#else
+     SDL_MaximizeWindow(platform.window);
+     if (!FLAG_IS_SET(CORE.Window.flags, FLAG_WINDOW_MAXIMIZED)) FLAG_SET(CORE.Window.flags, FLAG_WINDOW_MAXIMIZED);
++#endif
+ }
+ 
+ // Set window state: minimized
+ void MinimizeWindow(void)
+ {
++#if defined(__pyxis__)
++    TRACELOG(LOG_WARNING, "WINDOW: MinimizeWindow is unavailable on Pyxis");
++#else
+     SDL_MinimizeWindow(platform.window);
+     if (!FLAG_IS_SET(CORE.Window.flags, FLAG_WINDOW_MINIMIZED)) FLAG_SET(CORE.Window.flags, FLAG_WINDOW_MINIMIZED);
++#endif
+ }
+ 
+ // Restore window from being minimized/maximized
+ void RestoreWindow(void)
+ {
++#if defined(__pyxis__)
++    TRACELOG(LOG_WARNING, "WINDOW: RestoreWindow is unavailable on Pyxis");
++#else
+     SDL_RestoreWindow(platform.window);
+     // CORE.Window.flags will be removed on PollInputEvents()
++#endif
+ }
+ 
+ // Set window configuration state using flags
+ void SetWindowState(unsigned int flags)
+ {
++#if defined(__pyxis__)
++    const unsigned int supported = FLAG_WINDOW_ALWAYS_RUN;
++    if (flags & ~supported) TRACELOG(LOG_WARNING, "WINDOW: Requested window state is unavailable on Pyxis");
++    FLAG_SET(CORE.Window.flags, flags & supported);
++#else
+     if (!CORE.Window.ready) TRACELOG(LOG_WARNING, "WINDOW: SetWindowState does nothing before window initialization, Use \"SetConfigFlags\" instead");
+ 
+     FLAG_SET(CORE.Window.flags, flags);
+@@ -632,11 +767,17 @@
+     {
+         TRACELOG(LOG_WARNING, "SetWindowState() - FLAG_INTERLACED_HINT is not supported on PLATFORM_DESKTOP_SDL");
+     }
++#endif
+ }
+ 
+ // Clear window configuration state flags
+ void ClearWindowState(unsigned int flags)
+ {
++#if defined(__pyxis__)
++    const unsigned int supported = FLAG_WINDOW_ALWAYS_RUN;
++    if (flags & ~supported) TRACELOG(LOG_WARNING, "WINDOW: Requested window state cannot be cleared on Pyxis");
++    FLAG_CLEAR(CORE.Window.flags, flags & supported);
++#else
+     FLAG_CLEAR(CORE.Window.flags, flags);
+ 
+     if (FLAG_IS_SET(flags, FLAG_VSYNC_HINT))
+@@ -703,11 +844,16 @@
+     {
+         TRACELOG(LOG_WARNING, "ClearWindowState() - FLAG_INTERLACED_HINT is not supported on PLATFORM_DESKTOP_SDL");
+     }
++#endif
+ }
+ 
+ // Set icon for window
+ void SetWindowIcon(Image image)
+ {
++#if defined(__pyxis__)
++    (void)image;
++    TRACELOG(LOG_WARNING, "WINDOW: SetWindowIcon is unavailable on Pyxis");
++#else
+     SDL_Surface *iconSurface = NULL;
+ 
+     unsigned int rmask = 0, gmask = 0, bmask = 0, amask = 0;
+@@ -805,6 +951,7 @@
+         SDL_SetWindowIcon(platform.window, iconSurface);
+         SDL_FreeSurface(iconSurface);
+     }
++#endif
+ }
+ 
+ // Set icon for window
+@@ -816,23 +963,37 @@
+ // Set title for window
+ void SetWindowTitle(const char *title)
+ {
++#if defined(__pyxis__)
++    (void)title;
++    TRACELOG(LOG_WARNING, "WINDOW: SetWindowTitle is unavailable on Pyxis");
++#else
+     SDL_SetWindowTitle(platform.window, title);
+ 
+     CORE.Window.title = title;
++#endif
+ }
+ 
+ // Set window position on screen (windowed mode)
+ void SetWindowPosition(int x, int y)
+ {
++#if defined(__pyxis__)
++    (void)x; (void)y;
++    TRACELOG(LOG_WARNING, "WINDOW: SetWindowPosition is unavailable on Pyxis");
++#else
+     SDL_SetWindowPosition(platform.window, x, y);
+ 
+     CORE.Window.position.x = x;
+     CORE.Window.position.y = y;
++#endif
+ }
+ 
+ // Set monitor for the current window
+ void SetWindowMonitor(int monitor)
+ {
++#if defined(__pyxis__)
++    (void)monitor;
++    TRACELOG(LOG_WARNING, "WINDOW: SetWindowMonitor is unavailable on Pyxis");
++#else
+ #if defined(USING_VERSION_SDL3) // SDL3 Migration: Monitor is an id instead of index now, returns 0 on failure
+     if (SDL_GetDisplayProperties(monitor) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
+ #else
+@@ -884,48 +1045,73 @@
+         else TRACELOG(LOG_WARNING, "SDL: Failed to get selected display usable bounds");
+     }
+     else TRACELOG(LOG_WARNING, "SDL: Failed to find selected monitor");
++#endif
+ }
+ 
+ // Set window minimum dimensions (FLAG_WINDOW_RESIZABLE)
+ void SetWindowMinSize(int width, int height)
+ {
++#if defined(__pyxis__)
++    (void)width; (void)height;
++    TRACELOG(LOG_WARNING, "WINDOW: SetWindowMinSize is unavailable on Pyxis");
++#else
+     SDL_SetWindowMinimumSize(platform.window, width, height);
+ 
+     CORE.Window.screenMin.width = width;
+     CORE.Window.screenMin.height = height;
++#endif
+ }
+ 
+ // Set window maximum dimensions (FLAG_WINDOW_RESIZABLE)
+ void SetWindowMaxSize(int width, int height)
+ {
++#if defined(__pyxis__)
++    (void)width; (void)height;
++    TRACELOG(LOG_WARNING, "WINDOW: SetWindowMaxSize is unavailable on Pyxis");
++#else
+     SDL_SetWindowMaximumSize(platform.window, width, height);
+ 
+     CORE.Window.screenMax.width = width;
+     CORE.Window.screenMax.height = height;
++#endif
+ }
+ 
+ // Set window dimensions
+ void SetWindowSize(int width, int height)
+ {
++#if defined(__pyxis__)
++    (void)width; (void)height;
++    TRACELOG(LOG_WARNING, "WINDOW: Logical canvas size is fixed by InitWindow on Pyxis");
++#else
+     SDL_SetWindowSize(platform.window, width, height);
+ 
+     CORE.Window.screen.width = width;
+     CORE.Window.screen.height = height;
++#endif
+ }
+ 
+ // Set window opacity, value opacity is between 0.0 and 1.0
+ void SetWindowOpacity(float opacity)
+ {
++#if defined(__pyxis__)
++    (void)opacity;
++    TRACELOG(LOG_WARNING, "WINDOW: SetWindowOpacity is unavailable on Pyxis");
++#else
+     if (opacity >= 1.0f) opacity = 1.0f;
+     else if (opacity <= 0.0f) opacity = 0.0f;
+ 
+     SDL_SetWindowOpacity(platform.window, opacity);
++#endif
+ }
+ 
+ // Set window focused
+ void SetWindowFocused(void)
+ {
++#if defined(__pyxis__)
++    TRACELOG(LOG_WARNING, "WINDOW: SetWindowFocused is unavailable on Pyxis");
++#else
+     SDL_RaiseWindow(platform.window);
++#endif
+ }
+ 
+ // Get native window handle
+@@ -1270,7 +1456,11 @@
+ #else
+     SDL_ShowCursor(SDL_ENABLE);
+ #endif
++#if defined(__pyxis__)
++    PyxisSyncMouseMode();
++#else
+     CORE.Input.Mouse.cursorHidden = false;
++#endif
+ }
+ 
+ // Hide mouse cursor
+@@ -1281,31 +1471,73 @@
+ #else
+     SDL_ShowCursor(SDL_DISABLE);
+ #endif
++#if defined(__pyxis__)
++    PyxisSyncMouseMode();
++#else
+     CORE.Input.Mouse.cursorHidden = true;
++#endif
+ }
+ 
+ // Enable cursor (unlock cursor)
+ void EnableCursor(void)
+ {
++#if defined(__pyxis__)
++    if (SDL_SetRelativeMouseMode(SDL_FALSE) != 0)
++    {
++        TRACELOG(LOG_WARNING, "INPUT: Unlock refused: %s", SDL_GetError());
++        return;
++    }
++    ShowCursor();
++    PyxisSyncMouseMode();
++#else
+     SDL_SetRelativeMouseMode(SDL_FALSE);
+ 
+     ShowCursor();
+     CORE.Input.Mouse.cursorLocked = false;
++#endif
+ }
+ 
+ // Disable cursor (lock cursor)
+ void DisableCursor(void)
+ {
++#if defined(__pyxis__)
++    if (SDL_SetRelativeMouseMode(SDL_TRUE) != 0)
++    {
++        TRACELOG(LOG_WARNING, "INPUT: Lock refused: %s", SDL_GetError());
++        return;
++    }
++    PyxisSyncMouseMode();
++#else
+     SDL_SetRelativeMouseMode(SDL_TRUE);
+ 
+     HideCursor();
+     CORE.Input.Mouse.cursorLocked = true;
++#endif
+ }
+ 
+ // Swap back buffer with front buffer (screen drawing)
+ void SwapScreenBuffer(void)
+ {
+-#if defined(GRAPHICS_API_OPENGL_SOFTWARE)
++#if defined(__pyxis__)
++    SDL_Surface *surface = SDL_GetWindowSurface(platform.window);
++    if ((surface == NULL) || !PyxisUpdateOutput())
++    {
++        TRACELOG(LOG_WARNING, "DISPLAY: Surface unavailable: %s", SDL_GetError());
++        CORE.Window.shouldClose = true;
++        return;
++    }
++    rlCopyFramebuffer(0, 0, CORE.Window.render.width, CORE.Window.render.height,
++        PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, platform.canvas->pixels);
++    // SDL performs point scaling and channel conversion using both surfaces' pitches/masks.
++    SDL_Rect view = platform.viewport;
++    if ((SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 0, 0, 0)) != 0) ||
++        (SDL_BlitScaled(platform.canvas, NULL, surface, &view) != 0) ||
++        (SDL_UpdateWindowSurface(platform.window) != 0))
++    {
++        TRACELOG(LOG_WARNING, "DISPLAY: Presentation failed: %s", SDL_GetError());
++        CORE.Window.shouldClose = true;
++    }
++#elif defined(GRAPHICS_API_OPENGL_SOFTWARE)
+     // NOTE: Using a preprocessor condition here because rlCopyFramebuffer() is only declared for software rendering
+     SDL_Surface *surface = SDL_GetWindowSurface(platform.window);
+     rlCopyFramebuffer(0, 0, CORE.Window.render.width, CORE.Window.render.height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, surface->pixels);
+@@ -1393,18 +1625,59 @@
+ // Set mouse position XY
+ void SetMousePosition(int x, int y)
+ {
++#if defined(__pyxis__)
++    if ((x < 0) || (y < 0) || (x >= (int)CORE.Window.screen.width) || (y >= (int)CORE.Window.screen.height))
++    {
++        TRACELOG(LOG_WARNING, "INPUT: Warp is outside the logical canvas");
++        return;
++    }
++    SDL_Rect view = platform.viewport;
++    int outputX = view.x + (int)((int64_t)x*view.w/CORE.Window.screen.width);
++    int outputY = view.y + (int)((int64_t)y*view.h/CORE.Window.screen.height);
++    SDL_ClearError();
++    SDL_WarpMouseInWindow(platform.window, outputX, outputY);
++    if (SDL_GetError()[0]) TRACELOG(LOG_WARNING, "INPUT: Warp refused: %s", SDL_GetError());
++    // Accepted position arrives through native input; do not synthesize success.
++#else
+     SDL_WarpMouseInWindow(platform.window, x, y);
+ 
+     CORE.Input.Mouse.currentPosition = (Vector2){ (float)x, (float)y };
++#endif
+ }
+ 
+ // Set mouse cursor
+ void SetMouseCursor(int cursor)
+ {
++#if defined(__pyxis__)
++    if ((cursor < 0) || ((size_t)cursor >= sizeof(CursorsLUT)/sizeof(CursorsLUT[0])))
++    {
++        TRACELOG(LOG_WARNING, "INPUT: Invalid cursor identifier");
++        return;
++    }
++    SDL_Cursor *next = SDL_CreateSystemCursor(CursorsLUT[cursor]);
++    if (next == NULL)
++    {
++        TRACELOG(LOG_WARNING, "INPUT: Cursor unavailable: %s", SDL_GetError());
++        return;
++    }
++    SDL_ClearError();
++    SDL_SetCursor(next);
++    if (SDL_GetError()[0])
++    {
++        TRACELOG(LOG_WARNING, "INPUT: Cursor refused: %s", SDL_GetError());
++        SDL_SetCursor(platform.cursor ? platform.cursor : SDL_GetDefaultCursor());
++        SDL_FreeCursor(next);
++        return;
++    }
++    SDL_FreeCursor(platform.cursor);
++    platform.cursor = next;
++    CORE.Input.Mouse.cursor = cursor;
++#else
+     platform.cursor = SDL_CreateSystemCursor(CursorsLUT[cursor]);
+     SDL_SetCursor(platform.cursor);
+ 
+     CORE.Input.Mouse.cursor = cursor;
++#endif
+ }
+ 
+ // Get physical key name
+@@ -1426,6 +1699,9 @@
+     CORE.Input.Keyboard.keyPressedQueueCount = 0;
+     CORE.Input.Keyboard.charPressedQueueCount = 0;
+ 
++#if defined(__pyxis__)
++    PyxisSyncMouseMode();
++#endif
+     // Reset mouse wheel
+     CORE.Input.Mouse.currentWheelMove.x = 0;
+     CORE.Input.Mouse.currentWheelMove.y = 0;
+@@ -1489,6 +1765,9 @@
+     SDL_Event event = { 0 };
+     while (SDL_PollEvent(&event) != 0)
+     {
++#if defined(__pyxis__)
++        PyxisSyncMouseMode();
++#endif
+         // All input events can be processed after polling
+         switch (event.type)
+         {
+@@ -1541,6 +1820,15 @@
+                     case SDL_WINDOWEVENT_RESIZED:
+                     case SDL_WINDOWEVENT_SIZE_CHANGED:
+                     {
++#if defined(__pyxis__)
++                        if (!PyxisUpdateOutput()) CORE.Window.shouldClose = true;
++                        CORE.Window.resizedLastFrame = true;
++                        PyxisClearMouseButtons();
++                        CORE.Input.Mouse.currentWheelMove = (Vector2){ 0 };
++                        int x, y;
++                        SDL_GetMouseState(&x, &y);
++                        if (!CORE.Input.Mouse.cursorLocked) PyxisMousePosition(x, y);
++#else
+                         const int width = event.window.data1;
+                         const int height = event.window.data2;
+                         SetupViewport(width, height);
+@@ -1580,10 +1868,26 @@
+                         #if defined(GRAPHICS_API_OPENGL_SOFTWARE)
+                         swResize(width, height);
+                         #endif
++#endif
+                     } break;
+ 
+-                    case SDL_WINDOWEVENT_ENTER: CORE.Input.Mouse.cursorOnScreen = true; break;
+-                    case SDL_WINDOWEVENT_LEAVE: CORE.Input.Mouse.cursorOnScreen = false; break;
++                    case SDL_WINDOWEVENT_ENTER:
++#if defined(__pyxis__)
++                    {
++                        int x, y;
++                        SDL_GetMouseState(&x, &y);
++                        if (!CORE.Input.Mouse.cursorLocked) PyxisMousePosition(x, y);
++                    }
++#else
++                        CORE.Input.Mouse.cursorOnScreen = true;
++#endif
++                        break;
++                    case SDL_WINDOWEVENT_LEAVE:
++                        CORE.Input.Mouse.cursorOnScreen = false;
++#if defined(__pyxis__)
++                        if (!CORE.Input.Mouse.cursorLocked) PyxisMousePosition(-1, -1);
++#endif
++                        break;
+ 
+                     case SDL_WINDOWEVENT_MINIMIZED:
+                     {
+@@ -1620,10 +1924,24 @@
+                     case SDL_WINDOWEVENT_FOCUS_GAINED:
+                     {
+                         if (FLAG_IS_SET(CORE.Window.flags, FLAG_WINDOW_UNFOCUSED)) FLAG_CLEAR(CORE.Window.flags, FLAG_WINDOW_UNFOCUSED);
++#if defined(__pyxis__)
++                        memset(CORE.Input.Keyboard.currentKeyState, 0, sizeof(CORE.Input.Keyboard.currentKeyState));
++                        CORE.Input.Keyboard.keyPressedQueueCount = 0;
++                        CORE.Input.Keyboard.charPressedQueueCount = 0;
++                        PyxisClearMouseButtons();
++                        CORE.Input.Mouse.currentWheelMove = (Vector2){ 0 };
++#endif
+                     } break;
+                     case SDL_WINDOWEVENT_FOCUS_LOST:
+                     {
+                         if (!FLAG_IS_SET(CORE.Window.flags, FLAG_WINDOW_UNFOCUSED)) FLAG_SET(CORE.Window.flags, FLAG_WINDOW_UNFOCUSED);
++#if defined(__pyxis__)
++                        memset(CORE.Input.Keyboard.currentKeyState, 0, sizeof(CORE.Input.Keyboard.currentKeyState));
++                        CORE.Input.Keyboard.keyPressedQueueCount = 0;
++                        CORE.Input.Keyboard.charPressedQueueCount = 0;
++                        PyxisClearMouseButtons();
++                        CORE.Input.Mouse.currentWheelMove = (Vector2){ 0 };
++#endif
+                     } break;
+ 
+             #ifndef USING_VERSION_SDL3
+@@ -1699,8 +2017,16 @@
+                 if (btn == 2) btn = 1;
+                 else if (btn == 1) btn = 2;
+ 
++#if defined(__pyxis__)
++                if ((btn < 0) || (btn >= MAX_MOUSE_BUTTONS)) break;
++                if (!CORE.Input.Mouse.cursorLocked) PyxisMousePosition(event.button.x, event.button.y);
++                if (!CORE.Input.Mouse.cursorLocked && !CORE.Input.Mouse.cursorOnScreen) break;
++                CORE.Input.Mouse.currentButtonState[btn] = 1;
++                if (btn < MAX_TOUCH_POINTS) CORE.Input.Touch.currentTouchState[btn] = 1;
++#else
+                 CORE.Input.Mouse.currentButtonState[btn] = 1;
+                 CORE.Input.Touch.currentTouchState[btn] = 1;
++#endif
+ 
+                 touchAction = 1;
+             } break;
+@@ -1712,14 +2038,24 @@
+                 if (btn == 2) btn = 1;
+                 else if (btn == 1) btn = 2;
+ 
++#if defined(__pyxis__)
++                if ((btn < 0) || (btn >= MAX_MOUSE_BUTTONS)) break;
++                CORE.Input.Mouse.currentButtonState[btn] = 0;
++                if (btn < MAX_TOUCH_POINTS) CORE.Input.Touch.currentTouchState[btn] = 0;
++#else
+                 CORE.Input.Mouse.currentButtonState[btn] = 0;
+                 CORE.Input.Touch.currentTouchState[btn] = 0;
++#endif
+ 
+                 touchAction = 0;
+             } break;
+             case SDL_MOUSEWHEEL:
+             {
+-#if defined(USING_VERSION_SDL3)
++#if defined(__pyxis__)
++                if (!CORE.Input.Mouse.cursorLocked && !CORE.Input.Mouse.cursorOnScreen) break;
++                CORE.Input.Mouse.currentWheelMove.x += event.wheel.preciseX;
++                CORE.Input.Mouse.currentWheelMove.y += event.wheel.preciseY;
++#elif defined(USING_VERSION_SDL3)
+                 CORE.Input.Mouse.currentWheelMove.x = event.wheel.x;
+                 CORE.Input.Mouse.currentWheelMove.y = event.wheel.y;
+ #else
+@@ -1731,13 +2067,22 @@
+             {
+                 if (CORE.Input.Mouse.cursorLocked)
+                 {
++#if defined(__pyxis__)
++                    CORE.Input.Mouse.currentPosition.x += (float)event.motion.xrel*CORE.Window.screen.width/platform.viewport.w;
++                    CORE.Input.Mouse.currentPosition.y += (float)event.motion.yrel*CORE.Window.screen.height/platform.viewport.h;
++#else
+                     CORE.Input.Mouse.currentPosition.x += (float)event.motion.xrel;
+                     CORE.Input.Mouse.currentPosition.y += (float)event.motion.yrel;
++#endif
+                 }
+                 else
+                 {
++#if defined(__pyxis__)
++                    PyxisMousePosition(event.motion.x, event.motion.y);
++#else
+                     CORE.Input.Mouse.currentPosition.x = (float)event.motion.x;
+                     CORE.Input.Mouse.currentPosition.y = (float)event.motion.y;
++#endif
+                 }
+ 
+                 CORE.Input.Touch.position[0] = CORE.Input.Mouse.currentPosition;
+@@ -1986,6 +2331,9 @@
+         }
+ #endif
+     }
++#if defined(__pyxis__)
++    PyxisSyncMouseMode();
++#endif
+     //-----------------------------------------------------------------------------
+ }
+ 
+@@ -1996,10 +2344,32 @@
+ // Initialize platform: graphics, inputs and more
+ int InitPlatform(void)
+ {
++#if defined(__pyxis__)
++    if ((CORE.Window.screen.width <= 0) || (CORE.Window.screen.height <= 0))
++    {
++        TRACELOG(LOG_WARNING, "WINDOW: Pyxis requires explicit positive logical dimensions");
++        return -1;
++    }
++    unsigned int requested = CORE.Window.flags;
++    CORE.Window.flags = FLAG_FULLSCREEN_MODE | FLAG_WINDOW_UNFOCUSED | (requested & FLAG_WINDOW_ALWAYS_RUN);
++    CORE.Input.Mouse.currentPosition = CORE.Input.Mouse.previousPosition = (Vector2){ -1.0f, -1.0f };
++    CORE.Input.Touch.position[0] = CORE.Input.Mouse.currentPosition;
++    if (requested & ~(FLAG_FULLSCREEN_MODE | FLAG_WINDOW_ALWAYS_RUN))
++        TRACELOG(LOG_WARNING, "WINDOW: Unsupported Pyxis configuration flags were refused");
++#endif
+     // Initialize SDL internal global state, only required systems
+     // NOTE: Not all systems need to be initialized, SDL_INIT_AUDIO is not required, managed by miniaudio
+     int result = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
++#if defined(__pyxis__)
++    if (result < 0)
++    {
++        TRACELOG(LOG_WARNING, "SDL: Failed to initialize SDL: %s", SDL_GetError());
++        SDL_Quit();
++        return -1;
++    }
++#else
+     if (result < 0) { TRACELOG(LOG_WARNING, "SDL: Failed to initialize SDL"); return -1; }
++#endif
+ 
+     // Initialize graphic device: display/window and graphic context
+     //----------------------------------------------------------------------------
+@@ -2101,6 +2471,19 @@
+ 
+     if ((platform.window != NULL) && ((rlGetVersion() == RL_OPENGL_SOFTWARE) || (platform.glContext != NULL)))
+     {
++#if defined(__pyxis__)
++        platform.canvas = PyxisCreateCanvas(CORE.Window.screen.width, CORE.Window.screen.height);
++        if ((platform.canvas == NULL) || !PyxisUpdateOutput() || (SDL_GetWindowSurface(platform.window) == NULL))
++        {
++            TRACELOG(LOG_WARNING, "DISPLAY: Initialization failed: %s", SDL_GetError());
++            PyxisFreeCanvas(platform.canvas);
++            platform.canvas = NULL;
++            SDL_DestroyWindow(platform.window);
++            platform.window = NULL;
++            SDL_Quit();
++            return -1;
++        }
++#endif
+         CORE.Window.ready = true;
+ 
+         SDL_DisplayMode displayMode = { 0 };
+@@ -2132,6 +2515,11 @@
+     }
+     else
+     {
++#if defined(__pyxis__)
++        TRACELOG(LOG_WARNING, "PLATFORM: Failed to initialize graphics device: %s", SDL_GetError());
++        SDL_Quit();
++        return -1;
++#endif
+         TRACELOG(LOG_FATAL, "PLATFORM: Failed to initialize graphics device");
+         return -1;
+     }
+@@ -2217,6 +2605,10 @@
+ // Close platform
+ void ClosePlatform(void)
+ {
++#if defined(__pyxis__)
++    PyxisFreeCanvas(platform.canvas);
++    platform.canvas = NULL;
++#endif
+     SDL_FreeCursor(platform.cursor); // Free cursor
+     if (platform.glContext != NULL) SDL_GL_DeleteContext(platform.glContext); // Deinitialize OpenGL context
+     SDL_DestroyWindow(platform.window);
