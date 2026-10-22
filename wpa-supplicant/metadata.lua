@@ -1,5 +1,6 @@
 local recipe = debug.getinfo(1, "S").source:sub(2):match("^(.*)/")
 local outputs = {
+  pkgconfig = "dev/lib/pkgconfig/wpa-rsn.pc",
   library = "dev/lib/libwpa-rsn.a",
   header = "dev/include/wpa-rsn/wpa-rsn.h",
   config = "dev/include/wpa-rsn/wpa-rsn-config.h",

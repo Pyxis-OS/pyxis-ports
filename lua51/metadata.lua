@@ -42,6 +42,10 @@ return {
     "patches/0002-pyxis-file-abandonment.patch",
   },
   outputs = {
+    pc_lua5_1 = "dev/lib/pkgconfig/lua5.1.pc",
+    pc_lpeg = "dev/lib/pkgconfig/lpeg.pc",
+    pc_luv = "dev/lib/pkgconfig/luv.pc",
+
     lua_library = "dev/lib/liblua5.1.a",
     lpeg_library = "dev/lib/liblpeg.a",
     luv_library = "dev/lib/libluv.a",

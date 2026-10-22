@@ -18,4 +18,7 @@ return function(ctx)
     ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/" .. header,
       ctx.stage .. "/dev/include/" .. header })
   end
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/lua.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/lua.pc" })
+
 end

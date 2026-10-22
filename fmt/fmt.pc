@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: fmt
+Description: Formatting library
+Version: 12.2.0
+Requires: libcxx
+Libs: -L${libdir} -lfmt
+Cflags: -I${includedir}

@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: wpa-rsn
+Description: Native WPA2 RSN crypto library
+Version: 2.12
+Libs: -L${libdir} -lwpa-rsn
+Cflags: -I${includedir} -I${includedir}/wpa-rsn -I${includedir}/wpa-rsn/utils

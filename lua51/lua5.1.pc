@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: Lua
+Description: Lua 5.1 programming language
+Version: 5.1.5
+Libs: -L${libdir} -llua5.1
+Cflags: -I${includedir} -I${includedir}/lua5.1

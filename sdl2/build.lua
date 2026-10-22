@@ -27,4 +27,7 @@ return function(ctx)
   assert(provenance:write("profile=static library, Pyxis video/input/audio/timer/threads/paths, software renderer\n",
     "omitted=thread priorities and detach, audio capture, haptics, sensors, HIDAPI, shared objects, OpenGL/Vulkan, SDL_main, SDL_test\n"))
   assert(provenance:close())
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/sdl2.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/sdl2.pc" })
+
 end

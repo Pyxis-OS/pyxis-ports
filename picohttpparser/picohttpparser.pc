@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: picohttpparser
+Description: HTTP request and response parser
+Version: 0.git.f4d94b48b31e0abae029ebeafcfd9ca0680ede58
+Libs: -L${libdir} -lpicohttpparser
+Cflags: -I${includedir}

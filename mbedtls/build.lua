@@ -27,4 +27,13 @@ return function(ctx)
     ctx.stage .. "/" .. ctx.metadata.outputs.crypto_license })
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/PORT-NOTICE",
     ctx.stage .. "/" .. ctx.metadata.outputs.notice })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/mbedtls.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/mbedtls.pc" })
+
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/mbedx509.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/mbedx509.pc" })
+
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/tfpsacrypto.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/tfpsacrypto.pc" })
+
 end

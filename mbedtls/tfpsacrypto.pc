@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: TF-PSA-Crypto
+Description: PSA crypto library
+Version: 1.1.1
+Libs: -L${libdir} -ltfpsacrypto
+Cflags: -I${includedir} -DMBEDTLS_USER_CONFIG_FILE=\"mbedtls/pyxis_tls_config.h\" -DTF_PSA_CRYPTO_USER_CONFIG_FILE=\"mbedtls/pyxis_crypto_config.h\"

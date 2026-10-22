@@ -56,4 +56,13 @@ return function(ctx)
     "license=MIT (Lua, LPeg, lua-compat-5.3), Apache-2.0 (luv)\n"))
   assert(provenance:close())
   install("644", ctx.stage .. "/" .. outputs.provenance, outputs.dev_provenance)
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/lua5.1.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/lua5.1.pc" })
+
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/lpeg.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/lpeg.pc" })
+
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/luv.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/luv.pc" })
+
 end

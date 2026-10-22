@@ -20,6 +20,7 @@ return {
   neovim = "neovim",
   pciids = "pciids",
   picohttpparser = "picohttpparser",
+  pkgconf = "pkgconf",
   quake = "quake",
   raylib = "raylib",
   sbase = "sbase",

@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: luv
+Description: Lua bindings for libuv
+Version: 1.52.1-0
+Requires: lua5.1 libuv
+Libs: -L${libdir} -lluv
+Cflags: -I${includedir} -I${includedir}/luv

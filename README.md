@@ -83,6 +83,10 @@ with its data into one game package (`doom`, `quake`, and the personal `duke3d`
 and `diablo`), and each bundle reads its own package read-only. Launch never
 downloads data or searches the boot archive; install the game with `pkg`.
 
+[pkgconf](pkgconf/README.md) supplies static pkg-config metadata over explicit
+`sdk://` and other capability roots. Development prefixes stage their `.pc` files
+under `lib/pkgconfig`, ready for the flat SDK view.
+
 [Native libuv](libuv/README.md) exports a static development library and an
 explicit child-output relay bundle. It needs a current SDK and declared native
 clock/pipe authority; its first profile runs without worker threads.

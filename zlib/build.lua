@@ -22,4 +22,7 @@ return function(ctx)
     "patches=none\nprofile=static core, compress/uncompress, default allocators, static tables\n",
     "omitted=gz file I/O, contrib, shared libraries, upstream programs/tests\n"))
   assert(provenance:close())
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/zlib.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/zlib.pc" })
+
 end

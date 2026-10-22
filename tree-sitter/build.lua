@@ -24,4 +24,7 @@ return function(ctx)
   for _, name in ipairs({ "license", "unicode_license", "notice", "provenance" }) do
     install(ctx.stage .. "/" .. outputs[name], outputs["dev_" .. name])
   end
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/tree-sitter.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/tree-sitter.pc" })
+
 end

@@ -21,4 +21,7 @@ return function(ctx)
   for _, name in ipairs({ "license", "provenance" }) do
     install(ctx.stage .. "/" .. outputs[name], outputs["dev_" .. name])
   end
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/libutf8proc.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/libutf8proc.pc" })
+
 end

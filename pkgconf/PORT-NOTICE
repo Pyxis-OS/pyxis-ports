@@ -1,0 +1,14 @@
+pkgconf 3.0.10 is Copyright (c) 2011-2026 pkgconf authors.
+COPYING and AUTHORS contain the upstream ISC permission and credits.
+The CLI also uses Todd C. Miller's and NetBSD's getopt_long implementation;
+getopt_long.c and getopt_long.h preserve those separate permission notices.
+This product includes software developed by the NetBSD Foundation, Inc.
+and its contributors.
+
+The Pyxis recipe builds the pkgconf command and its private static library
+closure against the Pyxis SDK. It preserves capability URI scheme slashes and
+colons, defaults to sdk://lib/pkgconfig and static output, excludes symlink
+traversal (native filesystems do not provide symlinks), and silences diagnostics
+through the existing callback rather than opening /dev/null. Pledge/unveil use
+upstream's non-OpenBSD implementation; authority remains the native grants.
+No host filesystem, subprocess, network or library-download service is added.

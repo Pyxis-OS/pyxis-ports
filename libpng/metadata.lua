@@ -15,6 +15,8 @@ return {
   },
   patches = {},
   outputs = {
+    pc_libpng = "dev/lib/pkgconfig/libpng.pc",
+
     library = "dev/lib/libpng.a",
     header = "dev/include/png.h",
     platform = "dev/include/pngconf.h",

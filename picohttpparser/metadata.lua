@@ -11,6 +11,8 @@ return {
   },
   patches = {},
   outputs = {
+    pc_picohttpparser = "dev/lib/pkgconfig/picohttpparser.pc",
+
     library = "dev/lib/libpicohttpparser.a",
     header = "dev/include/picohttpparser.h",
     license = "share/licenses/picohttpparser/picohttpparser.h",

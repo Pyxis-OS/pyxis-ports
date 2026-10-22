@@ -16,6 +16,8 @@ return {
     "patches/0003-pyxis-file-abandonment.patch",
   },
   outputs = {
+    pc_lua = "dev/lib/pkgconfig/lua.pc",
+
     executable = "bin/lua.pxb/app/bin/lua.pxe",
     manifest = "bin/lua.pxb/manifest.json",
     commands = "share/lua/pyxis/commands.lua",

@@ -15,6 +15,8 @@ return {
     "patches/0002-omit-wstring-without-libcxx-wide-characters.patch",
   },
   outputs = {
+    pc_fmt = "dev/lib/pkgconfig/fmt.pc",
+
     library = "dev/lib/libfmt.a",
     header = "dev/include/fmt/format.h",
     package = "dev/lib/cmake/fmt/fmt-config.cmake",

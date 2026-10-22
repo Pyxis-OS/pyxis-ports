@@ -16,6 +16,8 @@ return {
   },
   patches = { "patches/0001-native-file-paths-and-metadata.patch" },
   outputs = {
+    pc_raylib = "dev/lib/pkgconfig/raylib.pc",
+
     library = "dev/lib/libraylib.a",
     header = "dev/include/raylib.h",
     raymath_header = "dev/include/raymath.h",

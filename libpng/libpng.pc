@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: libpng
+Description: PNG image library
+Version: 1.6.59
+Requires: zlib
+Libs: -L${libdir} -lpng
+Cflags: -I${includedir}

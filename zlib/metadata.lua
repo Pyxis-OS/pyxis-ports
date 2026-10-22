@@ -15,6 +15,8 @@ return {
   },
   patches = {},
   outputs = {
+    pc_zlib = "dev/lib/pkgconfig/zlib.pc",
+
     library = "dev/lib/libz.a",
     header = "dev/include/zlib.h",
     configuration = "dev/include/zconf.h",

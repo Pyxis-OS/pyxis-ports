@@ -20,6 +20,10 @@ return {
   },
   patches = {},
   outputs = {
+    pc_mbedtls = "dev/lib/pkgconfig/mbedtls.pc",
+    pc_mbedx509 = "dev/lib/pkgconfig/mbedx509.pc",
+    pc_tfpsacrypto = "dev/lib/pkgconfig/tfpsacrypto.pc",
+
     tls_library = "dev/lib/libmbedtls.a",
     x509_library = "dev/lib/libmbedx509.a",
     crypto_library = "dev/lib/libtfpsacrypto.a",

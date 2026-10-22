@@ -28,4 +28,7 @@ return function(ctx)
   assert(provenance:write("profile=static SDL2/rlsw, shapes, textures, text, direct basic 3D, PNG, TTF, image generation, compression\n",
     "omitted=audio, GPU, shaders, SIMD requirement, model-file loaders, image export, shared objects\n"))
   assert(provenance:close())
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/raylib.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/raylib.pc" })
+
 end

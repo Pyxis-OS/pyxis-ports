@@ -21,6 +21,8 @@ return {
     "patches/0008-register-the-pyxis-audio-driver.patch",
   },
   outputs = {
+    pc_sdl2 = "dev/lib/pkgconfig/sdl2.pc",
+
     library = "dev/lib/libSDL2.a",
     header = "dev/include/SDL2/SDL.h",
     configuration = "dev/include/SDL2/SDL_config.h",

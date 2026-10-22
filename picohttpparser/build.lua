@@ -9,4 +9,7 @@ return function(ctx)
   -- Upstream carries the complete MIT notice in its public header.
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/picohttpparser.h",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/picohttpparser.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/picohttpparser.pc" })
+
 end

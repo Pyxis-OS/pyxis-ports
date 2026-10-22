@@ -15,6 +15,8 @@ return {
   },
   patches = {},
   outputs = {
+    pc_libutf8proc = "dev/lib/pkgconfig/libutf8proc.pc",
+
     library = "dev/lib/libutf8proc.a",
     header = "dev/include/utf8proc.h",
     license = "share/licenses/utf8proc/LICENSE.md",

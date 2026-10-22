@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: Mbed X.509
+Description: X.509 certificate library
+Version: 4.1.1
+Requires: tfpsacrypto
+Libs: -L${libdir} -lmbedx509
+Cflags: -I${includedir} -DMBEDTLS_USER_CONFIG_FILE=\"mbedtls/pyxis_tls_config.h\" -DTF_PSA_CRYPTO_USER_CONFIG_FILE=\"mbedtls/pyxis_crypto_config.h\"

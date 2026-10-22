@@ -36,4 +36,7 @@ return function(ctx)
     ctx.run({ "install", "-D", "-m", "644", ctx.stage .. "/" .. ctx.metadata.outputs[name],
       ctx.stage .. "/" .. ctx.metadata.outputs["dev_" .. name] })
   end
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/libuv.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/libuv.pc" })
+
 end

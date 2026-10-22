@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: raylib
+Description: Static SDL2 software-rendered graphics library
+Version: 6.2
+Requires: sdl2
+Libs: -L${libdir} -lraylib
+Cflags: -I${includedir}

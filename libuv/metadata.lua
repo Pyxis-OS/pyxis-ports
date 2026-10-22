@@ -16,6 +16,8 @@ return {
   },
   patches = { "patches/0001-pyxis-platform.patch" },
   outputs = {
+    pc_libuv = "dev/lib/pkgconfig/libuv.pc",
+
     library = "dev/lib/libuv.a",
     header = "dev/include/uv.h",
     errors = "dev/include/uv/errno.h",

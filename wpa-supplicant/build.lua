@@ -60,4 +60,7 @@ return function(ctx)
   for _, name in ipairs({ "license", "copying", "notice", "upstream_notices", "provenance" }) do
     install(ctx.stage .. "/" .. outputs[name], outputs["dev_" .. name])
   end
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/wpa-rsn.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/wpa-rsn.pc" })
+
 end

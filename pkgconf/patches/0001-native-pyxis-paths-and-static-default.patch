@@ -1,0 +1,100 @@
+diff --git a/cli/core.c b/cli/core.c
+index 9311f3c..819a285 100644
+--- a/cli/core.c
++++ b/cli/core.c
+@@ -1097,8 +1097,13 @@ pkgconf_cli_run(pkgconf_cli_state_t *state, int argc, char *argv[], int last_arg
+ 	if ((state->want_flags & PKG_ERRORS_ON_STDOUT) == PKG_ERRORS_ON_STDOUT)
+ 		state->error_msgout = stdout;
+ 	if ((state->want_flags & PKG_SILENCE_ERRORS) == PKG_SILENCE_ERRORS) {
++#ifdef __pyxis__
++		/* The error handler already accepts NULL as a discarded message. */
++		state->error_msgout = NULL;
++#else
+ 		state->error_msgout = fopen(PATH_DEV_NULL, "w");
+ 		state->opened_error_msgout = true;
++#endif
+ 	}
+ 
+ 	if ((state->want_flags & PKG_IGNORE_CONFLICTS) == PKG_IGNORE_CONFLICTS || pkgconf_client_getenv(&state->pkg_client, "PKG_CONFIG_IGNORE_CONFLICTS") != NULL)
+diff --git a/cli/main.c b/cli/main.c
+index 6368309..786c6c9 100644
+--- a/cli/main.c
++++ b/cli/main.c
+@@ -255,7 +255,11 @@ main(int argc, char *argv[])
+ 
+ 	int ret;
+ 	pkgconf_cli_state_t state = {
++#ifdef __pyxis__
++		.want_flags = PKG_STATIC,
++#else
+ 		.want_flags = 0,
++#endif
+ 		.maximum_traverse_depth = 256,
+ 	};
+ 	pkgconf_list_t dir_list = PKGCONF_LIST_INITIALIZER;
+diff --git a/libpkgconf/path.c b/libpkgconf/path.c
+index 80db165..20b0373 100644
+--- a/libpkgconf/path.c
++++ b/libpkgconf/path.c
+@@ -208,11 +208,31 @@ pkgconf_path_split(const char *text, pkgconf_list_t *dirlist, bool filter)
+ 	if (workbuf == NULL)
+ 		return 0;
+ 
++#ifdef __pyxis__
++	while (iter != NULL && *iter != '\0')
++	{
++		p = iter;
++		for (; *iter != '\0'; iter++)
++		{
++			if (*iter == ':' && !(iter[1] == '/' && iter[2] == '/'))
++				break;
++		}
++		if (*iter != '\0')
++			*iter++ = '\0';
++		else
++			iter = NULL;
++		if (*p == '\0')
++			continue;
++#else
+ 	while ((p = strtok(iter, PKG_CONFIG_PATH_SEP_S)) != NULL)
+ 	{
++#endif
+ 		pkgconf_path_add(p, dirlist, filter);
+ 
+-		count++, iter = NULL;
++		count++;
++#ifndef __pyxis__
++		iter = NULL;
++#endif
+ 	}
+ 	free(workbuf);
+ 
+@@ -467,6 +487,15 @@ pkgconf_path_relocate(pkgconf_buffer_t *buf)
+ 	for (r = base; *r != '\0'; r++)
+ 	{
+ 		*w++ = *r;
++#ifdef __pyxis__
++		/* A capability URI's two scheme slashes are part of the root. */
++		if (*r == ':' && r[1] == '/' && r[2] == '/')
++		{
++			*w++ = *++r;
++			*w++ = *++r;
++			continue;
++		}
++#endif
+ 		if (*r == '/')
+ 			while (r[1] == '/')
+ 				r++;
+diff --git a/libpkgconf/pkg.c b/libpkgconf/pkg.c
+index 67613e2..3b33e31 100644
+--- a/libpkgconf/pkg.c
++++ b/libpkgconf/pkg.c
+@@ -65,7 +65,7 @@ pkg_get_parent_dir(pkgconf_pkg_t *pkg)
+ 	if (!pkgconf_buffer_append(&buf, pkg->filename))
+ 		goto fail;
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+ 	struct stat path_stat;
+ 
+ 	while (buf.base != NULL &&

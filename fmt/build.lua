@@ -19,4 +19,7 @@ return function(ctx)
   assert(provenance:write("profile=static formatting library, FMT_USE_LOCALE 0\n",
     "omitted=os.h file/process helpers (FMT_OS), modules, shared library, tests\n"))
   assert(provenance:close())
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/fmt.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/fmt.pc" })
+
 end

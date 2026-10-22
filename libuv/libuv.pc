@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: libuv
+Description: Native asynchronous I/O library
+Version: 1.52.1
+Libs: -L${libdir} -luv
+Cflags: -I${includedir}

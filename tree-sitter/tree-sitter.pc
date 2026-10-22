@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: tree-sitter
+Description: Incremental parsing library
+Version: 0.26.13
+Libs: -L${libdir} -ltree-sitter
+Cflags: -I${includedir}

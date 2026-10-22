@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: SDL2
+Description: Simple DirectMedia Layer
+Version: 2.32.10
+Libs: -L${libdir} -lSDL2
+Cflags: -I${includedir} -I${includedir}/SDL2 -D_REENTRANT

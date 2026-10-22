@@ -26,4 +26,7 @@ return function(ctx)
     "configuration=upstream pnglibconf.mak with pyxis.dfa, target preprocessor\n",
     "omitted=simplified API, architecture acceleration, shared libraries, upstream programs/tests\n"))
   assert(provenance:close())
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/libpng.pc",
+    ctx.stage .. "/dev/lib/pkgconfig/libpng.pc" })
+
 end

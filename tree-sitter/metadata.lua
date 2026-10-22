@@ -15,6 +15,8 @@ return {
   },
   patches = { "patches/0001-pyxis-endian.patch" },
   outputs = {
+    pc_tree_sitter = "dev/lib/pkgconfig/tree-sitter.pc",
+
     library = "dev/lib/libtree-sitter.a",
     header = "dev/include/tree_sitter/api.h",
     license = "share/licenses/tree-sitter/LICENSE",
