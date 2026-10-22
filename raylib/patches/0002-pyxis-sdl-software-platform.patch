@@ -23,6 +23,15 @@
      if (seconds < 0) return;    // Security check
  
  #if SUPPORT_BUSY_WAIT_LOOP || SUPPORT_PARTIALBUSY_WAIT_LOOP
+@@ -2877,7 +2893,7 @@
+     if (length >= MAX_FILEPATH_LENGTH) { errno = ENAMETOOLONG; return -1; }
+     const char *root = GetNativeRootEnd(dirPath);
+     size_t start = root? (size_t)(root - dirPath) : 0;
+-    if (!start && (dirPath[0] == '/' || strchr(dirPath, ':'))) { errno = EINVAL; return -1; }
++    if (!start && (dirPath[0] == '/' || strstr(dirPath, "://"))) { errno = EINVAL; return -1; }
+     if (IsPathDirectory(dirPath)) return 0;
+     if (start == length) return -1; // Missing roots are not directories to create.
+     char *copy = RL_MALLOC(length + 1);
 --- a/src/platforms/rcore_desktop_sdl.c
 +++ b/src/platforms/rcore_desktop_sdl.c
 @@ -108,6 +108,10 @@

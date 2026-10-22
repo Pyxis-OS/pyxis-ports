@@ -49,6 +49,11 @@ int main(int argc, char **argv)
   while (!WindowShouldClose()) {
     if (IsKeyPressed(KEY_SPACE)) paused = !paused;
     if (IsKeyPressed(KEY_F1)) three_d = !three_d;
+    if (IsKeyPressed(KEY_L)) {
+      if (IsCursorHidden()) EnableCursor();
+      else DisableCursor();
+    }
+    if (IsKeyPressed(KEY_W)) SetMousePosition(width/2, height/2);
     if (!paused) angle += GetFrameTime()*45.0f;
     radius += GetMouseWheelMove()*2.0f;
     if (radius < 10.0f) radius = 10.0f;
@@ -81,6 +86,7 @@ int main(int argc, char **argv)
     }
     DrawText("raylib on Pyxis", 40, 35, 30, RAYWHITE);
     DrawText("Space: pause   F1: 2D / 3D   Wheel: circle size   Esc: exit", 40, 80, 18, LIGHTGRAY);
+    DrawText("L: cursor lock   W: request centre position", 40, 110, 18, LIGHTGRAY);
     DrawText(TextFormat("%d x %d canvas | %d FPS", GetScreenWidth(), GetScreenHeight(), GetFPS()),
         40, height - 45, 20, RAYWHITE);
     DrawRectangle(0, 0, 12, 12, RED);
@@ -91,7 +97,9 @@ int main(int argc, char **argv)
     ++frames;
   }
   double elapsed = GetTime() - started;
-  fprintf(stderr, "raylib-shapes: %lu frames in %.3f seconds (%dx%d canvas)\n", frames, elapsed, width, height);
+  fprintf(stderr, "raylib-shapes: %lu frames in %.3f seconds (%dx%d canvas)", frames, elapsed, width, height);
+  if (elapsed > 0.0) fprintf(stderr, "; average %.1f FPS", frames/elapsed);
+  fputc('\n', stderr);
   UnloadTexture(checker);
   CloseWindow();
   return 0;
