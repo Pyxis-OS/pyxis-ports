@@ -24,7 +24,6 @@ return {
   raylib = "raylib",
   sbase = "sbase",
   sdl2 = "sdl2",
-  tcc = "tcc",
   ["tree-sitter"] = "tree-sitter",
   utf8proc = "utf8proc",
   tzdata = "tzdata",

@@ -97,8 +97,8 @@ supplicant/crypto closure for a native worker; it adds no daemon or ordinary
 image dependency.
 
 `install.lua` selects the guest layout from the per-port stage trees for Pyxis's
-manifest runner. It includes executables, notices and TCC target support, while
-excluding the host compiler and intermediate build files.
+manifest runner. It includes executables and notices, while excluding the host
+compiler and intermediate build files.
 
 Bundles using standard/precise clock APIs declare `read` and `precise`; relative
 sleep helpers additionally need `sleep`. Rebuild independent bundles after SDK
