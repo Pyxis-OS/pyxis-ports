@@ -18,6 +18,7 @@ return {
   lua51 = "lua51",
   mbedtls = "mbedtls",
   neovim = "neovim",
+  minesweeper = "minesweeper",
   pciids = "pciids",
   picohttpparser = "picohttpparser",
   pkgconf = "pkgconf",

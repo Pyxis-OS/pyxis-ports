@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "id": "org.pyxis.minesweeper",
+  "entry": "bin/minesweeper.pxe",
+  "commands": {
+    "minesweeper": "bin/minesweeper.pxe"
+  },
+  "resource_dirs": {},
+  "grants": [
+    {
+      "name": "memory",
+      "resource": "memory",
+      "rights": [
+        "manage"
+      ],
+      "required": true
+    },
+    {
+      "name": "clock",
+      "resource": "clock",
+      "rights": [
+        "read",
+        "precise",
+        "sleep"
+      ],
+      "required": true
+    },
+    {
+      "name": "display",
+      "resource": "display",
+      "rights": [
+        "draw"
+      ],
+      "required": true
+    },
+    {
+      "name": "keyboard",
+      "resource": "keyboard",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    },
+    {
+      "name": "pointer",
+      "resource": "pointer",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    }
+  ]
+}
