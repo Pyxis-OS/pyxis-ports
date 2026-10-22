@@ -14,7 +14,10 @@ return {
     host = { "make", "curl", "sha256sum", "tar", "gzip", "install" },
     pyxis = { "libc", "libpyxis" },
   },
-  patches = { "patches/0001-native-file-paths-and-metadata.patch" },
+  patches = {
+    "patches/0001-native-file-paths-and-metadata.patch",
+    "patches/0002-pyxis-sdl-software-platform.patch",
+  },
   outputs = {
     pc_raylib = "dev/lib/pkgconfig/raylib.pc",
 
@@ -28,5 +31,9 @@ return {
     third_party = "dev/share/licenses/raylib/THIRD-PARTY-LICENSES",
     notice = "dev/share/licenses/raylib/PORT-NOTICE",
     provenance = "dev/share/raylib/source.txt",
+    example = "bin/raylib-shapes.pxb/app/bin/raylib-shapes.pxe",
+    manifest = "bin/raylib-shapes.pxb/manifest.json",
+    example_source = "dev/share/raylib/examples/shapes.c",
+    example_manifest = "dev/share/raylib/examples/manifest.json",
   },
 }

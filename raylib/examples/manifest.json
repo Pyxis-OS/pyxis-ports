@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "id": "org.pyxis.raylib-shapes",
+  "entry": "bin/raylib-shapes.pxe",
+  "commands": {
+    "raylib-shapes": "bin/raylib-shapes.pxe"
+  },
+  "resource_dirs": {},
+  "grants": [
+    {
+      "name": "memory",
+      "resource": "memory",
+      "rights": [
+        "manage"
+      ],
+      "required": true
+    },
+    {
+      "name": "clock",
+      "resource": "clock",
+      "rights": [
+        "read",
+        "sleep"
+      ],
+      "required": true
+    },
+    {
+      "name": "display",
+      "resource": "display",
+      "rights": [
+        "draw"
+      ],
+      "required": true
+    },
+    {
+      "name": "keyboard",
+      "resource": "keyboard",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    },
+    {
+      "name": "pointer",
+      "resource": "pointer",
+      "rights": [
+        "input"
+      ],
+      "required": false
+    }
+  ]
+}

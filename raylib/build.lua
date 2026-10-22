@@ -16,6 +16,10 @@ return function(ctx)
   install(ctx.source .. "/LICENSE", outputs.license)
   install(ctx.recipe .. "/THIRD-PARTY-LICENSES", outputs.third_party)
   install(ctx.recipe .. "/PORT-NOTICE", outputs.notice)
+  install(ctx.build .. "/raylib-shapes.pxe", outputs.example)
+  install(ctx.recipe .. "/examples/manifest.json", outputs.manifest)
+  install(ctx.recipe .. "/examples/shapes.c", outputs.example_source)
+  install(ctx.recipe .. "/examples/manifest.json", outputs.example_manifest)
   local provenance = assert(io.open(ctx.stage .. "/" .. outputs.provenance, "w"))
   assert(provenance:write("source=" .. ctx.metadata.source.archive.url .. "\n",
     "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
