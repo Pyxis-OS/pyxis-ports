@@ -85,8 +85,9 @@ console streams, child processes and synchronous filesystem calls.
 
 - **Children:** `uv.spawn` returns the handle and `nil` instead of a PID. The
   exit callback receives `code, signal, reason`, where `reason` is `"exited"`,
-  `"faulted"` or `"terminated"`; a fault or termination reports code -1 and
-  signal 0. `process:get_pid()`, `uv.os_getpid()`, `uv.os_getppid()` and
+  `"faulted"`, `"terminated"` or `"start_failed"`; startup failure preserves the
+  native packed startup step and call status in `code`. A fault or termination
+  reports code -1; signal is always 0. `process:get_pid()`, `uv.os_getpid()`, `uv.os_getppid()` and
   `uv.getpid()` return `nil, err, "ENOSYS"`. Children inherit console and pipe
   descriptors. Spawning with an inherited FILE descriptor is not qualified through
   luv, although the [libuv adapter](../libuv/README.md) accepts native and exported

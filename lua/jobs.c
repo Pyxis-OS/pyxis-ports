@@ -1004,4 +1004,6 @@ void pyxis_jobs_register(lua_State *state)
   lua_setfield(state, module, "PROCESS_FAULTED");
   lua_pushinteger(state, PROCESS_TERMINATED);
   lua_setfield(state, module, "PROCESS_TERMINATED");
+  lua_pushinteger(state, PROCESS_START_FAILED);
+  lua_setfield(state, module, "PROCESS_START_FAILED");
 }

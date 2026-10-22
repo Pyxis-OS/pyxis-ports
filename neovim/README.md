@@ -62,7 +62,8 @@ External jobs and shell commands run as native children over pipes:
 `'shell'` is the Pyxis `shell -c`; collection uses `>%s 2>&1` for stdout
 and stderr. Executable checks use the shared program
 lookup, `jobstop` and Ctrl+C terminate at once, and temporary files live in
-`tmp://`. `:terminal`, PTY and detached jobs, socket listeners, Unix signals,
+`tmp://`. A child startup failure keeps its native completion reason and maps
+to job status 1. `:terminal`, PTY and detached jobs, socket listeners, Unix signals,
 numeric PID operations, workers, asynchronous filesystem calls and watches are
 outside this profile. Swap/backup recovery and patchmode are unavailable.
 `vim.uri` maps a native path to a file URI with its root name as the first

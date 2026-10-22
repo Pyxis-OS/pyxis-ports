@@ -230,8 +230,10 @@ consistent with the core's capture audit for the job's lifetime.
 status without waiting. Result field names mirror `pyxis_pipeline_result`,
 including `stage_valid`, `stages[i].kind/exit_status`, `stdout_output` and
 `stderr_output`. Nonzero child exits are data. Native kind constants are
-`PROCESS_EXITED`, `PROCESS_FAULTED`, `PROCESS_TERMINATED`; `LAUNCH_NO_STAGE`
-is exposed as `-1`; refused `failed_stage` indices remain native and zero-based.
+`PROCESS_EXITED`, `PROCESS_FAULTED`, `PROCESS_TERMINATED`, `PROCESS_START_FAILED`.
+For `PROCESS_START_FAILED`, `exit_status` preserves the native packed startup
+step and call status. `LAUNCH_NO_STAGE` is exposed as `-1`; refused `failed_stage`
+indices remain native and zero-based.
 Reads require confirmed cleanup and accept explicit offset/count with at most
 `READ_MAX_BYTES` per call. Completed snapshots are
 repeatable. Close consumes once even on a release error; BUSY preserves ownership.

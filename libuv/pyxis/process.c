@@ -656,7 +656,9 @@ void uv__pyxis_process_dispatch(uv_process_t *process)
   process->exit_reason = result.kind;
   uv__handle_stop(process);
   if (process->exit_cb) {
-    process->exit_cb(process, result.kind == PROCESS_EXITED ? result.exit_status : -1, 0);
+    process->exit_cb(process,
+        result.kind == PROCESS_EXITED || result.kind == PROCESS_START_FAILED ?
+            result.exit_status : -1, 0);
   }
 }
 

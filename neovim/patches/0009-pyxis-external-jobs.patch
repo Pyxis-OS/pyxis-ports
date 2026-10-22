@@ -113,7 +113,7 @@ diff --git a/src/nvim/event/libuv_proc.c b/src/nvim/event/libuv_proc.c
  #else
    status = uv_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts);
  #endif
-@@ -228,7 +240,10 @@ static void exit_cb(uv_process_t *handle, int64_t status, int term_signal)
+@@ -228,7 +240,11 @@ static void exit_cb(uv_process_t *handle, int64_t status, int term_signal)
    term_signal = proc->exit_signal;
  #endif
  #ifdef __pyxis__
@@ -121,7 +121,8 @@ diff --git a/src/nvim/event/libuv_proc.c b/src/nvim/event/libuv_proc.c
 +  // A negative status means a detached job that is still running, so a stopped
 +  // or faulted child takes the codes Neovim reports for them elsewhere.
 +  proc->status = handle->exit_reason == PROCESS_TERMINATED ? 143
-+                 : handle->exit_reason == PROCESS_FAULTED ? 139 : (int)status;
++                 : handle->exit_reason == PROCESS_FAULTED ? 139
++                 : handle->exit_reason == PROCESS_START_FAILED ? 1 : (int)status;
    proc->exited = true;
    proc->exit_reason = handle->exit_reason;
  #else

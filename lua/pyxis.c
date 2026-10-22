@@ -674,6 +674,11 @@ static int run_program(lua_State *state)
   if (status != CALL_OK) {
     return native_error(state, owned, "run close", status);
   }
+  if (result.kind == PROCESS_START_FAILED) {
+    return luaL_error(state, "pyxis.run: child did not start: %s: %s",
+        process_start_step_name((uint32_t)result.exit_status),
+        process_start_status_name((uint32_t)result.exit_status));
+  }
   if (result.kind != PROCESS_EXITED) {
     return luaL_error(state, "pyxis.run: child %s",
         result.kind == PROCESS_FAULTED ? "faulted" : "terminated");

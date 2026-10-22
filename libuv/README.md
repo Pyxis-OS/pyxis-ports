@@ -85,8 +85,9 @@ UDP, echo, profile and configured bundle sources. The console and input devices
 are not offered; the child's streams are the selected stdio. A required grant
 this process lacks refuses the spawn. Closing a
 process handle releases observation and never terminates the child. EXITED keeps
-its signed status; FAULTED/TERMINATED report -1 and term_signal zero. The public
-`exit_reason` is the native PROCESS_* result. Numeric pid fields/accessors return
+its signed status; START_FAILED keeps the native packed startup step and call
+status. FAULTED/TERMINATED report -1; term_signal is zero for every native result.
+The public `exit_reason` is the native PROCESS_* result. Numeric pid fields/accessors return
 UV_ENOSYS, already negative; no PID or Unix signal is invented.
 Spawn initializes its inactive process handle before fallible preparation, so a
 caller must close it after a failed spawn as well as after successful observation.
