@@ -1,0 +1,11 @@
+# Native SDK view. A host cross-build may override prefix with a trailing /.
+prefix=sdk://
+libdir=${prefix}lib
+includedir=${prefix}include
+
+Name: sdl2
+Description: Pyxis SDL2 static native video, input and audio
+URL: https://libsdl.org
+Version: 2.32.10
+Libs: -L${libdir} -lSDL2
+Cflags: -I${includedir} -I${includedir}/SDL2

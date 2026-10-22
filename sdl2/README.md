@@ -223,3 +223,11 @@ These facilities report themselves as unsupported, as upstream does:
 
 Named SDL system-cursor shapes and message boxes are unsupported.
 `SDL_main` and `SDL_test` are not built.
+
+## Native pkg-config metadata
+
+The development prefix includes `lib/pkgconfig/sdl2.pc`. The separate `sdl2-dev`
+package contributes it, its headers and `libSDL2.a` to the shared `sdk://` view.
+The metadata describes only the actual static Pyxis library; no SDL_main,
+OpenGL, dynamic loader or Unix thread libraries are invented. Host cross-builds
+may override `prefix` with a relocated SDK directory ending in `/`.

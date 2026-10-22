@@ -1,0 +1,32 @@
+--- a/src/rcore.c
++++ b/src/rcore.c
+@@ -2670,6 +2670,12 @@
+     if (length >= sizeof(previous)) { errno = ENAMETOOLONG; return previous; }
+     const char *root = GetNativeRootEnd(dirPath);
+     size_t minimum = root? (size_t)(root - dirPath) : 0;
++    if (IsPathFile(dirPath))
++    {
++        while ((length > minimum) && (dirPath[length - 1] == '/')) length--;
++        while ((length > minimum) && (dirPath[length - 1] != '/')) length--;
++        while ((length > minimum) && (dirPath[length - 1] == '/')) length--;
++    }
+     while ((length > minimum) && (dirPath[length - 1] == '/')) length--;
+     while ((length > minimum) && (dirPath[length - 1] != '/')) length--;
+     while ((length > minimum) && (dirPath[length - 1] == '/')) length--;
+@@ -2894,8 +2900,15 @@
+     const char *root = GetNativeRootEnd(dirPath);
+     size_t start = root? (size_t)(root - dirPath) : 0;
+     if (!start && (dirPath[0] == '/' || strstr(dirPath, "://"))) { errno = EINVAL; return -1; }
++    if (start == length)
++    {
++        struct stat rootInfo = { 0 };
++        if (stat(dirPath, &rootInfo) != 0) return -1;
++        if (S_ISDIR(rootInfo.st_mode)) return 0;
++        errno = ENOTDIR;
++        return -1;
++    }
+     if (IsPathDirectory(dirPath)) return 0;
+-    if (start == length) return -1; // Missing roots are not directories to create.
+     char *copy = RL_MALLOC(length + 1);
+     if (!copy) { errno = ENOMEM; return -1; }
+     memcpy(copy, dirPath, length + 1);

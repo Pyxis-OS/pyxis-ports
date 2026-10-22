@@ -27,6 +27,7 @@ return {
     header = "dev/include/SDL2/SDL.h",
     configuration = "dev/include/SDL2/SDL_config.h",
     package = "dev/lib/cmake/SDL2/SDL2Config.cmake",
+    pkg_config = "dev/lib/pkgconfig/sdl2.pc",
     license = "dev/share/licenses/sdl2/LICENSE.txt",
     notice = "dev/share/licenses/sdl2/PORT-NOTICE",
     provenance = "dev/share/sdl2/source.txt",

@@ -1,0 +1,12 @@
+# Native SDK view. A host cross-build may override prefix with a trailing /.
+prefix=sdk://
+libdir=${prefix}lib
+includedir=${prefix}include
+
+Name: raylib
+Description: Pyxis SDL2/rlsw static raylib
+URL: https://github.com/raysan5/raylib
+Version: 6.2
+Requires.private: sdl2
+Libs: -L${libdir} -lraylib
+Cflags: -I${includedir}

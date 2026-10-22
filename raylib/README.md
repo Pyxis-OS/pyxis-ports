@@ -20,7 +20,13 @@ lua ports/build.lua raylib --sdk build/sdk --work build/ports/raylib \
 The development prefix is `build/ports/raylib/stage/dev`; the parent image build
 stages it as `build/ports-dev/raylib`. Include `raylib.h` and use SDK compile and
 link flags. Link application objects, `libraylib.a`, `libSDL2.a`, then the SDK
-runtime group. No host OpenGL, X11 or system library is used. CMake consumers use
+runtime group. The development packages also install `raylib.pc` and `sdl2.pc`
+in the shared `sdk://lib/pkgconfig` view. `pkg-config --static --cflags --libs
+raylib` emits `-Isdk://include -Isdk://include/SDL2 -Lsdk://lib -lraylib -lSDL2`;
+raylib's private `sdl2` module dependency comes from the separate `sdl2-dev`
+package, not an embedded copy. A host cross-build can override `prefix` with
+an absolute relocated SDK directory ending in `/`; use the ordinary SDK
+start/link/runtime flags as well. No host OpenGL, X11 or system library is used. CMake consumers use
 `find_package(raylib CONFIG REQUIRED)` and target `raylib`, with both development
 prefixes on the SDK toolchain’s `CMAKE_FIND_ROOT_PATH`. Public `rlgl.h` declarations are available;
 standalone `RLGL_IMPLEMENTATION` is not an exported header-only product.
@@ -33,7 +39,11 @@ images, compression, generated sound/streams and WAV decoding. Model-file loader
 GPU/shader features, capture, non-WAV audio decoders and shared objects are omitted. Software render-texture
 helpers need separate qualification; this is not full OpenGL support.
 
-File helpers preserve native `name://` roots and use real libc paths. Missing
+File helpers preserve native `name://` roots and use real libc paths.
+`GetPrevDirectoryPath` skips the filename for an existing regular file, matching
+upstream's extra parent level, without crossing the scheme root. `MakeDirectory`
+on a root reports the actual lookup failure or `ENOTDIR` for an existing non-directory;
+it never attempts to create a scheme root. Missing
 modification metadata is refused with `ENOTSUP`; `GetApplicationDirectory()` has
 no native executable-directory authority and returns the upstream empty result.
 Assets need an explicit delegated root such as `app://`. Lexical path helpers do

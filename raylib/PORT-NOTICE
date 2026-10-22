@@ -44,3 +44,8 @@ qualify display layout, scaling, input, timing, render-texture combinations
 or visual/basic-3D correctness on Pyxis. Runtime qualification is a separate
 integration task. Applications must use explicitly delegated asset roots;
 this port supplies no authority to infer or access private project locations.
+
+Native parent-path handling follows upstream's extra level for existing files
+while retaining scheme boundaries. Root-only MakeDirectory preserves lookup
+errors and reports ENOTDIR for a non-directory root. The .pc metadata selects
+sdk:// paths and the separately packaged static SDL2 dependency.
