@@ -67,6 +67,9 @@ The recipe stages `bin/raylib-shapes.pxb`, separate from ordinary boot programs,
 and `share/raylib/examples/shapes.c` in the development prefix. It has generated
 assets and requests only memory, clock, display, keyboard and optional pointer.
 The parent supplies opt-in `raylib-shapes` and `raylib-dev` package recipes.
+`raylib-dev` contains raylib only and depends by name on the SDL2 port's separate
+`sdl2-dev` package. Their standard include/lib trees feed the shared `sdk://`
+view; individual packages live at `pkg://NAME/...`, without package-named roots.
 
 `raylib-shapes [width height]` defaults to 960x540 at a 60 FPS cap. Space pauses
 the texture, F1 switches 2D/3D, the wheel changes the circle, L toggles native
