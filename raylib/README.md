@@ -21,12 +21,13 @@ The development prefix is `build/ports/raylib/stage/dev`; the parent image build
 stages it as `build/ports-dev/raylib`. Include `raylib.h` and use SDK compile and
 link flags. Link application objects, `libraylib.a`, `libSDL2.a`, then the SDK
 runtime group. The development packages also install `raylib.pc` and `sdl2.pc`
-in the shared `sdk://lib/pkgconfig` view. `pkg-config --static --cflags --libs
-raylib` emits `-Isdk://include -Isdk://include/SDL2 -Lsdk://lib -lraylib -lSDL2`;
-raylib's `sdl2` module dependency comes from the separate `sdl2-dev`
-package, not an embedded copy. A host cross-build can override `prefix` with
-an absolute relocated SDK directory ending in `/`; use the ordinary SDK
-start/link/runtime flags as well. No host OpenGL, X11 or system library is used. CMake consumers use
+in the shared `sdk://lib/pkgconfig` view. Native `pkg-config --cflags --libs
+raylib` emits `-Isdk://include/SDL2 -D_REENTRANT -lraylib -lSDL2`, filtering the
+SDK's default include/library paths. Raylib's SDL2 dependency comes from the
+separate `sdl2-dev` package, not an embedded copy. Host cross-builds can override
+`includedir` and `libdir` with the relocated SDK directories; use the ordinary
+SDK start/link/runtime flags too. No host OpenGL, X11 or system library is used.
+CMake consumers use
 `find_package(raylib CONFIG REQUIRED)` and target `raylib`, with both development
 prefixes on the SDK toolchain’s `CMAKE_FIND_ROOT_PATH`. Public `rlgl.h` declarations are available;
 standalone `RLGL_IMPLEMENTATION` is not an exported header-only product.
