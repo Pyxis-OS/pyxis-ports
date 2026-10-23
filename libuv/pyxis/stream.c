@@ -481,13 +481,16 @@ void uv__pyxis_stream_close(uv_stream_t *stream)
     uv_tty_t *tty = (uv_tty_t *)stream;
     tty->resize_cb = NULL;
     int error = tty_normal(tty);
+    if (error == UV_EIO) {
+      /* Libc maps uncertain native mode operations to EIO; never replay them. */
+      abort();
+    }
+    if (error) {
+      tty_state_free(tty);
+    }
     if (error == UV_EBADF) {
       /* The descriptor no longer names the saved owner; leave replacements open. */
-      tty_state_free(tty);
       stream->fd = -1;
-    } else if (error) {
-      /* Do not discard other failures or replay an uncertain native release. */
-      abort();
     }
   }
   while (!uv__queue_empty(&stream->write_queue)) {

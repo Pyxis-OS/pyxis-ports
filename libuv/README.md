@@ -57,10 +57,11 @@ in all loops. Descriptor aliases share this owner; independent mode changes
 follow libc's snapshot semantics, with the last restoration taking effect.
 Console byte input already has no echo or line editing. RAW requires a readable
 TTY; IO mode and blocking stream writes remain unsupported. Restoration failures
-return their negative UV error. Close discards a stale snapshot when libc reports
-EBADF for an already closed or replaced descriptor, leaving a replacement open.
-Other close restoration failures abort, as close has no error result. Libc latches
-uncertain native releases without replaying them.
+return their negative UV error. Close aborts on EIO, which includes uncertain
+native mode operations, without replaying the operation. Other restoration errors
+discard the snapshot and let ordinary descriptor close retire the owner. EBADF
+for an already closed or replaced descriptor also leaves a replacement open.
+Libc latches failed native releases without replaying them.
 
 `uv/pyxis-native.h` exposes native TTY resize callbacks through
 `uv_pyxis_tty_resize_start` and `uv_pyxis_tty_resize_stop`. Start records current
