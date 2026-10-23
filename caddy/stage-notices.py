@@ -11,7 +11,8 @@ tags = sys.argv[5]
 version = sys.argv[6]
 env = dict(os.environ, GOROOT=str(go), GOTOOLCHAIN="local", GOOS="pyxis",
            GOARCH="amd64", GOAMD64="v1", CGO_ENABLED="0", GOPROXY="off",
-           GOSUMDB="off", GOCACHE=str(cache))
+           GOSUMDB="off", GOCACHE=str(cache), GOENV="off", GOWORK="off",
+           GONOPROXY="none", GOFLAGS="")
 modules = set()
 lines = subprocess.check_output(
     [str(go / "bin/go"), "-C", str(source), "list", "-mod=vendor", "-deps",

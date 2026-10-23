@@ -3,6 +3,7 @@ return function(ctx)
   local function go_command(proxy, arguments)
     local command = { "env", "GOROOT=" .. go, "GOTOOLCHAIN=local", "GOOS=pyxis",
       "GOARCH=amd64", "GOAMD64=v1", "CGO_ENABLED=0", "GOSUMDB=off",
+      "GOENV=off", "GOWORK=off", "GONOPROXY=none", "GOFLAGS=",
       "GOPROXY=" .. proxy, "GOMODCACHE=" .. ctx.build .. "/modcache",
       "GOCACHE=" .. ctx.build .. "/gocache", go .. "/bin/go", "-C", ctx.source }
     for _, argument in ipairs(arguments) do
