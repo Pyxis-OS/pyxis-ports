@@ -20,6 +20,8 @@ return {
   },
   patches = {},
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/mbedtls/MPL-2.0",
+    dev_licensing = "dev/share/licenses/mbedtls/LICENSING.md",
     pc_mbedtls = "dev/lib/pkgconfig/mbedtls.pc",
     pc_mbedx509 = "dev/lib/pkgconfig/mbedx509.pc",
     pc_tfpsacrypto = "dev/lib/pkgconfig/tfpsacrypto.pc",
@@ -36,5 +38,9 @@ return {
     license = "share/licenses/mbedtls/LICENSE",
     crypto_license = "share/licenses/tf-psa-crypto/LICENSE",
     notice = "share/licenses/mbedtls/PORT-NOTICE",
+    dev_license = "dev/share/licenses/mbedtls/LICENSE",
+    dev_crypto_license = "dev/share/licenses/tf-psa-crypto/LICENSE",
+    dev_notice = "dev/share/licenses/mbedtls/PORT-NOTICE",
+    dev_provenance = "dev/share/mbedtls/source.txt",
   },
 }

@@ -27,6 +27,22 @@ return function(ctx)
     ctx.stage .. "/" .. ctx.metadata.outputs.crypto_license })
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/PORT-NOTICE",
     ctx.stage .. "/" .. ctx.metadata.outputs.notice })
+  for _, name in ipairs({ "license", "crypto_license", "notice" }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.stage .. "/" .. ctx.metadata.outputs[name],
+      ctx.stage .. "/" .. ctx.metadata.outputs["dev_" .. name] })
+  end
+  ctx.run({ "mkdir", "-p", ctx.stage .. "/dev/share/mbedtls" })
+  local provenance = assert(io.open(ctx.stage .. "/" .. ctx.metadata.outputs.dev_provenance, "w"))
+  local crypto = ctx.metadata.bundled_crypto
+  assert(provenance:write("source=" .. ctx.metadata.source.archive.url .. "\n",
+    "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
+    "commit=" .. ctx.metadata.source.commit .. "\n",
+    "crypto_source=" .. crypto.url .. "\ncrypto_commit=" .. crypto.commit .. "\n",
+    "crypto_version=" .. crypto.version .. "\nversion=4.1.1\nlicense=Apache-2.0\npatches=none\n",
+    "configuration=include/mbedtls/pyxis_tls_config.h,include/mbedtls/pyxis_crypto_config.h\n",
+    "profile=static TLS,X.509,TF-PSA-Crypto with native caller hooks\n",
+    "omitted=programs,tests,filesystem I/O,persistent crypto storage,builtin entropy\n"))
+  assert(provenance:close())
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/mbedtls.pc",
     ctx.stage .. "/dev/lib/pkgconfig/mbedtls.pc" })
 
@@ -35,5 +51,13 @@ return function(ctx)
 
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/tfpsacrypto.pc",
     ctx.stage .. "/dev/lib/pkgconfig/tfpsacrypto.pc" })
+
+  for _, entry in ipairs({
+    { source = "LICENSE", output = "dev_pyxis_license" },
+    { source = "LICENSING.md", output = "dev_licensing" },
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/../" .. entry.source,
+      ctx.stage .. "/" .. ctx.metadata.outputs[entry.output] })
+  end
 
 end

@@ -26,7 +26,21 @@ return function(ctx)
     "configuration=upstream pnglibconf.mak with pyxis.dfa, target preprocessor\n",
     "omitted=simplified API, architecture acceleration, shared libraries, upstream programs/tests\n"))
   assert(provenance:close())
+  for _, name in ipairs({ "license", "notice", "provenance" }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.stage .. "/" .. ctx.metadata.outputs[name],
+      ctx.stage .. "/" .. ctx.metadata.outputs["dev_" .. name] })
+  end
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/libpng.pc",
     ctx.stage .. "/dev/lib/pkgconfig/libpng.pc" })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/pyxis.dfa",
+    ctx.stage .. "/" .. ctx.metadata.outputs.dev_configuration_source })
+
+  for _, entry in ipairs({
+    { source = "LICENSE", output = "dev_pyxis_license" },
+    { source = "LICENSING.md", output = "dev_licensing" },
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/../" .. entry.source,
+      ctx.stage .. "/" .. ctx.metadata.outputs[entry.output] })
+  end
 
 end

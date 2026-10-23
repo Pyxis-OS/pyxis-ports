@@ -15,6 +15,8 @@ return {
   },
   patches = {},
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/libpng/MPL-2.0",
+    dev_licensing = "dev/share/licenses/libpng/LICENSING.md",
     pc_libpng = "dev/lib/pkgconfig/libpng.pc",
 
     library = "dev/lib/libpng.a",
@@ -24,5 +26,9 @@ return {
     license = "share/licenses/libpng/LICENSE",
     notice = "share/licenses/libpng/PORT-NOTICE",
     provenance = "share/libpng/source.txt",
+    dev_license = "dev/share/licenses/libpng/LICENSE",
+    dev_notice = "dev/share/licenses/libpng/PORT-NOTICE",
+    dev_provenance = "dev/share/libpng/source.txt",
+    dev_configuration_source = "dev/share/sources/libpng/pyxis.dfa",
   },
 }

@@ -42,6 +42,8 @@ return {
     "patches/0002-pyxis-file-abandonment.patch",
   },
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/lua51/MPL-2.0",
+    dev_licensing = "dev/share/licenses/lua51/LICENSING.md",
     pc_lua5_1 = "dev/lib/pkgconfig/lua5.1.pc",
     pc_lpeg = "dev/lib/pkgconfig/lpeg.pc",
     pc_luv = "dev/lib/pkgconfig/luv.pc",

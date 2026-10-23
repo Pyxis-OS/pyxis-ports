@@ -15,6 +15,8 @@ return {
     "patches/0002-omit-wstring-without-libcxx-wide-characters.patch",
   },
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/fmt/MPL-2.0",
+    dev_licensing = "dev/share/licenses/fmt/LICENSING.md",
     pc_fmt = "dev/lib/pkgconfig/fmt.pc",
 
     library = "dev/lib/libfmt.a",

@@ -39,4 +39,30 @@ return function(ctx)
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/libuv.pc",
     ctx.stage .. "/dev/lib/pkgconfig/libuv.pc" })
 
+  for _, entry in ipairs({
+    { source = "LICENSE", output = "dev_pyxis_license" },
+    { source = "LICENSING.md", output = "dev_licensing" },
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/../" .. entry.source,
+      ctx.stage .. "/" .. ctx.metadata.outputs[entry.output] })
+  end
+
+  for _, name in ipairs({
+    "Makefile",
+    "include/uv/pyxis.h",
+    "include/uv/pyxis-native.h",
+    "pyxis/core.c",
+    "pyxis/fs.c",
+    "pyxis/internal.h",
+    "pyxis/os.c",
+    "pyxis/process.c",
+    "pyxis/stream.c",
+    "pyxis/thread.c",
+    "pyxis/unsupported.c",
+    "pyxis/watchers.c",
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/" .. name,
+      ctx.stage .. "/dev/share/sources/libuv/" .. name })
+  end
+
 end

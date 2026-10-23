@@ -15,6 +15,8 @@ return {
   },
   patches = {},
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/zlib/MPL-2.0",
+    dev_licensing = "dev/share/licenses/zlib/LICENSING.md",
     pc_zlib = "dev/lib/pkgconfig/zlib.pc",
 
     library = "dev/lib/libz.a",
@@ -23,5 +25,8 @@ return {
     license = "share/licenses/zlib/LICENSE",
     notice = "share/licenses/zlib/PORT-NOTICE",
     provenance = "share/zlib/source.txt",
+    dev_license = "dev/share/licenses/zlib/LICENSE",
+    dev_notice = "dev/share/licenses/zlib/PORT-NOTICE",
+    dev_provenance = "dev/share/zlib/source.txt",
   },
 }

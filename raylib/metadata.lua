@@ -21,6 +21,8 @@ return {
     "patches/0004-native-parent-path-and-root-directory-errors.patch",
   },
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/raylib/MPL-2.0",
+    dev_licensing = "dev/share/licenses/raylib/LICENSING.md",
     pc_raylib = "dev/lib/pkgconfig/raylib.pc",
 
     library = "dev/lib/libraylib.a",

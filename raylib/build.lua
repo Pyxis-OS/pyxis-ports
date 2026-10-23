@@ -36,4 +36,12 @@ return function(ctx)
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/raylib.pc",
     ctx.stage .. "/dev/lib/pkgconfig/raylib.pc" })
 
+  for _, entry in ipairs({
+    { source = "LICENSE", output = "dev_pyxis_license" },
+    { source = "LICENSING.md", output = "dev_licensing" },
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/../" .. entry.source,
+      ctx.stage .. "/" .. ctx.metadata.outputs[entry.output] })
+  end
+
 end

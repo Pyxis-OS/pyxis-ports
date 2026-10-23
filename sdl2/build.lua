@@ -30,4 +30,30 @@ return function(ctx)
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/sdl2.pc",
     ctx.stage .. "/dev/lib/pkgconfig/sdl2.pc" })
 
+  for _, entry in ipairs({
+    { source = "LICENSE", output = "dev_pyxis_license" },
+    { source = "LICENSING.md", output = "dev_licensing" },
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/../" .. entry.source,
+      ctx.stage .. "/" .. ctx.metadata.outputs[entry.output] })
+  end
+
+  for _, name in ipairs({
+    "Makefile",
+    "SDL_config.h",
+    "pyxis/SDL_pyxisaudio.c",
+    "pyxis/SDL_pyxisclipboard.c",
+    "pyxis/SDL_pyxisevents.c",
+    "pyxis/SDL_pyxismouse.c",
+    "pyxis/SDL_pyxisvideo.c",
+    "pyxis/SDL_pyxisvideo.h",
+    "pyxis/SDL_syscond.c",
+    "pyxis/SDL_sysfilesystem.c",
+    "pyxis/SDL_systhread.c",
+    "pyxis/SDL_systimer.c",
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/" .. name,
+      ctx.stage .. "/dev/share/sources/sdl2/" .. name })
+  end
+
 end

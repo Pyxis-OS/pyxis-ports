@@ -16,12 +16,18 @@ return {
     "patches/0003-pyxis-file-abandonment.patch",
   },
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/lua/MPL-2.0",
+    dev_licensing = "dev/share/licenses/lua/LICENSING.md",
     pc_lua = "dev/lib/pkgconfig/lua.pc",
 
     executable = "bin/lua.pxb/app/bin/lua.pxe",
     manifest = "bin/lua.pxb/manifest.json",
     commands = "share/lua/pyxis/commands.lua",
     license = "share/licenses/lua/lua.h",
+    dev_license = "dev/share/licenses/lua/lua.h",
+    dev_notice = "dev/share/licenses/lua/PORT-NOTICE",
+    dev_provenance = "dev/share/lua/source.txt",
+    dev_configuration_source = "dev/share/sources/lua/config.h",
     library = "dev/lib/liblua.a",
     api_header = "dev/include/lua.h",
     config_header = "dev/include/luaconf.h",

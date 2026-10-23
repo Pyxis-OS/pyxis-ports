@@ -15,6 +15,8 @@ return {
   },
   patches = {},
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/utf8proc/MPL-2.0",
+    dev_licensing = "dev/share/licenses/utf8proc/LICENSING.md",
     pc_libutf8proc = "dev/lib/pkgconfig/libutf8proc.pc",
 
     library = "dev/lib/libutf8proc.a",

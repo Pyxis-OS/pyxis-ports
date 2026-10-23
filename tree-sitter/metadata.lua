@@ -15,6 +15,8 @@ return {
   },
   patches = { "patches/0001-pyxis-endian.patch" },
   outputs = {
+    dev_pyxis_license = "dev/share/licenses/tree-sitter/MPL-2.0",
+    dev_licensing = "dev/share/licenses/tree-sitter/LICENSING.md",
     pc_tree_sitter = "dev/lib/pkgconfig/tree-sitter.pc",
 
     library = "dev/lib/libtree-sitter.a",

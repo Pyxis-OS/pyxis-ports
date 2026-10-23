@@ -86,6 +86,10 @@ downloads data or searches the boot archive; install the game with `pkg`.
 [pkgconf](pkgconf/README.md) supplies static pkg-config metadata over explicit
 `sdk://` and other capability roots. Development prefixes stage their `.pc` files
 under `lib/pkgconfig`, ready for the flat SDK view.
+Reusable development prefixes retain upstream notices and provenance under
+`share/`, with the ports' MPL notice and original native source/configuration
+needed by their selected profiles. Packaging must preserve these files along
+with headers and archives.
 
 [Native libuv](libuv/README.md) exports a static development library and an
 explicit child-output relay bundle. It needs a current SDK and declared native
