@@ -1,6 +1,7 @@
 #include "jobs.h"
 #include "lauxlib.h"
 #include <abi/clock.h>
+#include <abi/endpoint.h>
 #include <abi/memory.h>
 #include <abi/net_config.h>
 #include <abi/pipe.h>
@@ -49,6 +50,7 @@ struct preparation {
   struct launch_environment_entry *entries;
   struct launch_grant *grants;
   size_t grant_count, entry_count;
+  bool explicit_resources;
   struct environment_capture parent;
   struct pyxis_working_snapshot working;
   struct pyxis_environment_snapshot environment;
@@ -71,6 +73,7 @@ static const struct resource_role roles[] = {
   {"net_registry", PROTOCOL_NET_REGISTRY, NET_REGISTRY_RIGHT_READ},
   {"pipe", PROTOCOL_PIPE_SERVICE, PIPE_SERVICE_RIGHT_CREATE},
   {"system_info", PROTOCOL_SYSTEM_INFO, SYSTEM_INFO_RIGHT_READ},
+  {"service", PROTOCOL_ENDPOINT_SERVICE, ENDPOINT_SERVICE_RIGHT_CREATE},
 };
 
 static void field(lua_State *state, int index, const char *name)
@@ -228,15 +231,20 @@ static enum call_status add_role(struct preparation *owned,
     return required ? CALL_DENIED : CALL_OK;
   }
   uint64_t transport = info.kind == HANDLE_KIND_EXPORTED ? HANDLE_TRANSPORT_CALL : 0;
-  return stage_capability(owned, role->name, value->handle, rights, transport);
+  status = stage_capability(owned, role->name, value->handle, rights, transport);
+  if (status == CALL_OK && role->protocol == PROTOCOL_ENDPOINT_SERVICE) {
+    owned->entries[owned->entry_count - 1].flags = 0;
+  }
+  return status;
 }
 
 static enum call_status select_resources(lua_State *state, int options,
     struct preparation *owned)
 {
   field(state, options, "resources");
+  owned->explicit_resources = !lua_isnil(state, -1);
   enum call_status status = CALL_OK;
-  if (lua_isnil(state, -1)) {
+  if (!owned->explicit_resources) {
     for (size_t i = 0; i < 4 && status == CALL_OK; ++i) {
       status = add_role(owned, &roles[i], false);
     }
@@ -537,10 +545,12 @@ static enum call_status bundle_authority(struct preparation *owned)
       (const char *)(uintptr_t)entry->name, source, info.protocol};
     ++owned->authority_owned_count;
   }
-  const struct environment_value *service = environment_capture_find(&owned->parent, "service");
-  if (service && service->kind == ENVIRONMENT_CAP) {
-    owned->authority[owned->authority_count++] = (struct bundle_authority){
-      "service", service->handle, PROTOCOL_ENDPOINT_SERVICE};
+  if (!owned->explicit_resources) {
+    const struct environment_value *service = environment_capture_find(&owned->parent, "service");
+    if (service && service->kind == ENVIRONMENT_CAP) {
+      owned->authority[owned->authority_count++] = (struct bundle_authority){
+        "service", service->handle, PROTOCOL_ENDPOINT_SERVICE};
+    }
   }
   size_t sources;
   enum call_status status = bundle_sources_from_capture(&owned->parent,

@@ -209,8 +209,13 @@ output limits select the core's 1 MiB caps and polled stopping triggers; these
 are not hard backing quotas.
 
 Omitted resources select the present `memory`, `threads`, `clock` and `random`
-roles. An explicit dense list selects only its named held grants; supported
-names also include `tcp`, `udp`, `dns_udp`, `net_registry`, `pipe` and `system_info`. Missing explicit
+roles for raw stages. A bundle may additionally declare private `service/create`
+from the held constructor when resources is omitted. An explicit dense list
+bounds bundle requests as well as raw stages; supported names also include
+`tcp`, `udp`, `dns_udp`, `net_registry`, `pipe`, `system_info` and `service`.
+`service` explicitly selects CREATE as a private role. Omitting it from an
+explicit list, including `resources={}`, leaves a required bundle service request
+unsatisfied even when the parent holds that constructor. Missing explicit
 selections fail. Omitted roots/cwd/environment take owned current snapshots.
 An explicit root list uses `{name="home", access="read"}` or `"read-write"`;
 rights intersect held authority, and read access strips mutations. The cwd
