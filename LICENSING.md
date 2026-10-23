@@ -32,7 +32,7 @@ those recipes fetch, adapt or package.
   MPL-2.0 material; see `libuv/PORT-NOTICE`.
 - Upstream-derived files and patches, including `busybox/patches/`, `doom/patches/`, `jq/patches/`,
   `kilo/patches/`, `links/patches/`, `lua/patches/`, `sbase/patches/`, `fastfetch/patches/`,
-  `quake/patches/` and `sdl2/patches/`, retain the licenses of the upstream files they modify. This
+  `quake/patches/`, `mesa/patches/` and `sdl2/patches/`, retain the licenses of the upstream files they modify. This
   includes applicable runtime exceptions.
 - jq's `COPYING` is staged unmodified. It states jq's MIT terms, David Gay's dtoa
   notice (a permissive Lucent grant) and decNumber's ICU License, which cover the

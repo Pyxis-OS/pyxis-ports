@@ -1,0 +1,16 @@
+Mesa 26.2.5: MIT, Apache-2.0, BSL-1.0, SGI-B-2.0 and BSD-2-Clause terms are
+retained in NOTICES and the accompanying licence texts. Generated Bison parser
+skeletons retain GPL-3.0-or-later notices plus the Bison exception allowing
+larger works to be distributed under their own terms (Mesa is not a parser
+generator). Both the notice and exception are retained verbatim in NOTICES.
+The OSMesa context/render frontend/header is restored from Mesa 25.0.7.
+OSMesaPostprocess and its removed filter stack are not included.
+
+The selected profile is static softpipe OpenGL, no LLVM/JIT, GPU, DRM frontend,
+GLX/EGL/GBM, GLES, dynamic loader or disk shader cache. Native integration uses
+Pyxis's existing C11 synchronization and monotonic clock/sleep; it does not
+identify Pyxis as POSIX or invent Unix process/file metadata. Unknown physical
+memory/available CPU values remain unavailable. No formal API-conformance claim.
+
+Original Pyxis recipe, configuration, manual program and documentation are
+MPL-2.0. Patches retain the licenses of the upstream files they modify.

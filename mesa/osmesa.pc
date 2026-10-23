@@ -1,0 +1,10 @@
+prefix=sdk://
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: OSMesa
+Description: Static Mesa softpipe off-screen OpenGL
+Version: 26.2.5
+Libs: -L${libdir} -lOSMesa
+Requires.private: libcxx
+Cflags: -I${includedir}

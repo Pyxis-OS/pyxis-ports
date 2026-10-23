@@ -1,0 +1,460 @@
+diff --git a/include/c99_alloca.h b/include/c99_alloca.h
+index 5a3b8c1..939c5a3 100644
+--- a/include/c99_alloca.h
++++ b/include/c99_alloca.h
+@@ -35,7 +35,7 @@
+ 
+ #  define alloca _alloca
+ 
+-#elif defined(__sun) || defined(__CYGWIN__)
++#elif defined(__sun) || defined(__CYGWIN__) || defined(__pyxis__)
+ 
+ #  include <alloca.h>
+ 
+diff --git a/src/c11/threads.h b/src/c11/threads.h
+index c849f38..643edc8 100644
+--- a/src/c11/threads.h
++++ b/src/c11/threads.h
+@@ -37,7 +37,9 @@
+ #include <limits.h>
+ #include <stdlib.h>
+ 
+-#if defined(_WIN32) && !defined(HAVE_PTHREAD)
++#if defined(HAVE_THRD_CREATE)
++#  include <threads.h>
++#elif defined(_WIN32) && !defined(HAVE_PTHREAD)
+ #  include <io.h> /* close */
+ #  include <process.h> /* _exit */
+ #elif defined(HAVE_PTHREAD)
+diff --git a/src/compiler/nir/nir_opt_varyings.c b/src/compiler/nir/nir_opt_varyings.c
+index 0145227..adee6b5 100644
+--- a/src/compiler/nir/nir_opt_varyings.c
++++ b/src/compiler/nir/nir_opt_varyings.c
+@@ -3188,8 +3188,8 @@ typedef struct {
+ static void
+ print_dedup_entry(const char *place, struct set *set, dedup_entry *entry)
+ {
+-   printf("%s> set=0x%" SCNxPTR ", entry=0x%" SCNxPTR ", block=0x%" SCNxPTR ", "
+-          "value=0x%" SCNxPTR ":%u, index=0x%" SCNxPTR ":%u, emit=%u\n",
++   printf("%s> set=0x%" PRIxPTR ", entry=0x%" PRIxPTR ", block=0x%" PRIxPTR ", "
++          "value=0x%" PRIxPTR ":%u, index=0x%" PRIxPTR ":%u, emit=%u\n",
+           place, (uintptr_t)set, (uintptr_t)entry, (uintptr_t)entry->block,
+           (uintptr_t)entry->value.def, entry->value.comp,
+           (uintptr_t)entry->index.def, entry->index.comp,
+@@ -3239,7 +3239,7 @@ dedup_ht_key_hash(const void *_key)
+    }
+ 
+    if (DEBUG_PRINT_DEDUP)
+-      printf("ht_key_hash key=0x%" SCNuPTR " hash=%u\n", (uintptr_t)_key, hash);
++      printf("ht_key_hash key=0x%" PRIuPTR " hash=%u\n", (uintptr_t)_key, hash);
+    return hash;
+ }
+ 
+diff --git a/src/gallium/auxiliary/meson.build b/src/gallium/auxiliary/meson.build
+index e4815f8..1eef992 100644
+--- a/src/gallium/auxiliary/meson.build
++++ b/src/gallium/auxiliary/meson.build
+@@ -2,8 +2,6 @@
+ # SPDX-License-Identifier: MIT
+ 
+ files_libgallium = files(
+-  'driver_ddebug/dd_draw.c',
+-  'driver_ddebug/dd_util.h',
+   'pipebuffer/pb_buffer_fenced.c',
+   'pipebuffer/pb_buffer_fenced.h',
+   'pipebuffer/pb_buffer.h',
+@@ -37,7 +35,6 @@ files_libgallium = files(
+   'util/u_draw.h',
+   'util/u_draw_quad.c',
+   'util/u_draw_quad.h',
+-  'util/u_driconf.c',
+   'util/u_driconf.h',
+   'util/u_dual_blend.h',
+   'util/u_dump_defines.c',
+@@ -177,10 +174,6 @@ if with_gfx_compute
+     'draw/draw_vs_exec.c',
+     'draw/draw_vs.h',
+     'draw/draw_vs_variant.c',
+-    'driver_ddebug/dd_context.c',
+-    'driver_ddebug/dd_pipe.h',
+-    'driver_ddebug/dd_public.h',
+-    'driver_ddebug/dd_screen.c',
+     'driver_noop/noop_pipe.c',
+     'driver_noop/noop_public.h',
+     'driver_noop/noop_state.c',
+@@ -507,6 +500,10 @@ u_unfilled_gen_c = custom_target(
+ )
+ 
+ libgallium_extra_c_args = []
++if host_machine.system() != 'pyxis'
++  files_libgallium += files('util/u_driconf.c')
++endif
++
+ libgallium = static_library(
+   'gallium',
+   [files_libgallium, u_indices_gen_c, u_unfilled_gen_c],
+diff --git a/src/gallium/auxiliary/rtasm/rtasm_execmem.c b/src/gallium/auxiliary/rtasm/rtasm_execmem.c
+index 82c4d2f..7289966 100644
+--- a/src/gallium/auxiliary/rtasm/rtasm_execmem.c
++++ b/src/gallium/auxiliary/rtasm/rtasm_execmem.c
+@@ -126,6 +126,21 @@ rtasm_exec_free(void *addr)
+ }
+ 
+ 
++#elif DETECT_OS_PYXIS
++
++void *
++rtasm_exec_malloc(size_t size)
++{
++   (void)size;
++   return NULL;
++}
++
++void
++rtasm_exec_free(void *addr)
++{
++   (void)addr;
++}
++
+ #elif DETECT_OS_WINDOWS
+ 
+ 
+diff --git a/src/gallium/auxiliary/target-helpers/inline_debug_helper.h b/src/gallium/auxiliary/target-helpers/inline_debug_helper.h
+index 45a020a..a64fbbf 100644
+--- a/src/gallium/auxiliary/target-helpers/inline_debug_helper.h
++++ b/src/gallium/auxiliary/target-helpers/inline_debug_helper.h
+@@ -28,7 +28,7 @@ extern "C" {
+ static inline struct pipe_screen *
+ debug_screen_wrap(struct pipe_screen *screen)
+ {
+-#if HAVE_GFX_COMPUTE
++#if HAVE_GFX_COMPUTE && !defined(__pyxis__)
+    screen = ddebug_screen_create(screen);
+    screen = trace_screen_create(screen);
+    screen = noop_screen_create(screen);
+diff --git a/src/gallium/auxiliary/translate/translate.c b/src/gallium/auxiliary/translate/translate.c
+index d649791..23619c2 100644
+--- a/src/gallium/auxiliary/translate/translate.c
++++ b/src/gallium/auxiliary/translate/translate.c
+@@ -38,7 +38,7 @@ struct translate *translate_create( const struct translate_key *key )
+ {
+    struct translate *translate = NULL;
+ 
+-#if DETECT_ARCH_X86 || DETECT_ARCH_X86_64
++#if (DETECT_ARCH_X86 || DETECT_ARCH_X86_64) && !DETECT_OS_PYXIS
+    translate = translate_sse2_create( key );
+    if (translate)
+       return translate;
+diff --git a/src/gallium/auxiliary/translate/translate_sse.c b/src/gallium/auxiliary/translate/translate_sse.c
+index 2fe1913..a3f2dca 100644
+--- a/src/gallium/auxiliary/translate/translate_sse.c
++++ b/src/gallium/auxiliary/translate/translate_sse.c
+@@ -36,7 +36,7 @@
+ #include "translate.h"
+ 
+ 
+-#if DETECT_ARCH_X86 || DETECT_ARCH_X86_64
++#if (DETECT_ARCH_X86 || DETECT_ARCH_X86_64) && !DETECT_OS_PYXIS
+ 
+ #include "rtasm/rtasm_x86sse.h"
+ 
+diff --git a/src/gallium/auxiliary/util/u_screen.c b/src/gallium/auxiliary/util/u_screen.c
+index da9cdfc..521d276 100644
+--- a/src/gallium/auxiliary/util/u_screen.c
++++ b/src/gallium/auxiliary/util/u_screen.c
+@@ -201,6 +201,7 @@ uint64_t u_default_get_timestamp(UNUSED struct pipe_screen *screen)
+    return os_time_get_nano();
+ }
+ 
++#if !DETECT_OS_PYXIS
+ static uint32_t
+ hash_file_description(const void *key)
+ {
+@@ -325,3 +326,5 @@ unlock:
+    simple_mtx_unlock(&screen_mutex);
+    return pscreen;
+ }
++
++#endif /* !DETECT_OS_PYXIS: DRM descriptor sharing is not a native FILE operation. */
+diff --git a/src/gallium/drivers/softpipe/sp_screen.c b/src/gallium/drivers/softpipe/sp_screen.c
+index 449ab0c..9f5f50f 100644
+--- a/src/gallium/drivers/softpipe/sp_screen.c
++++ b/src/gallium/drivers/softpipe/sp_screen.c
+@@ -359,7 +359,7 @@ softpipe_init_screen_caps(struct softpipe_screen *sp_screen)
+    }
+ 
+    caps->uma = false;
+-   caps->query_memory_info = true;
++   caps->query_memory_info = !DETECT_OS_PYXIS;
+    caps->conditional_render_inverted = true;
+    caps->clip_halfz = true;
+    caps->texture_float_linear = true;
+diff --git a/src/util/anon_file.c b/src/util/anon_file.c
+index 0cb6cfa..979d6ed 100644
+--- a/src/util/anon_file.c
++++ b/src/util/anon_file.c
+@@ -31,7 +31,17 @@
+ #include "anon_file.h"
+ #include "detect_os.h"
+ 
+-#ifndef _WIN32
++#if DETECT_OS_PYXIS
++#include <errno.h>
++int
++os_create_anonymous_file(int64_t size, const char *debug_name)
++{
++   (void)size;
++   (void)debug_name;
++   errno = ENOTSUP;
++   return -1;
++}
++#elif !defined(_WIN32)
+ 
+ #include <unistd.h>
+ #include <fcntl.h>
+diff --git a/src/util/cnd_monotonic.h b/src/util/cnd_monotonic.h
+index 049b5f0..733406b 100644
+--- a/src/util/cnd_monotonic.h
++++ b/src/util/cnd_monotonic.h
+@@ -29,6 +29,9 @@
+ #define CND_MONOTONIC_H
+ 
+ #include "c11/threads.h"
++#ifdef __pyxis__
++#include <pthread.h> /* native monotonic condition attributes */
++#endif
+ 
+ #include "util/os_time.h"
+ 
+diff --git a/src/util/detect_os.h b/src/util/detect_os.h
+index 7403724..c671e3c 100644
+--- a/src/util/detect_os.h
++++ b/src/util/detect_os.h
+@@ -15,6 +15,10 @@
+ #ifndef DETECT_OS_H
+ #define DETECT_OS_H
+ 
++#if defined(__pyxis__)
++#define DETECT_OS_PYXIS 1
++#endif
++
+ #if defined(__linux__)
+ #define DETECT_OS_LINUX 1
+ #define DETECT_OS_POSIX 1
+@@ -122,6 +126,10 @@
+ #ifndef DETECT_OS_HURD
+ #define DETECT_OS_HURD 0
+ #endif
++#ifndef DETECT_OS_PYXIS
++#define DETECT_OS_PYXIS 0
++#endif
++
+ #ifndef DETECT_OS_LINUX
+ #define DETECT_OS_LINUX 0
+ #endif
+diff --git a/src/util/log.c b/src/util/log.c
+index b594a8f..cf3dab8 100644
+--- a/src/util/log.c
++++ b/src/util/log.c
+@@ -147,6 +147,9 @@ mesa_log_init_once(void)
+       FILE *fp = NULL;
+ 
+       if (os_get_option("MESA_LOG_FILE_AUTO")) {
++#ifdef __pyxis__
++         fputs("Mesa: MESA_LOG_FILE_AUTO unsupported; use an explicit native MESA_LOG_FILE\n", stderr);
++#else
+          char log_file[512];
+          int fd;
+ 
+@@ -155,6 +158,7 @@ mesa_log_init_once(void)
+          fd = mkstemps(log_file, 4);
+          if (fd >= 0)
+             fp = fdopen(fd, "w");
++#endif
+       } else {
+          const char *log_file = os_get_option("MESA_LOG_FILE");
+          if (log_file)
+diff --git a/src/util/meson.build b/src/util/meson.build
+index b11f0c4..e38f481 100644
+--- a/src/util/meson.build
++++ b/src/util/meson.build
+@@ -178,12 +178,14 @@ files_mesa_util = files(
+   'vma.c',
+   'vma.h',
+   'xxhash.h',
+-  'mesa_cache_db.c',
+   'mesa_cache_db.h',
+-  'mesa_cache_db_multipart.c',
+   'mesa_cache_db_multipart.h',
+ )
+ 
++if with_shader_cache
++  files_mesa_util += files('mesa_cache_db.c', 'mesa_cache_db_multipart.c')
++endif
++
+ libmesa_util_links = []
+ 
+ if host_machine.cpu_family() == 'aarch64' and cc.get_id() != 'msvc'
+diff --git a/src/util/os_file.c b/src/util/os_file.c
+index 7d99383..f9b79ea 100644
+--- a/src/util/os_file.c
++++ b/src/util/os_file.c
+@@ -45,7 +45,15 @@ os_file_create_unique(const char *filename, int filemode)
+ }
+ 
+ 
+-#if DETECT_OS_WINDOWS
++#if DETECT_OS_PYXIS
++int
++os_dupfd_cloexec(int fd)
++{
++   (void)fd;
++   errno = ENOTSUP;
++   return -1;
++}
++#elif DETECT_OS_WINDOWS
+ int
+ os_dupfd_cloexec(int fd)
+ {
+diff --git a/src/util/os_misc.c b/src/util/os_misc.c
+index 16dd51b..0850c37 100644
+--- a/src/util/os_misc.c
++++ b/src/util/os_misc.c
+@@ -55,7 +55,9 @@
+ #endif
+ 
+ 
+-#if DETECT_OS_ANDROID
++#if DETECT_OS_PYXIS
++#  include <abi/memory.h>
++#elif DETECT_OS_ANDROID
+ #  define LOG_TAG "MESA"
+ #  include <unistd.h>
+ #  include <android/log.h>
+@@ -408,7 +410,9 @@ os_get_total_physical_memory(uint64_t *size)
+    *size = zx_system_get_physmem();
+    return true;
+ #else
++#if !DETECT_OS_PYXIS
+ #error unexpected platform in os_misc.c
++#endif
+    return false;
+ #endif
+ }
+@@ -487,7 +491,10 @@ os_get_available_system_memory(uint64_t *size)
+ bool
+ os_get_page_size(uint64_t *size)
+ {
+-#if HAVE_SYSCONF
++#if DETECT_OS_PYXIS
++   *size = MEMORY_PAGE_SIZE;
++   return true;
++#elif HAVE_SYSCONF
+    const long page_size = sysconf(_SC_PAGESIZE);
+ 
+    if (page_size <= 0)
+diff --git a/src/util/os_time.c b/src/util/os_time.c
+index 71fc7e3..035f141 100644
+--- a/src/util/os_time.c
++++ b/src/util/os_time.c
+@@ -40,7 +40,10 @@
+ #include "util/u_atomic.h"
+ #include "util/u_overflow.h"
+ 
+-#if DETECT_OS_POSIX_LITE
++#if DETECT_OS_PYXIS
++#  include <time.h>
++#  include <stdlib.h>
++#elif DETECT_OS_POSIX_LITE
+ #  include <unistd.h> /* usleep */
+ #  include <time.h> /* timeval */
+ #  include <sys/time.h> /* timeval */
+@@ -57,7 +60,8 @@ int64_t
+ os_time_get_nano(void)
+ {
+    struct timespec ts;
+-   timespec_get(&ts, TIME_MONOTONIC);
++   if (timespec_get(&ts, TIME_MONOTONIC) != TIME_MONOTONIC)
++      abort();
+    return ts.tv_nsec + ts.tv_sec*INT64_C(1000000000);
+ }
+ 
+@@ -80,7 +84,13 @@ os_time_nanosleep_until(int64_t deadline)
+ void
+ os_time_sleep(int64_t usecs)
+ {
+-#if DETECT_OS_LINUX || DETECT_OS_MANAGARM || DETECT_OS_FUCHSIA
++#if DETECT_OS_PYXIS
++   if (usecs <= 0)
++      return;
++   struct timespec delay = {usecs / 1000000, (usecs % 1000000) * 1000};
++   if (nanosleep(&delay, NULL) != 0)
++      abort();
++#elif DETECT_OS_LINUX || DETECT_OS_MANAGARM || DETECT_OS_FUCHSIA
+    struct timespec time;
+    time.tv_sec = usecs / 1000000;
+    time.tv_nsec = (usecs % 1000000) * 1000;
+diff --git a/src/util/rwlock.h b/src/util/rwlock.h
+index f97a829..7a03d42 100644
+--- a/src/util/rwlock.h
++++ b/src/util/rwlock.h
+@@ -28,7 +28,7 @@
+ #ifndef RWLOCK_H
+ #define RWLOCK_H
+ 
+-#if defined(HAVE_PTHREAD)
++#if defined(HAVE_PTHREAD) || defined(__pyxis__)
+ #include <pthread.h>
+ #endif
+ 
+diff --git a/src/util/u_debug.c b/src/util/u_debug.c
+index 45ea231..e5289d6 100644
+--- a/src/util/u_debug.c
++++ b/src/util/u_debug.c
+@@ -28,6 +28,9 @@
+ 
+ #include "util/u_atomic.h"
+ #include "util/u_debug.h"
++#ifdef __pyxis__
++#include <strings.h>
++#endif
+ #include "util/u_string.h"
+ #include "util/u_math.h"
+ #include "c11/threads.h"
+diff --git a/src/util/u_debug.h b/src/util/u_debug.h
+index 2e4d5e3..59a2752 100644
+--- a/src/util/u_debug.h
++++ b/src/util/u_debug.h
+@@ -408,7 +408,8 @@ debug_get_option_ ## suffix (void) \
+ static inline bool
+ __normal_user(void)
+ {
+-#if defined(_WIN32)
++#if defined(_WIN32) || defined(__pyxis__)
++   /* Pyxis has no set-id launch or ambient user privilege. */
+    return true;
+ #else
+    return geteuid() == getuid() && getegid() == getgid();
+diff --git a/src/util/u_thread.c b/src/util/u_thread.c
+index d1cf085..fc04da4 100644
+--- a/src/util/u_thread.c
++++ b/src/util/u_thread.c
+@@ -70,6 +70,9 @@ int u_thread_create(thrd_t *thrd, int (*routine)(void *), void *param)
+    struct u_thread_param *paramp = malloc(sizeof(*paramp));
+    int ret = thrd_error;
+ 
++   if (!paramp)
++      return thrd_nomem;
++
+    paramp->routine = routine;
+    paramp->arg = param;
+ 
+@@ -91,6 +94,8 @@ int u_thread_create(thrd_t *thrd, int (*routine)(void *), void *param)
+    ret = thrd_create(thrd, thread_routine, paramp);
+ #endif
+ 
++   if (ret != thrd_success)
++      free(paramp);
+    return ret;
+ }
+ 

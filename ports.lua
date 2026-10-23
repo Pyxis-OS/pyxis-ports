@@ -19,6 +19,7 @@ return {
   lua = "lua",
   lua51 = "lua51",
   mbedtls = "mbedtls",
+  mesa = "mesa",
   minesweeper = "minesweeper",
   neovim = "neovim",
   ncursesw = "ncursesw",
