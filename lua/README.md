@@ -209,9 +209,11 @@ output limits select the core's 1 MiB caps and polled stopping triggers; these
 are not hard backing quotas.
 
 Omitted resources select the present `memory`, `threads`, `clock` and `random`
-roles for raw stages. A bundle may additionally declare private `service/create`
-from the held constructor when resources is omitted. An explicit dense list
-bounds bundle requests as well as raw stages; supported names also include
+roles for raw stages. Raw TCP stages receive CONNECT only. A bundle may
+additionally declare private `service/create` and TCP LISTEN from held authority
+when resources is omitted; an explicit `tcp` selector permits that held source
+for the bundle's declaration, while raw stages still receive CONNECT only.
+An explicit dense list bounds bundle requests as well as raw stages; supported names also include
 `tcp`, `udp`, `dns_udp`, `net_registry`, `pipe`, `system_info` and `service`.
 `service` explicitly selects CREATE as a private role. Omitting it from an
 explicit list, including `resources={}`, leaves a required bundle service request

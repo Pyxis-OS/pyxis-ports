@@ -50,7 +50,7 @@ struct preparation {
   struct launch_environment_entry *entries;
   struct launch_grant *grants;
   size_t grant_count, entry_count;
-  bool explicit_resources;
+  bool explicit_resources, tcp_selected;
   struct environment_capture parent;
   struct pyxis_working_snapshot working;
   struct pyxis_environment_snapshot environment;
@@ -67,7 +67,7 @@ static const struct resource_role roles[] = {
   {"threads", PROTOCOL_THREAD_SERVICE, THREAD_RIGHT_MANAGE},
   {"clock", PROTOCOL_CLOCK, CLOCK_RIGHTS},
   {"random", PROTOCOL_RANDOM, RANDOM_RIGHT_READ},
-  {"tcp", PROTOCOL_TCP_SERVICE, TCP_SERVICE_RIGHTS},
+  {"tcp", PROTOCOL_TCP_SERVICE, TCP_SERVICE_RIGHT_CONNECT},
   {"udp", PROTOCOL_UDP_SERVICE, UDP_SERVICE_RIGHT_OPEN},
   {"dns_udp", PROTOCOL_UDP_SERVICE, UDP_SERVICE_RIGHT_OPEN},
   {"net_registry", PROTOCOL_NET_REGISTRY, NET_REGISTRY_RIGHT_READ},
@@ -228,6 +228,11 @@ static enum call_status add_role(struct preparation *owned,
   }
   uint64_t rights = info.rights & role->rights;
   if (!rights) {
+    /* A selected LISTEN-only source can still satisfy a bundle declaration;
+     * raw stages receive no listener authority. */
+    if (role->protocol == PROTOCOL_TCP_SERVICE && (info.rights & TCP_SERVICE_RIGHT_LISTEN)) {
+      return CALL_OK;
+    }
     return required ? CALL_DENIED : CALL_OK;
   }
   uint64_t transport = info.kind == HANDLE_KIND_EXPORTED ? HANDLE_TRANSPORT_CALL : 0;
@@ -264,6 +269,7 @@ static enum call_status select_resources(lua_State *state, int options,
         luaL_error(state, "pyxis.job: unknown or duplicate resource selector");
       }
       selected[role] = true;
+      owned->tcp_selected |= roles[role].protocol == PROTOCOL_TCP_SERVICE;
       if (status == CALL_OK) {
         status = add_role(owned, &roles[role], true);
       }
@@ -520,14 +526,15 @@ static enum call_status native_program(const struct path_context *context,
 
 static enum call_status bundle_authority(struct preparation *owned)
 {
-  size_t capacity = owned->entry_count + 1 + BUNDLE_SOURCE_LIMIT;
+  size_t capacity = owned->entry_count + 2 + BUNDLE_SOURCE_LIMIT;
   owned->authority = calloc(capacity, sizeof(*owned->authority));
   if (!owned->authority) {
     return CALL_NO_MEMORY;
   }
   for (size_t i = 0; i < owned->entry_count; ++i) {
     const struct launch_environment_entry *entry = &owned->entries[i];
-    if (entry->kind != ENVIRONMENT_CAP) {
+    if (entry->kind != ENVIRONMENT_CAP ||
+        !strcmp((const char *)(uintptr_t)entry->name, "tcp")) {
       continue;
     }
     const struct launch_grant *grant = &owned->grants[entry->value];
@@ -544,6 +551,18 @@ static enum call_status bundle_authority(struct preparation *owned)
     owned->authority[owned->authority_count++] = (struct bundle_authority){
       (const char *)(uintptr_t)entry->name, source, info.protocol};
     ++owned->authority_owned_count;
+  }
+  if (!owned->explicit_resources || owned->tcp_selected) {
+    const struct environment_value *tcp = environment_capture_find(&owned->parent, "tcp");
+    if (tcp && tcp->kind == ENVIRONMENT_CAP) {
+      struct handle_info info;
+      enum call_status status = handle_query(tcp->handle, &info);
+      if (status != CALL_OK) {
+        return status;
+      }
+      owned->authority[owned->authority_count++] = (struct bundle_authority){
+        "tcp", tcp->handle, info.protocol};
+    }
   }
   if (!owned->explicit_resources) {
     const struct environment_value *service = environment_capture_find(&owned->parent, "service");

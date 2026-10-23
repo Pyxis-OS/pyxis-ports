@@ -111,6 +111,12 @@ UV_ENOSYS, already negative; no PID or Unix signal is invented.
 Spawn initializes its inactive process handle before fallible preparation, so a
 caller must close it after a failed spawn as well as after successful observation.
 
+Inherited TCP factories are attenuated to CONNECT for ordinary children. A
+private held TCP factory can satisfy an explicit bundle LISTEN request without
+being added to an ordinary child's inventory. An explicit
+`uv_pyxis_spawn` TCP resource replaces that declaration source with its selected
+rights; a CONNECT-only replacement cannot satisfy LISTEN.
+
 `uv_pyxis_spawn` accepts an array of `uv_pyxis_resource_t` records containing
 name, source handle, rights and transport. Ordinary spawn forwards explicitly
 exported named capabilities, including native FILEs and controllers, with their
