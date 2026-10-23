@@ -120,7 +120,8 @@ return function(ctx)
   for _, dependency in ipairs({
     { prefix = ctx.lua51, name = "lua51", notices = {
       "COPYRIGHT", "lpeg.html", "luv-LICENSE.txt", "compat53-LICENSE", "PORT-NOTICE.md" } },
-    { prefix = ctx.libuv, name = "libuv", notices = { "LICENSE", "LICENSE-extra", "PORT-NOTICE" } },
+    { prefix = ctx.libuv, name = "libuv", notices = {
+      "LICENSE", "LICENSE-extra", "PORT-NOTICE", "tree.h", "heap-inl.h", "queue.h" } },
     { prefix = ctx.utf8proc, name = "utf8proc", notices = { "LICENSE.md" } },
     { prefix = ctx.tree_sitter, name = "tree-sitter", notices = {
       "LICENSE", "unicode-LICENSE", "PORT-NOTICE" } },

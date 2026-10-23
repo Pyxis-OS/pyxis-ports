@@ -20,6 +20,8 @@ return {
     "patches/0003-pyxis-software-scaling.patch",
   },
   outputs = {
+    sdl2_yuv_license = "share/licenses/chocolate-doom/SDL2-yuv2rgb-LICENSE",
+    sdl2_libm_notice = "share/licenses/chocolate-doom/SDL2-fdlibm-NOTICE",
     executable = "bin/chocolate-doom.pxb/app/bin/chocolate-doom.pxe",
     manifest = "bin/chocolate-doom.pxb/manifest.json",
     license = "share/licenses/chocolate-doom/COPYING.md",

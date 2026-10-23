@@ -28,7 +28,8 @@ return function(ctx)
     install("644", ctx.stage .. "/" .. outputs[name], outputs["dev_" .. name])
   end
   install("644", ctx.stage .. "/" .. outputs.port_notice, outputs.dev_port_notice)
-  for _, name in ipairs({ "LICENSE", "LICENSE-extra", "PORT-NOTICE" }) do
+  for _, name in ipairs({ "LICENSE", "LICENSE-extra", "PORT-NOTICE",
+    "tree.h", "heap-inl.h", "queue.h" }) do
     install("644", ctx.libuv .. "/share/licenses/libuv/" .. name,
       "bin/lua5.1.pxb/app/metadata/licenses/libuv/" .. name)
   end

@@ -18,6 +18,18 @@ return function(ctx)
   end
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/PORT-NOTICE",
     ctx.stage .. "/" .. ctx.metadata.outputs.notice })
+  local libm_source = assert(io.open(ctx.source .. "/src/libm/s_sin.c", "r"))
+  local libm_text = assert(libm_source:read("a"))
+  assert(libm_source:close())
+  local libm_notice = assert(libm_text:match("^(/%*.-%*/)"))
+  local notice_file = ctx.build .. "/fdlibm-NOTICE"
+  local notice = assert(io.open(notice_file, "w"))
+  assert(notice:write(libm_notice, "\n"))
+  assert(notice:close())
+  for _, name in ipairs({ "libm_notice", "runtime_libm_notice" }) do
+    ctx.run({ "install", "-D", "-m", "644", notice_file,
+      ctx.stage .. "/" .. ctx.metadata.outputs[name] })
+  end
 
   ctx.run({ "mkdir", "-p", ctx.stage .. "/dev/share/sdl2" })
   local provenance = assert(io.open(ctx.stage .. "/" .. ctx.metadata.outputs.provenance, "w"))

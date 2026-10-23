@@ -24,3 +24,6 @@ retain their MPL-2.0 notices.
 `luv-0002-pyxis-resources.patch` exposes read-only declared bundle resource roots
 from libuv's exact retained process selection, with GC ownership, confined file
 reads and held directory identity comparison for editor resource views.
+
+The linked libuv closure also retains complete notice-bearing tree.h
+(BSD-2-Clause), heap-inl.h and queue.h (ISC) under the bundle's libuv notices.

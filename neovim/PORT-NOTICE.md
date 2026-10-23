@@ -83,3 +83,6 @@ are MPL-2.0 under the packaged `app/metadata/licenses/MPL-2.0` notice. The host 
 uses real GNU find directory enumeration with NUL-framed names/types, then runs
 the unmodified upstream help-tag generator. Host generation adds no target
 module-loading or Unix compatibility interface.
+
+The linked libuv closure also retains complete notice-bearing tree.h
+(BSD-2-Clause), heap-inl.h and queue.h (ISC) under the bundle's libuv notices.

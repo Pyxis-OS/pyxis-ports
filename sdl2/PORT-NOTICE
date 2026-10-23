@@ -6,6 +6,9 @@ The selected software-video sources include Adrien Descamps' yuv2rgb code
 under BSD-3-Clause. Its complete copyright, conditions and disclaimer are
 retained in yuv2rgb-LICENSE alongside this notice. Static consumers must
 retain that notice with SDL2's root licence and the Pyxis notices below.
+The selected fdlibm sources retain Sun Microsystems' 1993 permission grant,
+preserved verbatim from src/libm/s_sin.c in fdlibm-NOTICE. The licence label
+LicenseRef-Sun-fdlibm refers to that complete notice.
 
 Pyxis builds upstream sources as a static library with eight patches:
 the dynamic API is off, the Pyxis video and audio drivers are registered, and the Steam

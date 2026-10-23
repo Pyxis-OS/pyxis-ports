@@ -3,6 +3,10 @@ Upstream: https://github.com/libuv/libuv/archive/v1.52.1.tar.gz
 Archive SHA-256: 478baf2599bfbc882c355288c9cb6f92e0e7dda435fa04031fa5b607cf3f414c
 
 Upstream libuv is MIT licensed; LICENSE-extra retains its additional notices.
+The reached tree.h header retains its BSD-2-Clause notice; heap-inl.h and
+queue.h retain Ben Noordhuis' ISC notice. Complete notice-bearing headers
+accompany this file for static consumers; LICENSE-extra's summary does not
+replace their permission grants.
 The Pyxis platform selection patch retains upstream MIT terms.
 Original native adapter, recipe and documentation are MPL-2.0 under the ports
 repository LICENSE. The adapter uses native capabilities and libc descriptors;

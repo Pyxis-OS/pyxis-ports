@@ -57,4 +57,12 @@ return function(ctx)
   assert(provenance:write("profile=single player, no network, sound, loose assets\n",
     "distribution=personal use only; do not share images containing this program\n"))
   assert(provenance:close())
+  for _, entry in ipairs({
+    { source = "yuv2rgb-LICENSE", output = "sdl2_yuv_license" },
+    { source = "fdlibm-NOTICE", output = "sdl2_libm_notice" },
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.sdl2 .. "/share/licenses/sdl2/" .. entry.source,
+      ctx.stage .. "/" .. ctx.metadata.outputs[entry.output] })
+  end
+
 end

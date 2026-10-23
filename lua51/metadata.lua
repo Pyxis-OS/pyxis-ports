@@ -42,6 +42,9 @@ return {
     "patches/0002-pyxis-file-abandonment.patch",
   },
   outputs = {
+    libuv_tree_license = "bin/lua5.1.pxb/app/metadata/licenses/libuv/tree.h",
+    libuv_heap_license = "bin/lua5.1.pxb/app/metadata/licenses/libuv/heap-inl.h",
+    libuv_queue_license = "bin/lua5.1.pxb/app/metadata/licenses/libuv/queue.h",
     dev_pyxis_license = "dev/share/licenses/lua51/MPL-2.0",
     dev_licensing = "dev/share/licenses/lua51/LICENSING.md",
     pc_lua5_1 = "dev/lib/pkgconfig/lua5.1.pc",

@@ -10,3 +10,6 @@ port statically; SDL2's zlib licence is SDL2-LICENSE.txt.
 
 The build leaves out SDL2_mixer and SDL2_net through upstream's options, so
 this program has no sound, music or network play.
+
+The linked SDL2 software-video and fdlibm code also retain the BSD-3-Clause
+notice in SDL2-yuv2rgb-LICENSE and Sun's permission grant in SDL2-fdlibm-NOTICE.

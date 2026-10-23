@@ -47,6 +47,8 @@ return {
     "patches/0005-pyxis-command-modifier-snapshot.patch",
   },
   outputs = {
+    sdl2_yuv_license = "share/licenses/devilutionx/SDL2-yuv2rgb-LICENSE",
+    sdl2_libm_notice = "share/licenses/devilutionx/SDL2-fdlibm-NOTICE",
     executable = "bin/devilutionx.pxb/app/bin/devilutionx.pxe",
     manifest = "bin/devilutionx.pxb/manifest.json",
     assets = "bin/devilutionx.pxb/app/assets/ui_art/diablo.pal",

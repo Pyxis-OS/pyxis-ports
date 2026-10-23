@@ -13,4 +13,12 @@ return function(ctx)
   -- SDL2 is linked in statically.
   ctx.run({ "install", "-D", "-m", "644", ctx.sdl2 .. "/share/licenses/sdl2/LICENSE.txt",
     ctx.stage .. "/" .. ctx.metadata.outputs.sdl2_license })
+  for _, entry in ipairs({
+    { source = "yuv2rgb-LICENSE", output = "sdl2_yuv_license" },
+    { source = "fdlibm-NOTICE", output = "sdl2_libm_notice" },
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.sdl2 .. "/share/licenses/sdl2/" .. entry.source,
+      ctx.stage .. "/" .. ctx.metadata.outputs[entry.output] })
+  end
+
 end

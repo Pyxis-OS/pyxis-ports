@@ -22,12 +22,22 @@ return function(ctx)
   end
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/PORT-NOTICE",
     ctx.stage .. "/" .. ctx.metadata.outputs.notice })
+  for _, entry in ipairs({
+    { source = "include/uv/tree.h", output = "tree_license" },
+    { source = "src/heap-inl.h", output = "heap_license" },
+    { source = "src/queue.h", output = "queue_license" },
+  }) do
+    for _, prefix in ipairs({ "", "dev_" }) do
+      ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/" .. entry.source,
+        ctx.stage .. "/" .. ctx.metadata.outputs[prefix .. entry.output] })
+    end
+  end
   ctx.run({ "mkdir", "-p", ctx.stage .. "/share/libuv" })
   local provenance = assert(io.open(ctx.stage .. "/" .. ctx.metadata.outputs.provenance, "w"))
   assert(provenance:write("source=" .. ctx.metadata.source.archive.url .. "\n",
     "commit=" .. ctx.metadata.source.commit .. "\n",
     "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
-    "version=" .. ctx.metadata.version .. "\nlicense=MIT\n",
+    "version=" .. ctx.metadata.version .. "\nlicense=" .. ctx.metadata.license .. "\n",
     "patches=0001-pyxis-platform.patch\n",
     "profile=native one-thread loop, pipes, console, child observation, timers, synchronous filesystem\n",
     "omitted=Unix/Windows backends, workers, async filesystem, sockets, watches, signals, module loading\n"))

@@ -79,6 +79,9 @@ return {
     "patches/0011-pyxis-language-servers.patch", "patches/0012-pyxis-underline.patch",
     "patches/0013-pyxis-command-selection.patch" },
   outputs = {
+    libuv_tree_license = "bin/nvim.pxb/app/metadata/licenses/libuv/tree.h",
+    libuv_heap_license = "bin/nvim.pxb/app/metadata/licenses/libuv/heap-inl.h",
+    libuv_queue_license = "bin/nvim.pxb/app/metadata/licenses/libuv/queue.h",
     manifest = "bin/nvim.pxb/manifest.json",
     executable = "bin/nvim.pxb/app/bin/nvim.pxe",
     sysinit = "bin/nvim.pxb/app/share/nvim/runtime/sysinit.vim",

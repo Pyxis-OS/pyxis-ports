@@ -18,6 +18,8 @@ return {
     "patches/0004-pyxis-frame-sleep.patch",
   },
   outputs = {
+    sdl2_yuv_license = "share/licenses/eduke32/SDL2-yuv2rgb-LICENSE",
+    sdl2_libm_notice = "share/licenses/eduke32/SDL2-fdlibm-NOTICE",
     executable = "bin/eduke32.pxb/app/bin/eduke32.pxe",
     manifest = "bin/eduke32.pxb/manifest.json",
     license = "share/licenses/eduke32/gpl-2.0.txt",

@@ -13,3 +13,6 @@ The build leaves out SDL2_net, the UDP network driver and the Vorbis, MP3 and
 FLAC music codecs, so this program has no network play or music. Sound effects
 play through the SDL2 port's audio when the chocolate-quake.pxb bundle receives
 its optional grants.
+
+The linked SDL2 software-video and fdlibm code also retain the BSD-3-Clause
+notice in SDL2-yuv2rgb-LICENSE and Sun's permission grant in SDL2-fdlibm-NOTICE.
