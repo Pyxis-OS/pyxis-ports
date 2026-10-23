@@ -38,9 +38,9 @@ new file mode 100644
 +	"os"
 +)
 +
-+// disconnectErrorLabel returns the grpc.disconnect_error metric label for a
-+// transport error, as specified by gRFC A94. syscall.Errno does not exist on
-+// Pyxis uses native error values; only portable classifications are used.
++// disconnectErrorLabel returns the grpc.disconnect_error metric label.
++// Classify portable errors; Pyxis does not supply Unix errno values.
++// Native errors outside these portable cases retain the unknown label.
 +func disconnectErrorLabel(err error) string {
 +	switch {
 +	case errors.Is(err, context.Canceled):

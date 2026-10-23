@@ -12,6 +12,8 @@ lua build.lua caddy --sdk /absolute/path/to/pyxis/build/sdk \
 This build never rebuilds the compiler or links libc. The recipe downloads the
 SHA-256-pinned Caddy module ZIP from the internal Go proxy, then uses upstream's
 `go.sum` to authenticate dependencies while creating a private vendor tree.
+Vendoring must preserve the exact original `go.mod` and `go.sum` bytes; any
+change refuses the build before patches or target compilation.
 Ordered patches apply there; the final target build uses `GOPROXY=off` and
 `-mod=vendor`. No shared module cache is modified or used for target compilation.
 

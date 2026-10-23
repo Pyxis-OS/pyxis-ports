@@ -10,9 +10,20 @@ return function(ctx)
     end
     ctx.run(command)
   end
+  local function source_bytes(name)
+    local file = assert(io.open(ctx.source .. "/" .. name, "rb"))
+    local bytes = assert(file:read("*a"))
+    assert(file:close())
+    return bytes
+  end
+  local original = { ["go.mod"] = source_bytes("go.mod"),
+    ["go.sum"] = source_bytes("go.sum") }
   -- go.sum authenticates dependencies before they are copied into this private
-  -- vendor tree. The target build itself cannot fetch or use a shared cache.
+  -- vendor tree. Vendoring must not change the pinned module graph or checksums.
   go_command("https://repo.internal/repository/go-proxy/", { "mod", "vendor" })
+  for name, bytes in pairs(original) do
+    assert(source_bytes(name) == bytes, "vendoring changed pinned " .. name)
+  end
   ctx.run({ "git", "-C", ctx.source, "apply", "--whitespace=error-all", "--",
     ctx.recipe .. "/" .. ctx.metadata.vendor_patch })
   local tags = "nobbolt,nobadger,nomysql,nopgx,nosshagentkms"
