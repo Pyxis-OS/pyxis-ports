@@ -5,7 +5,7 @@ platform interface), built with the Pyxis SDK and Clang. The recipe produces
 `bin/quake.pxb` (`manifest.json` and `app/bin/quake.pxe`) and preserves
 upstream's GPL license. Game data is not downloaded or included by the recipe.
 The bundle ships in the `quake` game package with the data and reads that
-package, read-only, as `quake_data://`;
+package, read-only, as `pkg://quake`;
 a missing package refuses launch on both live and installed systems.
 The required `random/read` grant lets libc `mkstemp` reserve names for atomic
 configuration, save and screenshot replacement.
@@ -47,7 +47,7 @@ Only the first three buttons have engine bindings; extra buttons and horizontal
 scroll have no action.
 `+mlook` is queued at every start, and a first run without `config.cfg` binds
 the middle button to `impulse 10`.
-Defaults are `-basedir quake_data://` and `-writedir home://quake`, inserted
+Defaults are `-basedir pkg://quake/` and `-writedir home://quake`, inserted
 before the caller's arguments so trailing `+commands` stay intact.
 
 Ordered patches:

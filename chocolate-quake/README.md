@@ -8,7 +8,7 @@ the program bundle `bin/chocolate-quake.pxb` (`manifest.json` and
 `app/bin/chocolate-quake.pxe`), upstream's licence, SDL2's licence and the port
 notice. Game data is not part of the recipe. This and the native
 [Quake](../quake/README.md) are both packed into the `quake` game package with
-the data, and read it as `quake_data://`, read-only. A missing package refuses launch on both live and
+the data, and read it as `pkg://quake`, read-only. A missing package refuses launch on both live and
 installed systems; explicit `-basedir` keeps its upstream meaning.
 
 ```sh
@@ -50,7 +50,7 @@ fails with SDL's error and the game runs silent, as with `-nosound`.
      fail. It no longer does: `SDL_INIT_TIMER` starts no thread, and the first
      callback timer starts one lazily. Quake only reads the performance counter,
      so Pyxis still skips the call.
-   - **Data:** the default base directory is `quake_data://`, from the
+   - **Data:** the default base directory is `pkg://quake`, from the
      declared package. Upstream uses `SDL_GetPrefPath`, which would keep
      data and generated files together under `home://`.
    - **Generated files:** `-writedir PATH`, default `home://chocolate-quake`,

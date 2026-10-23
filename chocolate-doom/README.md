@@ -7,7 +7,7 @@ toolchain file against the [SDL2 port](../sdl2/README.md). The recipe stages
 `bin/chocolate-doom.pxb` (`manifest.json` and `app/bin/chocolate-doom.pxe`),
 upstream's licence, SDL2's licence and the port notice. Game data is not part
 of the recipe. This and the native [Doom](../doom/README.md) are both packed into the
-`doom` game package with the data, and read it as `doom_data://`, read-only. A
+`doom` game package with the data, and read it as `pkg://doom`, read-only. A
 missing package
 refuses launch on both live and installed systems; explicit `-iwad` keeps its
 upstream meaning.
@@ -32,7 +32,7 @@ offered to CMake, so screenshots are PCX.
    - **Timidity:** upstream configures Timidity for SDL_mixer even when
      SDL_mixer is disabled; that setup now sits under upstream's own
      `DISABLE_SDL2MIXER` guard.
-   - **IWAD search:** `doom_data://` replaces the XDG and Steam
+   - **IWAD search:** `pkg://doom` replaces the XDG and Steam
      directories.
    - **Known libc gaps,** each worked around in the patch until libc provides
      it:

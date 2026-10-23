@@ -47,7 +47,7 @@ The build uses CMake's FetchContent with downloads turned off
 at runtime:
 
 - required: `memory/manage`, `clock` read and sleep, `display/draw` and
-  `keyboard/input` and the read-only `diablo` package as `diablo_data://`;
+  `keyboard/input` and the read-only `diablo` package as `pkg://diablo`;
 - optional: `pointer/input`; for sound `audio/create`, `threads/manage`
   (SDL's audio callback thread) and `pipe/create` (SDL's cross-thread event
   wakeup); and `clipboard_local` and `clipboard_shared` (`publish`, `paste`)
@@ -78,7 +78,7 @@ the game runs silent. Without a clipboard grant, Copy and Paste refuse.
    `<new>` for `std::launder`, `<cstdlib>` for `std::getenv`, and
    `<fmt/format.h>` in `xpbar.cpp`.
 4. `0004-pyxis-paths-and-defaults` sets Pyxis paths and defaults:
-   - **Paths:** data in `diablo_data://` unless `--data-dir` says otherwise.
+   - **Paths:** data in `pkg://diablo` unless `--data-dir` says otherwise.
      A missing `diablo` package refuses launch on both live and installed
      systems. Program assets come from the bundle's `app/assets/` through its
      read-only `devilution_assets://` resource root.

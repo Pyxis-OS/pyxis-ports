@@ -20,7 +20,7 @@ lua build.lua eduke32 --sdk /path/to/build/sdk --sdl2 /path/to/sdl2/dev
 declares the grants the game uses; nothing is obtained at runtime:
 
 - required: `memory/manage`, `clock` read and sleep, `display/draw` and
-  `keyboard/input` and the read-only `duke3d` package as `duke3d_data://`;
+  `keyboard/input` and the read-only `duke3d` package as `pkg://duke3d`;
 - optional: `pointer/input` for the mouse, and for sound `audio/create`,
   `threads/manage` (SDL's audio callback thread) and `pipe/create` (SDL's
   cross-thread event wakeup), and `clipboard_local` and `clipboard_shared`
@@ -76,7 +76,7 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
    - the audio library's async tasks, used only by the Vorbis and XMP
      decoders, are left out.
 3. **Paths.**
-   - **Locations:** the data is `duke3d_data://` and generated files go to
+   - **Locations:** the data is `pkg://duke3d` and generated files go to
      `home://eduke32/`, created on first run and searched first. A missing
      `duke3d` package refuses launch on live and installed systems. Explicit
      data and working-directory options keep their upstream meaning. Upstream
