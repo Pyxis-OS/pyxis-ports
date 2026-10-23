@@ -74,7 +74,8 @@ configuration (`vim.lsp.enable('clangd')`) using the bare `clangd` command
 exported by the installed `clang-hosted` package. It resolves through the held
 command list's live package view, so the next server launch sees a package switch
 without restarting the space. A missing command refuses without an archive or
-home-directory fallback. Resource views such as `sysroot://` come from the exact
+home-directory fallback. The editor declares `"sdk": true` and passes its
+`sdk://` to clangd. Resource views such as `clang_resources://` come from the exact
 retained selection libuv launched, without reopening its manifest or resolving
 the command again. The editor's own roots take precedence. Header buffers pin
 read-only directory copies through package switches and server exit; a new read

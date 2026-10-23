@@ -4,6 +4,7 @@
   "entry": "bin/nvim.pxe",
   "commands": {"nvim": "bin/nvim.pxe"},
   "resource_dirs": {"nvim_runtime": "share/nvim/runtime"},
+  "sdk": true,
   "grants": [
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
