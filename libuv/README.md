@@ -26,6 +26,14 @@ ordinary memory/clock/launcher grants, explicit streams and inherited directory
 roots excluding the parent's program-specific app root. Pipe creation is not
 forwarded to plain children.
 
+Bundle children can explicitly declare `service/create` when this runtime
+already holds the endpoint constructor. Preparation selects it from the owned
+caller capture and uses the SDK resolver's protocol/rights checks; missing
+required authority refuses. The resulting constructor is a private runtime
+role. Plain children keep their existing profile, and neither raw launch nor a
+bundle omitting the request gains it. This needs the SDK's declared private
+service-grant support; no compiler rebuild is required.
+
 The native backend supports one loop owner thread, timers, prepare/check/idle
 callbacks, coalesced same-thread async wake, native pipe and console streams,
 explicit child launch and immutable process completion. Loop initialization

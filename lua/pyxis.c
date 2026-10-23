@@ -547,7 +547,7 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
     "udp", "dns_udp", "net_registry", "tcp", "random", "profile", "launcher", "audio", "screen_capture",
     "threads", "pipe", "keyboard", "pointer",
   };
-  struct bundle_authority inventory[sizeof(names) / sizeof(names[0]) + BUNDLE_SOURCE_LIMIT];
+  struct bundle_authority inventory[sizeof(names) / sizeof(names[0]) + 1 + BUNDLE_SOURCE_LIMIT];
   size_t count = 0;
   for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
     const struct environment_value *value = environment_capture_find(&owned->parent, names[i]);
@@ -560,6 +560,10 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
       }
       inventory[count++] = (struct bundle_authority){names[i], source, info.protocol};
     }
+  }
+  const struct environment_value *service = environment_capture_find(&owned->parent, "service");
+  if (service && service->kind == ENVIRONMENT_CAP) {
+    inventory[count++] = (struct bundle_authority){"service", service->handle, PROTOCOL_ENDPOINT_SERVICE};
   }
   size_t source_count;
   enum call_status status = bundle_sources_from_capture(&owned->parent, inventory + count,

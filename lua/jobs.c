@@ -512,7 +512,7 @@ static enum call_status native_program(const struct path_context *context,
 
 static enum call_status bundle_authority(struct preparation *owned)
 {
-  size_t capacity = owned->entry_count + BUNDLE_SOURCE_LIMIT;
+  size_t capacity = owned->entry_count + 1 + BUNDLE_SOURCE_LIMIT;
   owned->authority = calloc(capacity, sizeof(*owned->authority));
   if (!owned->authority) {
     return CALL_NO_MEMORY;
@@ -536,6 +536,11 @@ static enum call_status bundle_authority(struct preparation *owned)
     owned->authority[owned->authority_count++] = (struct bundle_authority){
       (const char *)(uintptr_t)entry->name, source, info.protocol};
     ++owned->authority_owned_count;
+  }
+  const struct environment_value *service = environment_capture_find(&owned->parent, "service");
+  if (service && service->kind == ENVIRONMENT_CAP) {
+    owned->authority[owned->authority_count++] = (struct bundle_authority){
+      "service", service->handle, PROTOCOL_ENDPOINT_SERVICE};
   }
   size_t sources;
   enum call_status status = bundle_sources_from_capture(&owned->parent,

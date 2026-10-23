@@ -148,13 +148,13 @@ static int open_program(const struct path_context *context,
  * child's standard streams are the ones the caller selected. */
 static int prepare_bundle(const struct bundle_program *bundle,
     const struct launch_request *request, const struct environment_capture *held,
-    struct bundle_launch **prepared)
+    const struct environment_capture *private_held, struct bundle_launch **prepared)
 {
   static const char *const names[] = {
     "memory", "clock", "threads", "random", "launcher", "pipe", "system_info",
     "tcp", "udp", "dns_udp", "net_registry", "echo", "profile",
   };
-  struct bundle_authority authority[ARRAY_SIZE(names) + BUNDLE_SOURCE_LIMIT];
+  struct bundle_authority authority[ARRAY_SIZE(names) + 1 + BUNDLE_SOURCE_LIMIT];
   size_t count = 0;
   for (size_t i = 0; i < ARRAY_SIZE(names); ++i) {
     const struct environment_value *value = environment_capture_find(held, names[i]);
@@ -167,6 +167,10 @@ static int prepare_bundle(const struct bundle_program *bundle,
       return uv__pyxis_status(status);
     }
     authority[count++] = (struct bundle_authority){names[i], value->handle, info.protocol};
+  }
+  const struct environment_value *service = environment_capture_find(private_held, "service");
+  if (service && service->kind == ENVIRONMENT_CAP) {
+    authority[count++] = (struct bundle_authority){"service", service->handle, PROTOCOL_ENDPOINT_SERVICE};
   }
   size_t source_count;
   enum call_status status = bundle_sources_from_capture(held, authority + count,
@@ -266,7 +270,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   struct bundle_launch *bundle_launch = NULL;
   struct pyxis_working_snapshot working = {0};
   struct pyxis_environment_snapshot inherited_environment = {0};
-  struct environment_capture selected = {0};
+  struct environment_capture selected = {0}, private_held = {0};
   struct launch_grant *grants = NULL;
   struct launch_environment_entry *entries = NULL;
   uint64_t *directories = NULL;
@@ -548,7 +552,15 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   request.grant_count = grant_count;
   request.entry_count = entry_count;
   if (selection->bundle) {
-    error = prepare_bundle(selection->bundle, &request, &selected, &bundle_launch);
+    /* Private sources supply only the declared constructor, never raw child
+     * inheritance or additional external-source inventory. */
+    enum call_status status = environment_capture_init(startup_environment_handle(),
+        ENVIRONMENT_SNAPSHOT_INCLUDE_PRIVATE, &private_held);
+    if (status != CALL_OK) {
+      error = uv__pyxis_status(status);
+      goto done;
+    }
+    error = prepare_bundle(selection->bundle, &request, &selected, &private_held, &bundle_launch);
     if (error) {
       goto done;
     }
@@ -587,6 +599,7 @@ done:
   if (launcher != HANDLE_INVALID) {
     handle_close(launcher);
   }
+  environment_capture_close(&private_held);
   environment_capture_close(&selected);
   pyxis_environment_snapshot_close(&inherited_environment);
   pyxis_working_snapshot_close(&working);
