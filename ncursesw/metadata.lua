@@ -17,6 +17,7 @@ return {
   outputs = {
     library = "dev/lib/libncursesw.a",
     header = "dev/include/curses.h",
+    header_alias = "dev/include/ncurses.h",
     term_header = "dev/include/term.h",
     termcap_header = "dev/include/termcap.h",
     unctrl_header = "dev/include/unctrl.h",
