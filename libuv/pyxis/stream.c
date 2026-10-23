@@ -4,7 +4,7 @@
 #include <abi/pipe.h>
 #include <console.h>
 #include <errno.h>
-#include <handle.h>
+#include <pyxis/terminal.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -99,7 +99,7 @@ int uv_tty_init(uv_loop_t *loop, uv_tty_t *handle, uv_file fd, int readable)
   handle->admitted = 1;
   handle->flags |= readable ? UV_HANDLE_READABLE : UV_HANDLE_WRITABLE;
   handle->mode = UV_TTY_MODE_NORMAL;
-  handle->passthrough = HANDLE_INVALID;
+  handle->normal_state = NULL;
   handle->raw_next = NULL;
   handle->resize_generation = 0;
   handle->resize_cb = NULL;
@@ -452,12 +452,11 @@ void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
 
 static int tty_normal(uv_tty_t *tty)
 {
-  if (tty->passthrough == HANDLE_INVALID) {
+  if (!tty->normal_state) {
     return 0;
   }
-  enum call_status status = handle_close(tty->passthrough);
-  if (status != CALL_OK) {
-    return uv__pyxis_status(status);
+  if (pyxis_terminal_restore(tty->fd, tty->normal_state)) {
+    return uv_translate_sys_error(errno);
   }
   uv_tty_t **entry = &raw_ttys;
   while (*entry != tty) {
@@ -465,7 +464,8 @@ static int tty_normal(uv_tty_t *tty)
   }
   *entry = tty->raw_next;
   tty->raw_next = NULL;
-  tty->passthrough = HANDLE_INVALID;
+  pyxis_terminal_state_free(tty->normal_state);
+  tty->normal_state = NULL;
   tty->mode = UV_TTY_MODE_NORMAL;
   return 0;
 }
@@ -475,7 +475,7 @@ void uv__pyxis_stream_close(uv_stream_t *stream)
   if (stream->type == UV_TTY) {
     uv_tty_t *tty = (uv_tty_t *)stream;
     tty->resize_cb = NULL;
-    /* This grant is private to the adapter and cannot be independently closed. */
+    /* Do not discard a failed restore or replay an uncertain native release. */
     if (tty_normal(tty)) {
       abort();
     }
@@ -548,16 +548,9 @@ int uv_tty_set_mode(uv_tty_t *handle, uv_tty_mode_t mode)
   if (handle->mode == UV_TTY_MODE_RAW) {
     return 0;
   }
-  struct pyxis_descriptor_binding binding;
-  if (pyxis_descriptor_borrow(handle->fd, &binding)) {
+  if (pyxis_terminal_make_raw(handle->fd, &handle->normal_state)) {
     return uv_translate_sys_error(errno);
   }
-  handle_t passthrough;
-  enum call_status status = console_passthrough(binding.handle, &passthrough);
-  if (status != CALL_OK) {
-    return uv__pyxis_status(status);
-  }
-  handle->passthrough = passthrough;
   handle->mode = UV_TTY_MODE_RAW;
   handle->raw_next = raw_ttys;
   raw_ttys = handle;

@@ -11,6 +11,7 @@ struct sockaddr;
 struct sockaddr_in;
 struct sockaddr_in6;
 struct addrinfo;
+struct pyxis_terminal_state;
 
 typedef struct uv_buf_t {
   char *base;
@@ -129,7 +130,7 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
 #define UV_WORK_PRIVATE_FIELDS
 #define UV_TTY_PRIVATE_FIELDS \
   int mode; \
-  handle_t passthrough; \
+  struct pyxis_terminal_state *normal_state; \
   uv_tty_t *raw_next; \
   uint64_t resize_generation; \
   void (*resize_cb)(uv_tty_t *, int, int, int);

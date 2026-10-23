@@ -48,11 +48,17 @@ I/O uses libc's descriptor-aware try operations, preserving read-ahead. Submitte
 writes copy buffer descriptors and borrow their bytes until one callback. Close
 cancels pending writes before the close callback; successful queued completions
 keep their result. Pipe shutdown closes its write descriptor after queued writes.
-TTY RAW mode holds a native console passthrough grant, making Ctrl+C ordinary
-input, until NORMAL mode, `uv_tty_reset_mode` or handle close. Console byte input
-already has no echo or line editing. RAW requires a readable TTY; IO mode and
-blocking stream writes remain unsupported. Reset withdraws every RAW reference
-owned by this adapter, including handles in other loops.
+TTY RAW mode uses libc's native terminal mode owner for the supplied descriptor,
+making Ctrl+C ordinary input without a separate libuv passthrough grant. The
+first RAW call saves the preceding owner state; repeated RAW calls keep that
+snapshot. NORMAL mode, `uv_tty_reset_mode` and handle close restore and free it,
+including a raw state established before libuv entered RAW. Reset covers handles
+in all loops. Descriptor aliases share this owner; independent mode changes
+follow libc's snapshot semantics, with the last restoration taking effect.
+Console byte input already has no echo or line editing. RAW requires a readable
+TTY; IO mode and blocking stream writes remain unsupported. Restoration failures
+return their negative UV error; close aborts if restoration fails, as it has no
+error result. Libc latches uncertain native releases without replaying them.
 
 `uv/pyxis-native.h` exposes native TTY resize callbacks through
 `uv_pyxis_tty_resize_start` and `uv_pyxis_tty_resize_stop`. Start records current
