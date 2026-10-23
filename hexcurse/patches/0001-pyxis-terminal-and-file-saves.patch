@@ -177,14 +177,16 @@
  		break;
  
  	case CTRL_AND('f'):
-@@ -680,6 +708,7 @@
+@@ -680,7 +708,8 @@
  		    /*if (stack != NULL) val = stack->savedVal;               */
  		    val = stack->savedVal;
  		    popStack(&stack);
+-		    head = deleteNode(head,cl);
 +                    dirty = true;
- 		    head = deleteNode(head,cl);
++		    head = insertItem(head, cl, val);
  
  
+                     currentLine = gotoLine(fpIN, 
 @@ -743,7 +772,7 @@
  	}
  
