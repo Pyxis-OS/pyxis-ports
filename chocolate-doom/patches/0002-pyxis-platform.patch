@@ -26,7 +26,7 @@ index 5b6db20..62066af 100644
  
 +#elif defined(__pyxis__)
 +    // The bundle declares the installed Doom data package.
-+    AddIWADDir("doom_data://");
++    AddIWADDir("pkg://doom/");
  #else
      AddXdgDirs();
  #ifndef __MACOSX__

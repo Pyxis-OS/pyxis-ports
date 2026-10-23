@@ -112,7 +112,7 @@ index 62152a3..9d1b3bf 100644
      return ".";
 +#elif defined(__pyxis__)
 +    // Both Quake programs declare the same data package.
-+    return "quake_data://";
++    return "pkg://quake/";
  #else
      static char base_dir[MAX_OSPATH] = {0};
      if (base_dir[0]) {

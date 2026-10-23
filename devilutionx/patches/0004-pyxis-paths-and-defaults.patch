@@ -23,7 +23,7 @@ index 6253e87..cb0472a 100644
 -		basePath = FromSDL(SDL_GetBasePath());
 +#ifdef __pyxis__
 +		// The bundle declares the installed Diablo data package.
-+		basePath = std::string("diablo_data://");
++		basePath = std::string("pkg://diablo/");
 +#else
 +		basePath = FromSDL(SDL_GetBasePath());
 +#endif

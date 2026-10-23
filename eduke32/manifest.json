@@ -4,8 +4,8 @@
   "entry": "bin/eduke32.pxe",
   "commands": {"eduke32": "bin/eduke32.pxe"},
   "resource_dirs": {},
+  "packages": ["duke3d"],
   "grants": [
-    {"name": "duke3d_package", "resource": "directory", "package": "duke3d", "root": "duke3d_data", "rights": ["lookup", "enumerate", "read-files"], "required": true},
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
     {"name": "display", "resource": "display", "rights": ["draw"], "required": true},

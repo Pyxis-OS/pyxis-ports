@@ -95,10 +95,10 @@ index 0c33768..7b9a5cf 100644
  
 -#ifdef _WIN32
 +#if defined(__pyxis__)
-+    // The bundle declares read-only duke3d_data://. Generated
++    // The bundle declares read-only pkg://duke3d/. Generated
 +    // files go to home://eduke32, searched before the data.
-+    Bstrcpy(g_rootDir, "duke3d_data://");
-+    addsearchpath("duke3d_data://");
++    Bstrcpy(g_rootDir, "pkg://duke3d/");
++    addsearchpath("pkg://duke3d/");
 +    if (g_useCwd == 0)
 +    {
 +        char const *userdir = "home://" APPBASENAME;

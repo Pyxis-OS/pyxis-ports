@@ -4,8 +4,8 @@
   "entry": "bin/quake.pxe",
   "commands": {"quake": "bin/quake.pxe"},
   "resource_dirs": {},
+  "packages": ["quake"],
   "grants": [
-    {"name": "quake_package", "resource": "directory", "package": "quake", "root": "quake_data", "rights": ["lookup", "enumerate", "read-files"], "required": true},
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
     {"name": "random", "resource": "random", "rights": ["read"], "required": true},

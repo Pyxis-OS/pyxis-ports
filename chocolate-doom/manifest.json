@@ -4,8 +4,8 @@
   "entry": "bin/chocolate-doom.pxe",
   "commands": {"chocolate-doom": "bin/chocolate-doom.pxe"},
   "resource_dirs": {},
+  "packages": ["doom"],
   "grants": [
-    {"name": "doom_package", "resource": "directory", "package": "doom", "root": "doom_data", "rights": ["lookup", "enumerate", "read-files"], "required": true},
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
     {"name": "display", "resource": "display", "rights": ["draw"], "required": true},
