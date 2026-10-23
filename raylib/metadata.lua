@@ -28,6 +28,7 @@ return {
     raymath_header = "dev/include/raymath.h",
     rlgl_header = "dev/include/rlgl.h",
     configuration = "dev/share/raylib/pyxis_config.h",
+    audio_backend = "dev/share/raylib/pyxis_miniaudio.h",
     package = "dev/lib/cmake/raylib/raylibConfig.cmake",
     license = "dev/share/licenses/raylib/LICENSE",
     third_party = "dev/share/licenses/raylib/THIRD-PARTY-LICENSES",

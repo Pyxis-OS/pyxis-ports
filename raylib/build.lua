@@ -12,6 +12,7 @@ return function(ctx)
     install(ctx.source .. "/src/" .. name .. ".h", "dev/include/" .. name .. ".h")
   end
   install(ctx.recipe .. "/pyxis_config.h", outputs.configuration)
+  install(ctx.recipe .. "/pyxis_miniaudio.h", outputs.audio_backend)
   install(ctx.recipe .. "/cmake/raylibConfig.cmake", outputs.package)
   install(ctx.source .. "/LICENSE", outputs.license)
   install(ctx.recipe .. "/THIRD-PARTY-LICENSES", outputs.third_party)
