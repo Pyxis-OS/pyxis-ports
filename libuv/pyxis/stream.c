@@ -450,14 +450,8 @@ void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
   }
 }
 
-static int tty_normal(uv_tty_t *tty)
+static void tty_state_free(uv_tty_t *tty)
 {
-  if (!tty->normal_state) {
-    return 0;
-  }
-  if (pyxis_terminal_restore(tty->fd, tty->normal_state)) {
-    return uv_translate_sys_error(errno);
-  }
   uv_tty_t **entry = &raw_ttys;
   while (*entry != tty) {
     entry = &(*entry)->raw_next;
@@ -467,6 +461,17 @@ static int tty_normal(uv_tty_t *tty)
   pyxis_terminal_state_free(tty->normal_state);
   tty->normal_state = NULL;
   tty->mode = UV_TTY_MODE_NORMAL;
+}
+
+static int tty_normal(uv_tty_t *tty)
+{
+  if (!tty->normal_state) {
+    return 0;
+  }
+  if (pyxis_terminal_restore(tty->fd, tty->normal_state)) {
+    return uv_translate_sys_error(errno);
+  }
+  tty_state_free(tty);
   return 0;
 }
 
@@ -475,8 +480,13 @@ void uv__pyxis_stream_close(uv_stream_t *stream)
   if (stream->type == UV_TTY) {
     uv_tty_t *tty = (uv_tty_t *)stream;
     tty->resize_cb = NULL;
-    /* Do not discard a failed restore or replay an uncertain native release. */
-    if (tty_normal(tty)) {
+    int error = tty_normal(tty);
+    if (error == UV_EBADF) {
+      /* The descriptor no longer names the saved owner; leave replacements open. */
+      tty_state_free(tty);
+      stream->fd = -1;
+    } else if (error) {
+      /* Do not discard other failures or replay an uncertain native release. */
       abort();
     }
   }
