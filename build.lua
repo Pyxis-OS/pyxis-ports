@@ -84,12 +84,14 @@ local function main()
     print("Minesweeper requires --raylib and --sdl2 development prefixes.")
     print("Raylib, Chocolate Doom, Chocolate Quake and EDuke32 also require --sdl2 PATH to its development prefix.")
     print("Lua 5.1 also requires --libuv PATH to its development prefix.")
+    print("Caddy requires --go PATH to the pinned native Go cross-toolchain.")
     print("Neovim also requires --lua51, --libuv, --utf8proc and --tree-sitter development prefixes.")
     return
   end
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
+    ["--go"] = name == "caddy",
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
@@ -164,6 +166,14 @@ local function main()
     "work must be outside the consumed SDK")
   require_file(sdk .. "/share/pyxis.mk")
   require_file(sdk .. "/sysroot/usr/lib/crt0.o")
+  local go
+  if name == "caddy" then
+    assert(options["--go"], "Caddy needs --go PATH to the pinned native Go cross-toolchain")
+    go = make_path(capture({ "realpath", "-e", "--", options["--go"] }))
+    require_file(go .. "/bin/go")
+    require_file(go .. "/share/pyxis-go/revision")
+    require_file(go .. "/src/syscall/native_pyxis.go")
+  end
   local mbedtls
   if name == "lua" then
     assert(options["--mbedtls"], "Lua needs --mbedtls PATH to the configured development prefix")
@@ -238,8 +248,10 @@ local function main()
   end
   local cross = options["--cross-prefix"] or os.getenv("CROSS_COMPILE") or "x86_64-unknown-pyxis-"
   make_path(cross)
-  assert(capture({ cross .. "clang", "-dumpmachine" }) == "x86_64-unknown-pyxis",
-    "use the Pyxis target compiler")
+  if not go then
+    assert(capture({ cross .. "clang", "-dumpmachine" }) == "x86_64-unknown-pyxis",
+      "use the Pyxis target compiler")
+  end
 
   -- Refuse existing work instead of deleting source edits or stale stage files.
   run({ "mkdir", "-p", "--", work:match("^(.*)/") })
@@ -251,6 +263,10 @@ local function main()
     download_file(download, downloaded)
     if archive then
       extract_archive(downloaded, source, archive)
+      if archive.directory then
+        source = source .. "/" .. relative(archive.directory)
+        run({ "git", "init", "--quiet", source })
+      end
     end
   else
     fetch_commit(metadata.source.mirror, revision, source)
@@ -281,7 +297,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, mbedtls = mbedtls, zlib = zlib,
+    metadata = metadata, run = run, go = go, mbedtls = mbedtls, zlib = zlib,
     libpng = libpng, fmt = fmt, sdl2 = sdl2, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do

@@ -1,6 +1,7 @@
 return {
   ["ca-certificates"] = "ca-certificates",
   busybox = "busybox",
+  caddy = "caddy",
   ["chocolate-doom"] = "chocolate-doom",
   ["chocolate-quake"] = "chocolate-quake",
   devilutionx = "devilutionx",

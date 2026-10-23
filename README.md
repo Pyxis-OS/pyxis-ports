@@ -46,6 +46,8 @@ extraction, which removes the release archive's single top-level directory.
 Set `archive.strip_components = 0` for a flat tar archive. Set
 `archive.format = "zip"` to extract with Python 3's standard-library `zipfile`,
 preserving ZIP paths instead; list `python3` as a host dependency in that case.
+`archive.directory` selects a relative source root inside such an archive (Go
+module ZIPs use a module/version directory).
 `source.url` and the exact `source.commit` remain upstream provenance; the
 archive checksum identifies the actual build input. Archive recipes list curl,
 sha256sum, tar and the relevant decompressor as host dependencies.
@@ -90,6 +92,10 @@ Reusable development prefixes retain upstream notices and provenance under
 `share/`, with the ports' MPL notice and original native source/configuration
 needed by their selected profiles. Packaging must preserve these files along
 with headers and archives.
+
+[Caddy](caddy/README.md) is an optional native Go package. Its recipe uses
+`--go PREFIX` from the pinned Pyxis Go toolchain, source/module checksums and
+the internal module proxy; it is absent from ordinary boot archive assembly.
 
 [Native libuv](libuv/README.md) exports a static development library and an
 explicit child-output relay bundle. It needs a current SDK and declared native
