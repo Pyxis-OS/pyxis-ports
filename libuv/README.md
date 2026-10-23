@@ -29,8 +29,10 @@ forwarded to plain children.
 Bundle children can explicitly declare `service/create` when this runtime
 already holds the endpoint constructor. Preparation selects it from the owned
 caller capture and uses the SDK resolver's protocol/rights checks; missing
-required authority refuses. The resulting constructor is a private runtime
-role. Plain children keep their existing profile, and neither raw launch nor a
+required authority refuses. An explicit extra-resource `service` selection
+replaces the held role with exactly its selected rights and transport, including
+a zero-right selection that refuses a required CREATE. The resulting constructor
+is a private runtime role. Plain children keep their existing profile, and neither raw launch nor a
 bundle omitting the request gains it. This needs the SDK's declared private
 service-grant support; no compiler rebuild is required.
 
