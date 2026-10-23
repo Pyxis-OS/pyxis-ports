@@ -116,6 +116,11 @@ with a READ-only clock even if a port does not call a clock API directly.
 Fastfetch uptime uses explicit coarse observation while
 its benchmark tick remains precise.
 
+[ncursesw](ncursesw/README.md) supplies static curses over native terminal input,
+mode ownership, readiness and resize, with an embedded `pyxis` terminfo entry.
+The `ncurses-demo` bundle demonstrates windows/input without extra filesystem
+authority. Its development package uses `sdk://` headers/libraries.
+
 ## License
 
 Original Pyxis material is licensed under [MPL-2.0](LICENSE). See

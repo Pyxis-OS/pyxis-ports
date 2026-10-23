@@ -30,6 +30,7 @@ return function(inputs)
     { tree = root .. "/utf8proc/stage/share", at = "share" },
     { tree = root .. "/tree-sitter/stage/share", at = "share" },
     { tree = root .. "/neovim/stage/bin", at = "" },
+    { tree = root .. "/ncursesw/stage/bin", at = "" },
     { tree = root .. "/tzdata/stage/share", at = "share" },
     { tree = root .. "/pciids/stage/share", at = "share" },
     { tree = root .. "/usbids/stage/share", at = "share" },

@@ -1,0 +1,5 @@
+prefix=sdk://
+Name: ncurses
+Description: Wide Pyxis curses compatibility name
+Version: 6.6
+Requires: ncursesw

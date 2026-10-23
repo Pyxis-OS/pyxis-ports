@@ -1,0 +1,1051 @@
+--- a/config.sub
++++ b/config.sub
+@@ -2010,6 +2010,7 @@
+ 	| emscripten* \
+ 	| emx* \
+ 	| es* \
++	| pyxis* \
+ 	| fiwix* \
+ 	| freebsd* \
+ 	| fuchsia* \
+--- a/configure
++++ b/configure
+@@ -29141,7 +29141,7 @@
+ 	;;
+ (*)
+ 	case "$cf_cv_system_name" in
+-	(*mingw32*|*mingw64*|*-msvc*)
++	(*mingw32*|*mingw64*|*-msvc*|*pyxis*)
+ 		;;
+ 	(*)
+ 		{ { echo "$as_me:29147: error: No termio/termios/sgtty found" >&5
+--- a/configure.in
++++ b/configure.in
+@@ -1146,7 +1146,7 @@
+ AC_SUBST(GENERATED_SP_FUNCS)
+ 
+ case "$cf_cv_system_name" in
+-(*mingw32*|*mingw64*|*-msvc*)
++(*mingw32*|*mingw64*|*-msvc*|*pyxis*)
+ 	cf_dft_term_driver=yes
+ 	;;
+ (*)
+--- a/include/MKkey_defs.sh
++++ b/include/MKkey_defs.sh
+@@ -146,7 +146,7 @@
+ 			if (index($7,"NCURSES_") == 1) {
+ 				ifdef = 1;
+ 				printf "\n";
+-				printf "#if %s\n", $7;
++				printf "#if %s%s\n", $7, ($5 == "KEY_RESIZE" ? " || defined(__pyxis__)" : "");
+ 			}
+ 			if ($5 == "KEY_F(0)" ) {
+ 				printf "#define "
+--- a/include/MKterm.h.awk.in
++++ b/include/MKterm.h.awk.in
+@@ -145,6 +145,9 @@
+ 	print  "#include <nc_win32.h>"
+ 	print  "#define TTY ConsoleMode"
+ 	print  ""
++	print  "#elif defined(__pyxis__)"
++	print  "#include <nc_pyxis_mode.h>"
++	print  "#define TTY struct nc_pyxis_mode"
+ 	print  "#elif @HAVE_SGTTY_H@	/* HAVE_SGTTY_H */"
+ 	print  ""
+ 	print  "#undef TERMIOS"
+@@ -165,6 +168,9 @@
+ 	print  "#elif defined(_WIN32) || defined(_WIN64)"
+ 	print  "#define GET_TTY(fd, buf) _nc_console_getmode(_nc_console_fd2handle(fd),buf)"
+ 	print  "#define SET_TTY(fd, buf) _nc_console_setmode(_nc_console_fd2handle(fd),buf)"
++	print  "#elif defined(__pyxis__)"
++	print  "#include <nc_pyxis_mode.h>"
++	print  "#define TTY struct nc_pyxis_mode"
+ 	print  "#elif @HAVE_SGTTY_H@	/* HAVE_SGTTY_H */"
+ 	print  "#define GET_TTY(fd, buf) gtty(fd, buf)"
+ 	print  "#define SET_TTY(fd, buf) stty(fd, buf)"
+--- /dev/null
++++ b/include/nc_pyxis_mode.h
+@@ -0,0 +1,12 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#ifndef NC_PYXIS_MODE_H
++#define NC_PYXIS_MODE_H
++
++/* Library input policy, not a termios or hardware mode. */
++#define NC_PYXIS_RAW 1u
++#define NC_PYXIS_CBREAK 2u
++struct nc_pyxis_mode {
++    unsigned flags;
++};
++
++#endif
+--- a/ncurses/base/lib_getch.c
++++ b/ncurses/base/lib_getch.c
+@@ -220,6 +220,8 @@
+     return ch;
+ }
+ 
++static NCURSES_INLINE void fifo_clear(SCREEN *sp);
++
+ static NCURSES_INLINE int
+ fifo_push(SCREEN *sp EVENTLIST_2nd(_nc_eventlist * evl))
+ {
+@@ -321,6 +323,15 @@
+ #endif /* USE_TERM_DRIVER */
+     }
+ 
++#ifdef __pyxis__
++    if (n <= 0) {
++        if (!sp->_sig_winch) {
++            fifo_clear(sp);
++            _nc_pyxis_escape_end(sp);
++        }
++        return ERR;
++    }
++#endif
+     if ((n == -1) || (n == 0)) {
+ 	TR(TRACE_IEVENT, ("read(%d,&ch,1)=%d, errno=%d", sp->_ifd, n, errno));
+ 	ch = ERR;
+@@ -749,6 +760,9 @@
+ 	    } else {
+ 		head = peek;
+ 	    }
++#ifdef __pyxis__
++            _nc_pyxis_escape_end(sp);
++#endif
+ 	    return (ptr->value);
+ 	}
+ 
+@@ -758,7 +772,17 @@
+ 	    int rc;
+ 
+ 	    TR(TRACE_IEVENT, ("waiting for rest of sequence"));
++#ifdef __pyxis__
++            if (!forever)
++                timeleft = _nc_pyxis_escape_left(sp, GetEscdelay(sp));
++#endif
+ 	    rc = check_mouse_activity(sp, timeleft EVENTLIST_2nd(evl));
++#ifdef __pyxis__
++            if (sp->_sig_winch) {
++                peek = head;
++                return ERR;
++            }
++#endif
+ #ifdef NCURSES_WGETCH_EVENTS
+ 	    if (rc & TW_EVENT) {
+ 		TR(TRACE_IEVENT, ("interrupted by a user event"));
+@@ -775,5 +799,8 @@
+     }
+     ch = fifo_pull(sp);
+     peek = head;
++#ifdef __pyxis__
++    _nc_pyxis_escape_end(sp);
++#endif
+     return ch;
+ }
+--- a/ncurses/base/lib_newterm.c
++++ b/ncurses/base/lib_newterm.c
+@@ -86,6 +86,8 @@
+ 	buf.c_lflag &= (unsigned) ~(ECHO | ECHONL);
+ 	buf.c_iflag &= (unsigned) ~(ICRNL | INLCR | IGNCR);
+ 	buf.c_oflag &= (unsigned) ~(ONLCR);
++#elif defined(__pyxis__)
++	/* No kernel echo or newline translation. Preserve the mode policy. */
+ #elif HAVE_SGTTY_H
+ 	buf.sg_flags &= ~(ECHO | CRMOD);
+ #elif USE_NAMED_PIPES
+@@ -348,7 +350,18 @@
+ #endif /* USE_TERM_DRIVER */
+ 
+ 	    /* Initialize the terminal line settings. */
++#ifdef __pyxis__
++            if (_nc_initscr(NCURSES_SP_ARG) == ERR) {
++                int saved_errno = errno;
++                delscreen(SP_PARM);
++                _nc_set_screen(current);
++                _nc_unlock_global(curses);
++                errno = saved_errno;
++                returnSP(NULL);
++            }
++#else
+ 	    _nc_initscr(NCURSES_SP_ARG);
++#endif
+ 
+ 	    _nc_signal_handler(TRUE);
+ 	    result = SP_PARM;
+--- a/ncurses/build.priv.h
++++ b/ncurses/build.priv.h
+@@ -51,6 +51,9 @@
+ #endif
+ 
+ #include <ncurses_cfg.h>
++#ifdef USE_BUILD_CC
++#undef pid_t
++#endif
+ 
+ #if USE_RCS_IDS
+ #define MODULE_ID(id) static const char Ident[] = id;
+--- a/ncurses/curses.priv.h
++++ b/ncurses/curses.priv.h
+@@ -149,7 +149,12 @@
+ #endif
+ 
+ /* include signal.h before curses.h to work-around defect in glibc 2.1.3 */
++#ifndef __pyxis__
+ #include <signal.h>
++#else
++#undef SIG_ATOMIC_T
++#define SIG_ATOMIC_T volatile int
++#endif
+ 
+ /* Alessandro Rubini's GPM (general-purpose mouse) */
+ #if HAVE_LIBGPM && HAVE_GPM_H
+@@ -193,7 +198,9 @@
+ #define HAVE_SIZECHANGE 0
+ #endif
+ 
+-#if HAVE_SIZECHANGE && USE_SIGWINCH && defined(SIGWINCH)
++#if defined(__pyxis__)
++#define USE_SIZECHANGE 1
++#elif HAVE_SIZECHANGE && USE_SIGWINCH && defined(SIGWINCH)
+ #define USE_SIZECHANGE 1
+ #else
+ #define USE_SIZECHANGE 0
+@@ -2140,7 +2147,7 @@
+ 					}
+ 
+ /* lib_tstp.c */
+-#if USE_SIGWINCH
++#if USE_SIGWINCH || defined(__pyxis__)
+ extern NCURSES_EXPORT(int) _nc_handle_sigwinch(SCREEN *);
+ #else
+ #define _nc_handle_sigwinch(a) /* nothing */
+@@ -2565,9 +2572,23 @@
+ #if USE_TERM_DRIVER
+ extern NCURSES_EXPORT_VAR(TERM_DRIVER) _nc_WIN_DRIVER;
+ extern NCURSES_EXPORT_VAR(TERM_DRIVER) _nc_TINFO_DRIVER;
++#ifdef __pyxis__
++extern int _nc_pyxis_mode(TERMINAL_CONTROL_BLOCK *, int, TTY *);
++extern int _nc_pyxis_release(TERMINAL_CONTROL_BLOCK *);
++extern int _nc_pyxis_size(TERMINAL_CONTROL_BLOCK *, int *, int *);
++extern int _nc_pyxis_resize_pending(SCREEN *);
++extern int _nc_pyxis_wait(SCREEN *, int, int *);
++extern int _nc_pyxis_read(SCREEN *, int *);
++extern int _nc_pyxis_flush_input(SCREEN *);
++extern int _nc_pyxis_escape_left(SCREEN *, int);
++extern void _nc_pyxis_escape_end(SCREEN *);
++extern ssize_t _nc_pyxis_write(SCREEN *, const char *, size_t);
++extern int _nc_pyxis_output_status(SCREEN *);
++#endif
++
+ #endif /* USE_TERM_DRIVER */
+ 
+-#ifdef TERMIOS
++#if defined(TERMIOS) || defined(__pyxis__)
+ #define USE_WINCONMODE 0
+ #elif defined(USE_WIN32CON_DRIVER)
+ #define USE_WINCONMODE 1
+--- a/ncurses/modules
++++ b/ncurses/modules
+@@ -260,6 +260,7 @@
+ win32_driver	lib             $(win32con)	$(HEADER_DEPS)
+ 
+ @ port_tinfo
++pyxis_driver	lib		$(tinfo)	$(HEADER_DEPS)
+ tinfo_driver	lib		$(tinfo)	$(HEADER_DEPS)	$(INCDIR)/tic.h
+ 
+ # vile:makemode
+--- a/ncurses/term.priv.h
++++ b/ncurses/term.priv.h
+@@ -59,7 +59,12 @@
+ # include <sys/param.h>
+ #endif
+ 
+-#include <signal.h>		/* sig_atomic_t */
++#ifndef __pyxis__
++#include <signal.h>
++#else
++#undef SIG_ATOMIC_T
++#define SIG_ATOMIC_T volatile int
++#endif		/* sig_atomic_t */
+ #include <time.h>		/* time_t */
+ #include <term.h>		/* time_t */
+ 
+--- a/ncurses/tinfo/lib_baudrate.c
++++ b/ncurses/tinfo/lib_baudrate.c
+@@ -104,6 +104,9 @@
+ 
+ static struct speed const speeds[] =
+ {
++#ifdef __pyxis__
++    { 0, 0 }
++#else
+     DATA(0),
+     DATA(50),
+     DATA(75),
+@@ -188,6 +191,7 @@
+     DATA(4000000),
+ #endif
+ #endif
++#endif
+ };
+ #endif /* !USE_NAMED_PIPES */
+ 
+@@ -264,6 +268,9 @@
+ NCURSES_EXPORT(int)
+ NCURSES_SP_NAME(baudrate) (NCURSES_SP_DCL0)
+ {
++#ifdef __pyxis__
++    returnCode(0); /* Native rendering has no serial baud rate or padding. */
++#else
+     int result;
+ 
+     T((T_CALLED("baudrate(%p)"), (void *) SP_PARM));
+@@ -307,6 +314,7 @@
+     }
+ #endif /* !USE_NAMED_PIPES */
+     returnCode(result);
++#endif
+ }
+ 
+ #if NCURSES_SP_FUNCS
+--- a/ncurses/tinfo/lib_cur_term.c
++++ b/ncurses/tinfo/lib_cur_term.c
+@@ -131,6 +131,9 @@
+ NCURSES_SP_NAME(del_curterm) (NCURSES_SP_DCLx TERMINAL *termp)
+ {
+     int rc = ERR;
++#ifdef __pyxis__
++    int release_status = OK;
++#endif
+ 
+     T((T_CALLED("del_curterm(%p, %p)"), (void *) SP_PARM, (void *) termp));
+ 
+@@ -164,8 +167,13 @@
+ 	}
+ #endif
+ #if USE_TERM_DRIVER
++#ifdef __pyxis__
++        if (TCB->drv)
++            release_status = _nc_pyxis_release(TCB);
++#else
+ 	if (TCB->drv)
+ 	    TCB->drv->td_release(TCB);
++#endif
+ #endif
+ #if NO_LEAKS
+ 	/* discard memory used in tgetent's cache for this terminal */
+@@ -179,7 +187,11 @@
+ 	free(termp->tparm_state.out_buff);
+ 	free(termp);
+ 
++#ifdef __pyxis__
++        rc = release_status;
++#else
+ 	rc = OK;
++#endif
+     }
+ 
+     returnCode(rc);
+--- a/ncurses/tinfo/lib_kernel.c
++++ b/ncurses/tinfo/lib_kernel.c
+@@ -94,6 +94,8 @@
+ 	result = termp->Ottyb.c_cc[VERASE];
+ 	if (result == _nc_vdisable())
+ 	    result = ERR;
++#elif defined(__pyxis__)
++	result = '\b';
+ #elif defined(USE_WIN32CON_DRIVER)
+ 	result = ERR;
+ #else
+@@ -131,7 +133,7 @@
+ 	result = termp->Ottyb.c_cc[VKILL];
+ 	if (result == _nc_vdisable())
+ 	    result = ERR;
+-#elif defined(USE_WIN32CON_DRIVER)
++#elif defined(__pyxis__) || defined(USE_WIN32CON_DRIVER)
+ 	result = ERR;
+ #else
+ 	result = termp->Ottyb.sg_kill;
+@@ -151,6 +153,9 @@
+ static void
+ flush_input(int fd)
+ {
++#ifdef __pyxis__
++    (void)fd; /* The native flush uses the selected screen input. */
++#else
+ #if defined(TERMIOS)
+     tcflush(fd, TCIFLUSH);
+ #else /* !TERMIOS */
+@@ -164,6 +169,7 @@
+     } while
+ 	(errno == EINTR);
+ #endif
++#endif
+ }
+ 
+ /*
+@@ -175,6 +181,9 @@
+ NCURSES_EXPORT(int)
+ NCURSES_SP_NAME(flushinp) (NCURSES_SP_DCL0)
+ {
++#ifdef __pyxis__
++    return SP_PARM == NULL ? ERR : _nc_pyxis_flush_input(SP_PARM);
++#else
+     T((T_CALLED("flushinp(%p)"), (void *) SP_PARM));
+ 
+     if (SP_PARM != NULL) {
+@@ -190,6 +199,7 @@
+ 	returnCode(OK);
+     }
+     returnCode(ERR);
++#endif
+ }
+ 
+ #if NCURSES_SP_FUNCS
+--- a/ncurses/tinfo/lib_napms.c
++++ b/ncurses/tinfo/lib_napms.c
+@@ -63,7 +63,7 @@
+ 	ms = MAX_DELAY_MSECS;
+ 
+ #if USE_TERM_DRIVER
+-    CallDriver_1(SP_PARM, td_nap, ms);
++    returnCode(CallDriver_1(SP_PARM, td_nap, ms));
+ #else /* !USE_TERM_DRIVER */
+ #if NCURSES_SP_FUNCS
+     (void) sp;
+--- a/ncurses/tinfo/lib_raw.c
++++ b/ncurses/tinfo/lib_raw.c
+@@ -98,6 +98,8 @@
+ 	buf.c_cc[VTIME] = 0;
+ #elif defined(USE_WIN32CON_DRIVER)
+ 	buf.dwFlagIn &= (unsigned long) ~CONMODE_NORAW;
++#elif defined(__pyxis__)
++	buf.flags |= NC_PYXIS_RAW;
+ #else
+ 	buf.sg_flags |= RAW;
+ #endif
+@@ -155,6 +157,8 @@
+ #elif defined(USE_WIN32CON_DRIVER)
+ 	buf.dwFlagIn |= CONMODE_NORAW;
+ 	buf.dwFlagIn &= (unsigned long) ~CONMODE_NOCBREAK;
++#elif defined(__pyxis__)
++	buf.flags = NC_PYXIS_CBREAK;
+ #else
+ 	buf.sg_flags |= CBREAK;
+ #endif
+@@ -232,6 +236,8 @@
+ 	buf.c_iflag |= COOKED_INPUT;
+ #elif defined(USE_WIN32CON_DRIVER)
+ 	buf.dwFlagIn |= CONMODE_NORAW;
++#elif defined(__pyxis__)
++	buf.flags &= ~(NC_PYXIS_RAW | NC_PYXIS_CBREAK);
+ #else
+ 	buf.sg_flags &= ~(RAW | CBREAK);
+ #endif
+@@ -286,6 +292,8 @@
+ 	buf.c_iflag |= ICRNL;
+ #elif defined(USE_WIN32CON_DRIVER)
+ 	buf.dwFlagIn |= (CONMODE_NOCBREAK | CONMODE_NORAW);
++#elif defined(__pyxis__)
++	buf.flags &= ~NC_PYXIS_CBREAK;
+ #else
+ 	buf.sg_flags &= ~CBREAK;
+ #endif
+--- a/ncurses/tinfo/lib_setup.c
++++ b/ncurses/tinfo/lib_setup.c
+@@ -200,13 +200,16 @@
+ #endif
+ #endif /* NCURSES_EXT_FUNCS */
+ 
+-#if USE_SIGWINCH
++#if USE_SIGWINCH || defined(__pyxis__)
+ /*
+  * If we have a pending SIGWINCH, set the flag in each screen.
+  */
+ NCURSES_EXPORT(int)
+ _nc_handle_sigwinch(SCREEN *sp)
+ {
++#ifdef __pyxis__
++    return sp != NULL && _nc_pyxis_resize_pending(sp);
++#else
+     SCREEN *scan;
+ 
+     if (_nc_globals.have_sigwinch) {
+@@ -218,6 +221,7 @@
+     }
+ 
+     return (sp ? sp->_sig_winch : 0);
++#endif
+ }
+ 
+ #endif
+--- a/ncurses/tinfo/lib_tputs.c
++++ b/ncurses/tinfo/lib_tputs.c
+@@ -136,7 +136,12 @@
+ 	    TR(TRACE_CHARPUT, ("flushing %ld/%ld bytes",
+ 			       (unsigned long) amount, _nc_outchars));
+ 	    while (amount) {
+-		ssize_t res = write(SP_PARM->_ofd, buf, amount);
++		ssize_t res;
++#ifdef __pyxis__
++                res = _nc_pyxis_write(SP_PARM, buf, amount);
++#else
++                res = write(SP_PARM->_ofd, buf, amount);
++#endif
+ 		if (res > 0) {
+ 		    /* if the write was incomplete, try again */
+ 		    amount -= (size_t) res;
+@@ -191,7 +196,13 @@
+ 	     * POSIX says write() is safe in a signal handler, but the
+ 	     * buffered I/O is not.
+ 	     */
+-	    if (write(fileno(NC_OUTPUT(SP_PARM)), &tmp, (size_t) 1) == -1)
++	    if (
++#ifdef __pyxis__
++            _nc_pyxis_write(SP_PARM, &tmp, (size_t)1)
++#else
++            write(fileno(NC_OUTPUT(SP_PARM)), &tmp, (size_t)1)
++#endif
++            == -1)
+ 		rc = ERR;
+ 	}
+     } else {
+--- /dev/null
++++ b/ncurses/tinfo/pyxis_driver.c
+@@ -0,0 +1,320 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#ifdef __pyxis__
++#include <pyxis/descriptor.h>
++#include <pyxis/terminal.h>
++#include <time.h>
++#include <wait.h>
++#endif
++#include <curses.priv.h>
++
++#ifdef __pyxis__
++#undef columns
++#undef lines
++
++struct native_terminal {
++  struct pyxis_terminal_state *saved;
++  int input;
++  TTY mode;
++  uint64_t generation;
++  uint64_t escape_deadline;
++  int output_error;
++};
++
++static struct native_terminal *
++native_state(TERMINAL_CONTROL_BLOCK *tcb)
++{
++  struct native_terminal *state = tcb->prop;
++  if (state == NULL) {
++    state = calloc(1, sizeof(*state));
++    if (state != NULL) {
++      state->input = -1;
++      tcb->prop = state;
++    }
++  }
++  return state;
++}
++
++static int
++native_now(uint64_t *now)
++{
++  struct timespec value;
++  if (clock_gettime(CLOCK_MONOTONIC, &value) != 0)
++    return ERR;
++  *now = (uint64_t)value.tv_sec * UINT64_C(1000000000) + value.tv_nsec;
++  return OK;
++}
++
++static int
++native_errno(enum call_status status)
++{
++  switch (status) {
++  case CALL_BAD_HANDLE: return EBADF;
++  case CALL_DENIED: return EACCES;
++  case CALL_BUSY: return EBUSY;
++  case CALL_NO_MEMORY: return ENOMEM;
++  default: return EIO;
++  }
++}
++
++int
++_nc_pyxis_mode(TERMINAL_CONTROL_BLOCK *tcb, int set, TTY *mode)
++{
++  SCREEN *sp = tcb->csp;
++  struct native_terminal *state = native_state(tcb);
++  struct pyxis_descriptor_binding binding;
++  if (sp == NULL || state == NULL || mode == NULL)
++    return ERR;
++  if (pyxis_descriptor_borrow(sp->_ifd, &binding) != 0)
++    return ERR;
++  if (!(binding.access & PYXIS_DESCRIPTOR_READ)) {
++    errno = EACCES;
++    return ERR;
++  }
++  if (state->saved == NULL) {
++    if (pyxis_terminal_get_state(sp->_ifd, &state->saved) != 0)
++      return ERR;
++    state->input = sp->_ifd;
++  }
++  if (state->input != sp->_ifd) {
++    errno = EBADF;
++    return ERR;
++  }
++  if (!set) {
++    *mode = state->mode;
++    return OK;
++  }
++  if (mode->flags & ~(NC_PYXIS_RAW | NC_PYXIS_CBREAK)) {
++    errno = ENOTSUP;
++    return ERR;
++  }
++  if (mode->flags & NC_PYXIS_RAW) {
++    struct pyxis_terminal_state *previous;
++    if (pyxis_terminal_make_raw(state->input, &previous) != 0)
++      return ERR;
++    pyxis_terminal_state_free(previous);
++  } else if (pyxis_terminal_restore(state->input, state->saved) != 0) {
++    return ERR;
++  }
++  state->mode = *mode;
++  return OK;
++}
++
++int
++_nc_pyxis_release(TERMINAL_CONTROL_BLOCK *tcb)
++{
++  struct native_terminal *state = tcb->prop;
++  int result = OK;
++  if (state != NULL) {
++    if (state->saved != NULL) {
++      result = pyxis_terminal_restore(state->input, state->saved);
++      pyxis_terminal_state_free(state->saved);
++    }
++    free(state);
++    tcb->prop = NULL;
++  }
++  return result;
++}
++
++int
++_nc_pyxis_size(TERMINAL_CONTROL_BLOCK *tcb, int *height, int *width)
++{
++  struct console_size_reply size;
++  struct native_terminal *state = native_state(tcb);
++  if (state == NULL || pyxis_terminal_get_size(tcb->term.Filedes, &size) != 0)
++    return ERR;
++  if (!size.rows || !size.columns || size.rows > SHRT_MAX || size.columns > SHRT_MAX) {
++    errno = EOVERFLOW;
++    return ERR;
++  }
++  *height = (int)size.rows;
++  *width = (int)size.columns;
++  state->generation = size.generation;
++  return OK;
++}
++
++int
++_nc_pyxis_resize_pending(SCREEN *sp)
++{
++  struct console_size_reply size;
++  struct native_terminal *state = native_state(TCBOf(sp));
++  if (state == NULL || pyxis_terminal_get_size(sp->_ofd, &size) != 0)
++    return FALSE;
++  if (state->generation != size.generation)
++    sp->_sig_winch = TRUE;
++  return sp->_sig_winch;
++}
++
++int
++_nc_pyxis_wait(SCREEN *sp, int milliseconds, int *left)
++{
++  struct native_terminal *state = native_state(TCBOf(sp));
++  uint64_t now, end;
++  if (state == NULL || _nc_pyxis_output_status(sp) == ERR || native_now(&now) == ERR)
++    return ERR;
++  uint64_t span = milliseconds < 0 ? 0 : (uint64_t)milliseconds * 1000000;
++  end = milliseconds < 0 || span > UINT64_MAX - now ? UINT64_MAX : now + span;
++  for (;;) {
++    uint64_t events[2] = {0};
++    struct pyxis_descriptor_binding input, output;
++    if (pyxis_descriptor_borrow(sp->_ifd, &input) != 0 ||
++      pyxis_descriptor_borrow(sp->_ofd, &output) != 0)
++      return ERR;
++    struct wait_interest interests[] = {
++      {.handle = input.handle, .events = WAIT_READABLE},
++      {.handle = output.handle, .events = WAIT_RESIZED,
++      .observed_generation = state->generation},
++    };
++    uint64_t deadline = milliseconds == 0 ? 0 :
++      (end - now > UINT64_C(30000000000) ? now + UINT64_C(30000000000) : end);
++    enum call_status status = wait_many(interests, 2,
++      input.buffered_read ? 0 : deadline, events);
++    if (status != CALL_OK && status != CALL_TIMED_OUT) {
++      errno = native_errno(status);
++      return ERR;
++    }
++    if (native_now(&now) == ERR)
++      return ERR;
++    if (left != NULL)
++      *left = end == UINT64_MAX ? -1 : now >= end ? 0 :
++        (int)((end - now + 999999) / 1000000);
++    if (input.buffered_read)
++      events[0] |= WAIT_READABLE;
++    if ((events[0] | events[1]) & WAIT_CLOSED) {
++      errno = EIO;
++      return ERR;
++    }
++    if (events[1] & WAIT_RESIZED) {
++      sp->_sig_winch = TRUE;
++      return TW_NONE;
++    }
++    /* INPUT_LOST is readable/error: the ordinary descriptor read must
++    * acknowledge it and return the actual error, never consume a key. */
++    if (events[0] & (WAIT_READABLE | WAIT_ERROR))
++      return TW_INPUT;
++    if (milliseconds == 0 || now >= end)
++      return TW_NONE;
++  }
++}
++
++int
++_nc_pyxis_read(SCREEN *sp, int *value)
++{
++  unsigned char byte;
++  *value = 0;
++  if (_nc_pyxis_output_status(sp) == ERR)
++    return -1;
++  for (;;) {
++    ssize_t count = pyxis_descriptor_try_read(sp->_ifd, &byte, 1);
++    if (count == 1) {
++      *value = byte;
++      return 1;
++    }
++    if (count == 0) {
++      errno = EIO;
++      return 0;
++    }
++    if (errno != EAGAIN)
++      return -1;
++    if (_nc_pyxis_wait(sp, -1, NULL) != TW_INPUT) {
++      if (sp->_sig_winch)
++        errno = EINTR;
++      return -1;
++    }
++  }
++}
++
++int
++_nc_pyxis_flush_input(SCREEN *sp)
++{
++  unsigned char bytes[256];
++  struct native_terminal *state = native_state(TCBOf(sp));
++  if (state != NULL)
++    state->escape_deadline = 0;
++  sp->_fifohead = -1;
++  sp->_fifotail = sp->_fifopeek = 0;
++  /* Bound an explicit flush even if another producer keeps sending. */
++  for (size_t total = 0; total < 65536;) {
++    ssize_t count = pyxis_descriptor_try_read(sp->_ifd, bytes, sizeof(bytes));
++    if (count < 0 && errno == EAGAIN) {
++      if (state != NULL)
++        state->escape_deadline = 0;
++      sp->_fifohead = -1;
++      sp->_fifotail = sp->_fifopeek = 0;
++      return OK;
++    }
++    if (count <= 0)
++      return ERR;
++    total += (size_t)count;
++  }
++  errno = EBUSY;
++  return ERR;
++}
++
++int
++_nc_pyxis_escape_left(SCREEN *sp, int delay)
++{
++  struct native_terminal *state = native_state(TCBOf(sp));
++  uint64_t now;
++  if (state == NULL || native_now(&now) == ERR)
++    return 0;
++  if (!state->escape_deadline)
++    state->escape_deadline = (uint64_t)delay * 1000000 > UINT64_MAX - now ?
++      UINT64_MAX : now + (uint64_t)delay * 1000000;
++  return now >= state->escape_deadline ? 0 :
++    (int)((state->escape_deadline - now + 999999) / 1000000);
++}
++
++void
++_nc_pyxis_escape_end(SCREEN *sp)
++{
++  struct native_terminal *state = native_state(TCBOf(sp));
++  if (state != NULL)
++    state->escape_deadline = 0;
++}
++
++ssize_t
++_nc_pyxis_write(SCREEN *sp, const char *data, size_t size)
++{
++  struct native_terminal *state = native_state(TCBOf(sp));
++  if (state == NULL)
++    return -1;
++  if (state->output_error) {
++    errno = state->output_error;
++    return -1;
++  }
++  for (;;) {
++    ssize_t count = pyxis_descriptor_try_write(sp->_ofd, data, size);
++    if (count > 0 || (!size && count == 0))
++      return count;
++    if (count < 0 && errno == EAGAIN) {
++      uint64_t now, events = 0;
++      if (native_now(&now) != ERR) {
++        enum call_status status = pyxis_terminal_wait(sp->_ofd,
++          WAIT_WRITABLE, 0, now > UINT64_MAX - UINT64_C(30000000000) ? UINT64_MAX :
++          now + UINT64_C(30000000000), &events);
++        if ((status == CALL_OK && !(events & (WAIT_CLOSED | WAIT_ERROR))) ||
++          status == CALL_TIMED_OUT)
++          continue;
++        errno = status == CALL_OK ? EIO : native_errno(status);
++      }
++    } else if (count == 0) {
++      errno = EIO;
++    }
++    state->output_error = errno;
++    return -1;
++  }
++}
++
++int
++_nc_pyxis_output_status(SCREEN *sp)
++{
++  struct native_terminal *state = native_state(TCBOf(sp));
++  if (state == NULL)
++    return ERR;
++  if (state->output_error) {
++    errno = state->output_error;
++    return ERR;
++  }
++  return OK;
++}
++#endif
+--- a/ncurses/tinfo/tinfo_driver.c
++++ b/ncurses/tinfo/tinfo_driver.c
+@@ -105,7 +105,12 @@
+ drv_doupdate(TERMINAL_CONTROL_BLOCK * TCB)
+ {
+     AssertTCB();
+-    return TINFO_DOUPDATE(TCB->csp);
++    int result = TINFO_DOUPDATE(TCB->csp);
++#ifdef __pyxis__
++    if (_nc_pyxis_output_status(TCB->csp) == ERR)
++        result = ERR;
++#endif
++    return result;
+ }
+ 
+ static const char *
+@@ -118,6 +123,10 @@
+ static void
+ get_baudrate(TERMINAL *termp)
+ {
++#ifdef __pyxis__
++    termp->_baudrate = 0;
++    ospeed = 0;
++#else
+     int my_ospeed;
+     int result;
+     if (GET_TTY(termp->Filedes, &termp->Nttyb) == OK) {
+@@ -145,6 +154,7 @@
+ #endif
+     termp->_baudrate = result;
+     ospeed = (NCURSES_OSPEED) my_ospeed;
++#endif
+ }
+ 
+ #undef SETUP_FAIL
+@@ -167,6 +177,13 @@
+     assert(TCB != NULL && tname != NULL);
+     termp = (TERMINAL *) TCB;
+     sp = TCB->csp;
++#ifdef __pyxis__
++    if (!NC_ISATTY(termp->Filedes)) {
++        if (errret != NULL)
++            *errret = TGETENT_ERR;
++        return FALSE;
++    }
++#endif
+     TCB->magic = TCBMAGIC;
+ 
+ #if (NCURSES_USE_DATABASE || NCURSES_USE_TERMCAP)
+@@ -418,6 +435,9 @@
+ static int
+ drv_size(TERMINAL_CONTROL_BLOCK * TCB, int *linep, int *colp)
+ {
++#ifdef __pyxis__
++    return _nc_pyxis_size(TCB, linep, colp);
++#else
+     SCREEN *sp;
+     bool useEnv = TRUE;
+     bool useTioctl = TRUE;
+@@ -541,6 +561,7 @@
+ 
+     T(("screen size is %dx%d", *linep, *colp));
+     return OK;
++#endif
+ }
+ 
+ static int
+@@ -565,6 +586,9 @@
+ static int
+ drv_sgmode(TERMINAL_CONTROL_BLOCK * TCB, int setFlag, TTY * buf)
+ {
++#ifdef __pyxis__
++    return _nc_pyxis_mode(TCB, setFlag, buf);
++#else
+     SCREEN *sp = TCB->csp;
+     TERMINAL *_term = (TERMINAL *) TCB;
+     int result = OK;
+@@ -594,6 +618,7 @@
+ 	}
+     }
+     return result;
++#endif
+ }
+ 
+ static int
+@@ -618,8 +643,8 @@
+ 	    if ((drv_sgmode(TCB, FALSE, &(_term->Nttyb)) == OK)) {
+ #ifdef TERMIOS
+ 		_term->Nttyb.c_oflag &= (unsigned) ~OFLAGS_TABS;
+-#elif defined(USE_WIN32CON_DRIVER)
+-		/* noop */
++#elif defined(USE_WIN32CON_DRIVER) || defined(__pyxis__)
++		/* Native byte input has no tab expansion. */
+ #else
+ 		_term->Nttyb.sg_flags &= (unsigned) ~XTABS;
+ #endif
+@@ -649,8 +674,8 @@
+ #ifdef TERMIOS
+ 		if (_term->Ottyb.c_oflag & OFLAGS_TABS)
+ 		    tab = back_tab = NULL;
+-#elif defined(USE_WIN32CON_DRIVER)
+-		/* noop */
++#elif defined(USE_WIN32CON_DRIVER) || defined(__pyxis__)
++		/* Native byte input has no tab expansion. */
+ #else
+ 		if (_term->Ottyb.sg_flags & XTABS)
+ 		    tab = back_tab = NULL;
+@@ -670,6 +695,10 @@
+ #endif
+ 	}
+     }
++#ifdef __pyxis__
++    if (sp != NULL && _nc_pyxis_output_status(sp) == ERR)
++        code = ERR;
++#endif
+     returnCode(code);
+ }
+ 
+@@ -686,6 +715,9 @@
+ static void
+ drv_release(TERMINAL_CONTROL_BLOCK * TCB GCC_UNUSED)
+ {
++#ifdef __pyxis__
++    (void)_nc_pyxis_release(TCB);
++#endif
+ }
+ 
+ #  define SGR0_TEST(mode) (mode != NULL) && (exit_attribute_mode == NULL || strcmp(mode, exit_attribute_mode))
+@@ -1299,11 +1331,13 @@
+     n = _nc_console_read(sp,
+ 			 _nc_console_handle(sp->_ifd),
+ 			 buf);
++#elif defined(__pyxis__)
++    n = _nc_pyxis_read(sp, buf);
+ #else
+     n = (int) read(sp->_ifd, &c2, (size_t) 1);
+ #endif
+     _nc_set_read_thread(FALSE);
+-#if !defined(USE_WIN32CON_DRIVER)
++#if !defined(USE_WIN32CON_DRIVER) && !defined(__pyxis__)
+     *buf = (int) c2;
+ #endif
+     return n;
+@@ -1312,6 +1346,10 @@
+ static int
+ drv_nap(TERMINAL_CONTROL_BLOCK * TCB GCC_UNUSED, int ms)
+ {
++#ifdef __pyxis__
++    struct timespec delay = {ms / 1000, (ms % 1000) * 1000000L};
++    return nanosleep(&delay, NULL) == 0 ? OK : ERR;
++#else
+ #if HAVE_NANOSLEEP
+     {
+ 	struct timespec request, remaining;
+@@ -1328,6 +1366,7 @@
+     _nc_timed_wait(NULL, 0, ms, (int *) 0 EVENTLIST_2nd(NULL));
+ #endif
+     return OK;
++#endif
+ }
+ 
+ static int
+--- a/ncurses/tty/lib_tstp.c
++++ b/ncurses/tty/lib_tstp.c
+@@ -45,6 +45,10 @@
+ 
+ MODULE_ID("$Id: lib_tstp.c,v 1.59 2025/02/15 14:52:13 tom Exp $")
+ 
++#ifdef __pyxis__
++NCURSES_EXPORT(void)
++_nc_signal_handler(int enable GCC_UNUSED) {}
++#else
+ #if defined(SIGTSTP) && (HAVE_SIGACTION || HAVE_SIGVEC)
+ #define USE_SIGTSTP 1
+ #else
+@@ -426,3 +430,5 @@
+     }
+     returnVoid;
+ }
++
++#endif /* !__pyxis__ */
+--- a/ncurses/tty/lib_twait.c
++++ b/ncurses/tty/lib_twait.c
+@@ -174,6 +174,26 @@
+ 	       int *timeleft
+ 	       EVENTLIST_2nd(_nc_eventlist * evl))
+ {
++#ifdef __pyxis__
++    if (sp == NULL) {
++        errno = EINVAL;
++        return ERR;
++    }
++    if (!(mode & TW_INPUT)) {
++        if (milliseconds < 0) {
++            errno = ENOTSUP;
++            return ERR;
++        }
++        struct timespec delay = {milliseconds / 1000,
++            (milliseconds % 1000) * 1000000L};
++        if (nanosleep(&delay, NULL) != 0)
++            return ERR;
++        if (timeleft != NULL)
++            *timeleft = 0;
++        return TW_NONE;
++    }
++    return _nc_pyxis_wait((SCREEN *)sp, milliseconds, timeleft);
++#else
+     int count;
+     int result = TW_NONE;
+     TimeType t0;
+@@ -520,4 +540,5 @@
+ #endif
+ 
+     return (result);
++#endif
+ }

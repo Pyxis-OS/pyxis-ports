@@ -1,0 +1,6 @@
+ncursesw 6.6 uses the permissive ncurses licence in COPYING. Native Pyxis
+adaptation and the demonstration are MPL-2.0; preserve pyxis-ports LICENSE.
+
+The library retains upstream window, colour, terminfo and input algorithms.
+The patch replaces Unix terminal control/waits/resize and propagates native
+failures; it adds no terminal emulator, signal API or external database lookup.

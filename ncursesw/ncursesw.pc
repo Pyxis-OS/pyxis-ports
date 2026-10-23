@@ -1,0 +1,9 @@
+prefix=sdk://
+libdir=${prefix}lib
+includedir=${prefix}include
+
+Name: ncursesw
+Description: Static wide curses over Pyxis native terminals (TERM=pyxis)
+Version: 6.6
+Libs: -lncursesw
+Cflags: -D_XOPEN_SOURCE_EXTENDED=1

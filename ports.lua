@@ -19,6 +19,7 @@ return {
   mbedtls = "mbedtls",
   minesweeper = "minesweeper",
   neovim = "neovim",
+  ncursesw = "ncursesw",
   pciids = "pciids",
   picohttpparser = "picohttpparser",
   pkgconf = "pkgconf",

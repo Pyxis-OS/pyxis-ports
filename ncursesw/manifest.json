@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "id": "org.pyxis.ncurses-demo",
+  "entry": "bin/ncurses-demo.pxe",
+  "commands": {"ncurses-demo": "bin/ncurses-demo.pxe"},
+  "resource_dirs": {},
+  "grants": [
+    {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
+    {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true}
+  ]
+}
