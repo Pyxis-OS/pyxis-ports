@@ -1,17 +1,16 @@
 --- a/include/hex.h
 +++ b/include/hex.h
-@@ -22,7 +22,9 @@
+@@ -22,7 +22,8 @@
  #include <limits.h>
  #include <stdio.h>				/* general includes           */
  #include <stdlib.h>				/* standard library           */
 -#include <signal.h>				/* unix signals               */
 +#include <sys/stat.h>
-+#include <pyxis/descriptor.h>
 +#include <pyxis/resource.h>
  #include <string.h>				/* string processing          */
  #include <strings.h>				/* string processing          */
  #include <unistd.h>				/* unix std routines          */
-@@ -85,6 +87,7 @@
+@@ -85,6 +86,7 @@
  extern int  MAXY;				/* external globals           */
  extern WINS *windows;                           /* struct that stores windows */
  extern hexList *head;				/* head for linked list       */
@@ -19,7 +18,7 @@
  extern int  BASE;                               /* the base for the number    */
  extern int  MIN_ADDR_LENGTH;
  extern int  hex_outline_width;
-@@ -107,7 +110,7 @@
+@@ -107,7 +109,7 @@
  #define CTRL_AND(c) ((c) & 037)			/* macro to use the ctrl key  */
  						/* cursor location in the file*/
  #define cursorLoc(line,col,editHex,b) (((line)*(b)) + ((col)/((editHex)?3:1)))
@@ -28,7 +27,7 @@
  #define isEmptyStack(stack) (((stack) == NULL) ? TRUE : FALSE)
  
  #define UNUSED(x) (void)(x)
-@@ -126,7 +129,7 @@
+@@ -126,7 +128,7 @@
  #define max(a,b) ((a) >(b) ? (a) : (b))
  #endif
  
@@ -37,7 +36,7 @@
  
  /* function prototypes */
  
-@@ -154,7 +157,9 @@
+@@ -154,7 +156,9 @@
  off_t parseArgs(int argc, char *argv[]);
  /*void printDebug(hexList *head, int loc);*/
  int getMinimumAddressLength(off_t len);
@@ -48,7 +47,7 @@
  
  /* llist.c */
  hexList *deleteNode(hexList *head, off_t loc);
-@@ -170,7 +175,7 @@
+@@ -170,7 +174,7 @@
  void init_screen(void);
  void screen_exit(int exit_val);
  void init_fkeys();
@@ -160,7 +159,15 @@
  		if (openfile(win))			/* open file          */
  		{
  		    if (fpIN)
-@@ -435,7 +460,8 @@
+@@ -429,13 +454,16 @@
+ 			MIN_ADDR_LENGTH = getMinimumAddressLength(maxLoc(fpIN));
+ 			curVal = getLocVal(0);
+                     }                
++                    free(temp);
++                    smashDaStack(&stack);
+ 	 	    return TRUE;			/* TRUE if worked     */
+ 		}
+ 		break;
  
  	case CTRL_AND('s'):				/* if F2 or ^s...     */
  	case KEY_F(2):					/* save the file      */
@@ -170,7 +177,7 @@
  		break;
  
  	case CTRL_AND('f'):
-@@ -680,6 +706,7 @@
+@@ -680,6 +708,7 @@
  		    /*if (stack != NULL) val = stack->savedVal;               */
  		    val = stack->savedVal;
  		    popStack(&stack);
@@ -178,7 +185,7 @@
  		    head = deleteNode(head,cl);
  
  
-@@ -743,7 +770,7 @@
+@@ -743,7 +772,7 @@
  	}
  
  	getyx(Winds, row, col);				/* get cur row/col    */
@@ -187,7 +194,7 @@
  	{
  							/* store current loc  */
  	    /* remove underline from previous character */
-@@ -830,57 +857,44 @@
+@@ -830,57 +859,44 @@
  \********************************************************/
  char *inputLine(WINDOW *win, int line, int col)
  {
@@ -587,7 +594,7 @@
  
  /********************************************************\
   * Description: deletes an item from the linked list and*
-@@ -105,62 +113,106 @@
+@@ -105,62 +113,107 @@
   *		file or to a specified output file	*
  \*******************************************************/
  int writeChanges()
@@ -647,7 +654,7 @@
 -
 +{
 +    struct stat source_info, target_info;
-+    struct pyxis_descriptor_binding binding;
++    struct describe_reply description;
 +    const uint64_t identity = STAT_DEV_VALID | STAT_INO_VALID;
 +    const char *name = fpOUTfilename != NULL ? fpOUTfilename : fpINfilename;
 +    FILE *target = NULL;
@@ -670,6 +677,7 @@
 +            goto failed;
 +        }
 +    }
++    clearerr(fpIN);
 +    target = fopen(name, "r+b");
 +    if (target == NULL && errno == ENOENT && fpOUTfilename != NULL)
 +        target = fopen(name, "w+bx");
@@ -677,9 +685,9 @@
 +        goto failed;
 +    /* A pending provider transaction is not a random-access file save.
 +     * Abandon it rather than committing on error cleanup. */
-+    if (pyxis_descriptor_borrow(fileno(target), &binding) != 0)
++    if (pyxis_describe(target, &description) != 0)
 +        goto failed;
-+    if (binding.info.protocol != PROTOCOL_FILE) {
++    if (description.protocol != PROTOCOL_FILE) {
 +        errno = ENOTSUP;
 +        goto failed;
 +    }
@@ -749,7 +757,7 @@
  } 
  
  /********************************************************\
-@@ -171,10 +223,10 @@
+@@ -171,10 +224,10 @@
  \********************************************************/
  hexList *freeList(hexList *head)
  {
@@ -998,7 +1006,45 @@
  	mvwprintw(ctrl, 3, 1, "CTRL+S");
  	mvwprintw(ctrl, 4, 1, "CTRL+O");
  	mvwprintw(ctrl, 5, 1, "CTRL+G");
-@@ -451,12 +420,17 @@
+@@ -323,15 +292,15 @@
+ 	mvwprintw(ctrl, 14, 1, "CTRL+T");
+ 	mvwprintw(ctrl, 15, 1, "CTRL+B");
+ 
+-	mvwprintw(small, 0, 1, "Function Keys");	/* print in ascii     */
+-	mvwprintw(small, 2, 1, "Help     = F1");
+-	mvwprintw(small, 3, 1, "Save     = F2");
+-	mvwprintw(small, 4, 1, "Open     = F3");
+-	mvwprintw(small, 5, 1, "Goto     = F4");
+-	mvwprintw(small, 6, 1, "Find     = F5");
+-	mvwprintw(small, 7, 1, "HexAdres = F6");
+-	mvwprintw(small, 8, 1, "Hex Edit = F7");
+-	mvwprintw(small, 9, 1, "Quit     = F8");
++	mvwprintw(small, 0, 1, "Other Keys");	/* print in ascii     */
++	mvwprintw(small, 2, 1, "Help = ^P");
++	mvwprintw(small, 3, 1, "Save = ^S");
++	mvwprintw(small, 4, 1, "Open = ^O");
++	mvwprintw(small, 5, 1, "Goto = ^G");
++	mvwprintw(small, 6, 1, "Find = ^F");
++	mvwprintw(small, 7, 1, "Addr = ^A");
++	mvwprintw(small, 8, 1, "Edit = Tab");
++	mvwprintw(small, 9, 1, "Quit = ^Q");
+ 	mvwprintw(small, 11, 1, "Page up  = PGUP");
+ 	mvwprintw(small, 12, 1, "Page down= PGDN");
+ 
+@@ -357,7 +326,11 @@
+     wnoutrefresh(small);
+     doupdate();						/* update screen      */
+ 
+-    wgetch(ctrl);					/* wait for a char    */
++    int key = wgetch(ctrl);
++    if (key == ERR)
++        exit_err("hexcurse: help input");
++    if (key == KEY_RESIZE)
++        ungetch(KEY_RESIZE);
+ 
+     delwin(ctrl);					/* delete help wins   */
+     delwin(help);
+@@ -451,12 +424,17 @@
  
      keypad(tmpwin, TRUE);
  
@@ -1019,7 +1065,7 @@
      else
          sleep(time);					/* wait               */
  
-@@ -492,11 +466,17 @@
+@@ -492,11 +470,17 @@
  
      tmpwin = drawbox(y, x, 5, len + 6);			/* create window      */
  

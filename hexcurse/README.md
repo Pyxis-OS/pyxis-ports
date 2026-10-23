@@ -14,6 +14,7 @@ No launcher, network factory or device authority is requested.
 
 - Ctrl+P help, Ctrl+O open, Ctrl+S save, Ctrl+Q quit, Tab hex/ASCII, Ctrl+Z undo.
   Ctrl+F searches, Ctrl+G goes to an offset; arrows and Page Up/Down navigate.
+  Filename dialogs accept ASCII; other names can be supplied in argv.
   Control shortcuts replace the unsupported function-key labels. In a mux,
   its prefix keeps its usual ownership; Home/End also work.
 - Raw input owns PASSTHROUGH; Ctrl+C is byte 3, not a signal. KEY_RESIZE rebuilds
