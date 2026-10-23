@@ -85,6 +85,7 @@ local function main()
     print("Raylib, Chocolate Doom, Chocolate Quake and EDuke32 also require --sdl2 PATH to its development prefix.")
     print("Lua 5.1 also requires --libuv PATH to its development prefix.")
     print("Caddy requires --go PATH to the pinned native Go cross-toolchain.")
+    print("Hexcurse also requires --ncursesw PATH to its development prefix.")
     print("Neovim also requires --lua51, --libuv, --utf8proc and --tree-sitter development prefixes.")
     return
   end
@@ -98,7 +99,7 @@ local function main()
       name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper",
     ["--raylib"] = name == "minesweeper", ["--libuv"] = name == "lua51" or name == "neovim",
     ["--lua51"] = name == "neovim", ["--utf8proc"] = name == "neovim",
-    ["--tree-sitter"] = name == "neovim" }
+    ["--tree-sitter"] = name == "neovim", ["--ncursesw"] = name == "hexcurse" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -221,6 +222,13 @@ local function main()
     require_file(libuv .. "/include/uv.h")
     require_file(libuv .. "/lib/libuv.a")
   end
+  local ncursesw
+  if name == "hexcurse" then
+    assert(options["--ncursesw"], "Hexcurse needs --ncursesw PATH to its development prefix")
+    ncursesw = make_path(capture({ "realpath", "-e", "--", options["--ncursesw"] }))
+    require_file(ncursesw .. "/include/curses.h")
+    require_file(ncursesw .. "/lib/libncursesw.a")
+  end
   local lua51, utf8proc, tree_sitter
   if name == "neovim" then
     for _, option in ipairs({ "--lua51", "--utf8proc", "--tree-sitter" }) do
@@ -299,7 +307,7 @@ local function main()
     recipe = recipe, source = source, build = build, stage = stage,
     metadata = metadata, run = run, go = go, mbedtls = mbedtls, zlib = zlib,
     libpng = libpng, fmt = fmt, sdl2 = sdl2, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
-    tree_sitter = tree_sitter, extra = extra_sources })
+    tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))
   end

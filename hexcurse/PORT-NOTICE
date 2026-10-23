@@ -1,0 +1,9 @@
+Hexcurse 1.60.0 source files and the upstream-derived Pyxis patch are
+GPL-2.0-or-later. Preserve upstream COPYING, AUTHORS and LICENSE.txt (the
+additional Library GPL text shipped in the release). The recipe, build files,
+configuration, manifest and documentation are original Pyxis MPL-2.0 material.
+
+The program statically links the Pyxis ncursesw profile, with the upstream
+ncurses COPYING and the native adapter's MPL-2.0 notice retained separately.
+The package includes the patched Hexcurse source and the port's build inputs;
+the matching SDK and ncursesw development package identify their sources.

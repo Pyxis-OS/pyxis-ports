@@ -10,6 +10,7 @@ return {
   fastfetch = "fastfetch",
   fmt = "fmt",
   fonts = "fonts",
+  hexcurse = "hexcurse",
   kilo = "kilo",
   jq = "jq",
   links = "links",

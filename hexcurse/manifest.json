@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "id": "org.pyxis.hexcurse",
+  "entry": "bin/hexcurse.pxe",
+  "commands": {"hexcurse": "bin/hexcurse.pxe"},
+  "resource_dirs": {},
+  "grants": [
+    {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
+    {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true}
+  ]
+}
