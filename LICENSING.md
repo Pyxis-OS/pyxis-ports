@@ -86,6 +86,11 @@ those recipes fetch, adapt or package.
   notices; the recipe stages those and all reached copyright notices with the
   upstream README and COPYING. Its original native profile/recipe/documentation
   remain MPL-2.0; see `wpa-supplicant/PORT-NOTICE`.
+- `caddy/patches/` retain the terms of the upstream files they adapt; new
+  platform files use their enclosing project licence. Caddy is Apache-2.0;
+  its bundle retains the Go BSD licence and complete notices for each compiled
+  dependency module, beside its pinned module/checksum inventory. Original
+  recipe, manifest and staging helper remain MPL-2.0.
 - Imported libraries, generated trust/zone data, staged headers, game assets and
   other downloaded inputs retain their individual upstream terms. Consult each
   recipe and staged license directory rather than treating a bundle as all MPL.

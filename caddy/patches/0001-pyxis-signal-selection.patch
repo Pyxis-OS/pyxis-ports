@@ -1,0 +1,26 @@
+diff --git a/sigtrap_nonposix.go b/sigtrap_nonposix.go
+index f80f593..10d9458 100644
+--- a/sigtrap_nonposix.go
++++ b/sigtrap_nonposix.go
+@@ -12,7 +12,7 @@
+ // See the License for the specific language governing permissions and
+ // limitations under the License.
+ 
+-//go:build windows || plan9 || nacl || js
++//go:build pyxis || windows || plan9 || nacl || js
+ 
+ package caddy
+ 
+diff --git a/sigtrap_posix.go b/sigtrap_posix.go
+index 018a811..f7fdee5 100644
+--- a/sigtrap_posix.go
++++ b/sigtrap_posix.go
+@@ -12,7 +12,7 @@
+ // See the License for the specific language governing permissions and
+ // limitations under the License.
+ 
+-//go:build !windows && !plan9 && !nacl && !js
++//go:build !pyxis && !windows && !plan9 && !nacl && !js
+ 
+ package caddy
+ 

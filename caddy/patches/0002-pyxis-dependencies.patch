@@ -1,0 +1,359 @@
+diff --git a/vendor/google.golang.org/grpc/clientconn_disconnect_reason_noplan9.go b/vendor/google.golang.org/grpc/clientconn_disconnect_reason_noplan9.go
+--- a/vendor/google.golang.org/grpc/clientconn_disconnect_reason_noplan9.go
++++ b/vendor/google.golang.org/grpc/clientconn_disconnect_reason_noplan9.go
+@@ -1,4 +1,4 @@
+-//go:build !plan9
++//go:build !plan9 && !pyxis
+ 
+ /*
+  *
+diff --git a/vendor/google.golang.org/grpc/clientconn_disconnect_reason_pyxis.go b/vendor/google.golang.org/grpc/clientconn_disconnect_reason_pyxis.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/google.golang.org/grpc/clientconn_disconnect_reason_pyxis.go
+@@ -0,0 +1,39 @@
++/*
++ *
++ * Copyright 2026 gRPC authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package grpc
++
++import (
++	"context"
++	"errors"
++	"os"
++)
++
++// disconnectErrorLabel returns the grpc.disconnect_error metric label for a
++// transport error, as specified by gRFC A94. syscall.Errno does not exist on
++// Pyxis uses native error values; only portable classifications are used.
++func disconnectErrorLabel(err error) string {
++	switch {
++	case errors.Is(err, context.Canceled):
++		return "subchannel shutdown"
++	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, os.ErrDeadlineExceeded):
++		return "connection timed out"
++	default:
++		return "unknown"
++	}
++}
+diff --git a/vendor/github.com/chzyer/readline/utils.go b/vendor/github.com/chzyer/readline/utils.go
+--- a/vendor/github.com/chzyer/readline/utils.go
++++ b/vendor/github.com/chzyer/readline/utils.go
+@@ -6,11 +6,9 @@
+ 	"container/list"
+ 	"fmt"
+ 	"os"
+-	"os/signal"
+ 	"strconv"
+ 	"strings"
+ 	"sync"
+-	"syscall"
+ 	"time"
+ 	"unicode"
+ )
+@@ -299,13 +297,3 @@
+ 	fmt.Fprintln(f, o...)
+ 	f.Close()
+ }
+-
+-func CaptureExitSignal(f func()) {
+-	cSignal := make(chan os.Signal, 1)
+-	signal.Notify(cSignal, os.Interrupt, syscall.SIGTERM)
+-	go func() {
+-		for range cSignal {
+-			f()
+-		}
+-	}()
+-}
+diff --git a/vendor/github.com/chzyer/readline/capture_exit_notpyxis.go b/vendor/github.com/chzyer/readline/capture_exit_notpyxis.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/chzyer/readline/capture_exit_notpyxis.go
+@@ -0,0 +1,19 @@
++//go:build !pyxis
++
++package readline
++
++import (
++	"os"
++	"os/signal"
++	"syscall"
++)
++
++func CaptureExitSignal(f func()) {
++	cSignal := make(chan os.Signal, 1)
++	signal.Notify(cSignal, os.Interrupt, syscall.SIGTERM)
++	go func() {
++		for range cSignal {
++			f()
++		}
++	}()
++}
+diff --git a/vendor/github.com/chzyer/readline/term_pyxis.go b/vendor/github.com/chzyer/readline/term_pyxis.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/chzyer/readline/term_pyxis.go
+@@ -0,0 +1,38 @@
++// Copyright 2026 PyxisOS contributors. All rights reserved.
++// Use of this source code is governed by the MIT license
++// that can be found in the LICENSE file.
++
++package readline
++
++import (
++	"io"
++	"os"
++	"os/signal"
++	"syscall"
++)
++
++// This dependency's interactive editor is outside the Caddy server profile.
++// Its caller selects plain input when DefaultIsTerminal is false.
++type State struct{}
++
++func IsTerminal(int) bool                  { return false }
++func DefaultIsTerminal() bool              { return false }
++func MakeRaw(int) (*State, error)          { return nil, syscall.ENOSYS }
++func GetState(int) (*State, error)         { return nil, syscall.ENOSYS }
++func restoreTerm(int, *State) error        { return syscall.ENOSYS }
++func ReadPassword(int) ([]byte, error)     { return nil, syscall.ENOSYS }
++func GetStdin() int                        { return int(os.Stdin.Fd()) }
++func GetScreenWidth() int                  { return -1 }
++func DefaultOnWidthChanged(func())         {}
++func ClearScreen(w io.Writer) (int, error) { return w.Write([]byte("\033[H")) }
++func SuspendMe()                           { panic("readline: process suspension is unsupported on Pyxis") }
++
++func CaptureExitSignal(f func()) {
++	ch := make(chan os.Signal, 1)
++	signal.Notify(ch, os.Interrupt)
++	go func() {
++		for range ch {
++			f()
++		}
++	}()
++}
+diff --git a/vendor/github.com/tailscale/tscert/internal/paths/paths_unix.go b/vendor/github.com/tailscale/tscert/internal/paths/paths_unix.go
+--- a/vendor/github.com/tailscale/tscert/internal/paths/paths_unix.go
++++ b/vendor/github.com/tailscale/tscert/internal/paths/paths_unix.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build !windows && !js
+-// +build !windows,!js
++//go:build !windows && !js && !pyxis
++// +build !windows,!js,!pyxis
+ 
+ package paths
+ 
+diff --git a/vendor/github.com/tailscale/tscert/internal/paths/paths_pyxis.go b/vendor/github.com/tailscale/tscert/internal/paths/paths_pyxis.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/tailscale/tscert/internal/paths/paths_pyxis.go
+@@ -0,0 +1,13 @@
++// Copyright (c) 2026 PyxisOS contributors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package paths
++
++import "errors"
++
++func ensureStateDirPerms(string) error {
++	return errors.New("tscert: Tailscale state is unsupported on Pyxis")
++}
++
++func LegacyStateFilePath() string { return "" }
+diff --git a/vendor/github.com/sirupsen/logrus/terminal_check_pyxis.go b/vendor/github.com/sirupsen/logrus/terminal_check_pyxis.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/sirupsen/logrus/terminal_check_pyxis.go
+@@ -0,0 +1,9 @@
++// Copyright 2026 PyxisOS contributors. All rights reserved.
++// Use of this source code is governed by the MIT license
++// that can be found in the LICENSE file.
++
++package logrus
++
++import "syscall"
++
++func isTerminal(fd int) bool { return syscall.TerminalIsTerminal(fd) }
+diff --git a/vendor/github.com/google/certificate-transparency-go/x509/root_pyxis.go b/vendor/github.com/google/certificate-transparency-go/x509/root_pyxis.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/github.com/google/certificate-transparency-go/x509/root_pyxis.go
+@@ -0,0 +1,15 @@
++// Copyright 2026 PyxisOS contributors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package x509
++
++import "errors"
++
++func loadSystemRoots() (*CertPool, error) {
++	return nil, errors.New("x509: CT platform roots are unsupported on Pyxis; supply explicit roots")
++}
++
++func (c *Certificate) systemVerify(opts *VerifyOptions) ([][]*Certificate, error) {
++	return nil, errors.New("x509: platform verifier is unsupported on Pyxis")
++}
+diff --git a/vendor/go.step.sm/crypto/kms/sshagentkms/sshagentkms.go b/vendor/go.step.sm/crypto/kms/sshagentkms/sshagentkms.go
+--- a/vendor/go.step.sm/crypto/kms/sshagentkms/sshagentkms.go
++++ b/vendor/go.step.sm/crypto/kms/sshagentkms/sshagentkms.go
+@@ -9,11 +9,9 @@
+ 	"crypto/ed25519"
+ 	"crypto/rsa"
+ 	"crypto/x509"
+-	"io"
+ 	"net"
+ 	"os"
+ 	"strings"
+-	"sync"
+ 
+ 	"golang.org/x/crypto/ssh"
+ 	"golang.org/x/crypto/ssh/agent"
+@@ -67,60 +65,6 @@
+ // Close closes the agent. This is a noop for the SSHAgentKMS.
+ func (k *SSHAgentKMS) Close() error {
+ 	return nil
+-}
+-
+-// WrappedSSHSigner is a utility type to wrap a ssh.Signer as a crypto.Signer
+-type WrappedSSHSigner struct {
+-	Signer        ssh.Signer
+-	m             sync.RWMutex
+-	lastSignature *ssh.Signature
+-}
+-
+-// LastSignature returns the ssh.Signature in the last sign operation if any.
+-func (s *WrappedSSHSigner) LastSignature() *ssh.Signature {
+-	s.m.RLock()
+-	defer s.m.RUnlock()
+-	return s.lastSignature
+-}
+-
+-// Public returns the agent public key. The type of this public key is
+-// *agent.Key.
+-func (s *WrappedSSHSigner) Public() crypto.PublicKey {
+-	return s.Signer.PublicKey()
+-}
+-
+-// Sign signs the given digest using the ssh agent and returns the signature.
+-// Note that because of the way an SSH agent and x509.CreateCertificate works,
+-// this signer can only properly sign X509 certificates if the key type is
+-// Ed25519.
+-func (s *WrappedSSHSigner) Sign(rand io.Reader, data []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+-	if signer, ok := s.Signer.(interface {
+-		SignWithOpts(io.Reader, []byte, crypto.SignerOpts) (*ssh.Signature, error)
+-	}); ok {
+-		sig, err := signer.SignWithOpts(rand, data, opts)
+-		if err != nil {
+-			return nil, err
+-		}
+-		s.m.Lock()
+-		s.lastSignature = sig
+-		s.m.Unlock()
+-		return sig.Blob, nil
+-	}
+-
+-	sig, err := s.Signer.Sign(rand, data)
+-	if err != nil {
+-		return nil, err
+-	}
+-	s.m.Lock()
+-	s.lastSignature = sig
+-	s.m.Unlock()
+-	return sig.Blob, nil
+-}
+-
+-// NewWrappedSignerFromSSHSigner returns a new crypto signer wrapping the given
+-// one.
+-func NewWrappedSignerFromSSHSigner(signer ssh.Signer) crypto.Signer {
+-	return &WrappedSSHSigner{Signer: signer}
+ }
+ 
+ func (k *SSHAgentKMS) findKey(signingKey string) (target int, err error) {
+diff --git a/vendor/go.step.sm/crypto/kms/sshagentkms/wrapped_signer.go b/vendor/go.step.sm/crypto/kms/sshagentkms/wrapped_signer.go
+new file mode 100644
+--- /dev/null
++++ b/vendor/go.step.sm/crypto/kms/sshagentkms/wrapped_signer.go
+@@ -0,0 +1,63 @@
++package sshagentkms
++
++import (
++	"crypto"
++	"io"
++	"sync"
++
++	"golang.org/x/crypto/ssh"
++)
++
++// WrappedSSHSigner is a utility type to wrap a ssh.Signer as a crypto.Signer
++type WrappedSSHSigner struct {
++	Signer        ssh.Signer
++	m             sync.RWMutex
++	lastSignature *ssh.Signature
++}
++
++// LastSignature returns the ssh.Signature in the last sign operation if any.
++func (s *WrappedSSHSigner) LastSignature() *ssh.Signature {
++	s.m.RLock()
++	defer s.m.RUnlock()
++	return s.lastSignature
++}
++
++// Public returns the agent public key. The type of this public key is
++// *agent.Key.
++func (s *WrappedSSHSigner) Public() crypto.PublicKey {
++	return s.Signer.PublicKey()
++}
++
++// Sign signs the given digest using the ssh agent and returns the signature.
++// Note that because of the way an SSH agent and x509.CreateCertificate works,
++// this signer can only properly sign X509 certificates if the key type is
++// Ed25519.
++func (s *WrappedSSHSigner) Sign(rand io.Reader, data []byte, opts crypto.SignerOpts) (signature []byte, err error) {
++	if signer, ok := s.Signer.(interface {
++		SignWithOpts(io.Reader, []byte, crypto.SignerOpts) (*ssh.Signature, error)
++	}); ok {
++		sig, err := signer.SignWithOpts(rand, data, opts)
++		if err != nil {
++			return nil, err
++		}
++		s.m.Lock()
++		s.lastSignature = sig
++		s.m.Unlock()
++		return sig.Blob, nil
++	}
++
++	sig, err := s.Signer.Sign(rand, data)
++	if err != nil {
++		return nil, err
++	}
++	s.m.Lock()
++	s.lastSignature = sig
++	s.m.Unlock()
++	return sig.Blob, nil
++}
++
++// NewWrappedSignerFromSSHSigner returns a new crypto signer wrapping the given
++// one.
++func NewWrappedSignerFromSSHSigner(signer ssh.Signer) crypto.Signer {
++	return &WrappedSSHSigner{Signer: signer}
++}

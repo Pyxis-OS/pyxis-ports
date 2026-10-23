@@ -1,0 +1,30 @@
+Caddy v2.11.7 is Apache-2.0. Its unchanged LICENSE is retained beside this file.
+The statically linked Go runtime is BSD-3-Clause, with its LICENSE and exact fork
+revision under ../go/. Linked module releases, upstream go.sum checksums and
+complete upstream licence/notice texts are in modules.txt and
+../dependencies/NOTICES.txt. Dependencies retain their individual terms.
+
+Original Pyxis recipe, manifest and staging helper are MPL-2.0. Changes to
+upstream files and the narrow platform files retain their upstream project terms.
+
+Local changes:
+- Select Caddy's existing non-POSIX signal path; os.Interrupt graceful shutdown
+  remains in the upstream common path. No Unix signals are invented.
+- Logrus uses native console detection. gRPC uses portable disconnect labels.
+- readline is a nonterminal/plain-input dependency profile: raw mode, password
+  capture and suspension are unsupported, and resize callbacks are not delivered.
+- Tailscale state permissions and certificate-transparency platform root loading
+  return explicit unsupported errors. Provided CT roots retain the pure-Go
+  verifier. Normal Go TLS uses the native pinned boot CA bundle.
+- Move Smallstep's unchanged pure SSH signer wrapper outside the SSH-agent
+  backend build constraint so its nosshagentkms exclusion compiles. The backend
+  remains registered as unsupported; no SSH agent is started or emulated.
+
+Build tags: nobbolt,nobadger,nomysql,nopgx,nosshagentkms. Local ACME server,
+optional database/key-store modules, Tailscale and arbitrary registered modules
+are not qualified merely because the stock module list includes them. The
+first profile is foreground explicit-address HTTP, reverse proxy and supplied
+certificate/key TLS, with admin, automatic HTTPS/ACME and HTTP/3 disabled by
+configuration. No HTTP/3 compile-out flag exists. Background start/reload,
+automatic trust installation, subprocess execution and persistent certificate
+management are outside this delivery.
