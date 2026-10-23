@@ -2,6 +2,11 @@ SDL 2.32.10 is copyright Sam Lantinga and its contributors, under the zlib
 license retained in LICENSE.txt. The exact commit and patches are recorded in
 share/sdl2/source.txt.
 
+The selected software-video sources include Adrien Descamps' yuv2rgb code
+under BSD-3-Clause. Its complete copyright, conditions and disclaimer are
+retained in yuv2rgb-LICENSE alongside this notice. Static consumers must
+retain that notice with SDL2's root licence and the Pyxis notices below.
+
 Pyxis builds upstream sources as a static library with eight patches:
 the dynamic API is off, the Pyxis video and audio drivers are registered, and the Steam
 virtual gamepad file is not read because Pyxis stat has no modification time,

@@ -5,7 +5,7 @@ return {
     commit = "5d249570393f7a37e037abf22cd6012a4cc56a71",
   },
   version = "2.32.10",
-  license = "Zlib",
+  license = "Zlib AND BSD-3-Clause AND MPL-2.0",
   dependencies = {
     host = { "make", "install" },
     pyxis = { "libc", "libpyxis" },
@@ -42,6 +42,8 @@ return {
     configuration = "dev/include/SDL2/SDL_config.h",
     package = "dev/lib/cmake/SDL2/SDL2Config.cmake",
     license = "dev/share/licenses/sdl2/LICENSE.txt",
+    yuv_license = "dev/share/licenses/sdl2/yuv2rgb-LICENSE",
+    runtime_yuv_license = "share/licenses/sdl2/yuv2rgb-LICENSE",
     notice = "dev/share/licenses/sdl2/PORT-NOTICE",
     provenance = "dev/share/sdl2/source.txt",
   },

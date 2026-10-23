@@ -12,6 +12,10 @@ return function(ctx)
   end
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE.txt",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
+  for _, name in ipairs({ "yuv_license", "runtime_yuv_license" }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/src/video/yuv2rgb/LICENSE",
+      ctx.stage .. "/" .. ctx.metadata.outputs[name] })
+  end
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/PORT-NOTICE",
     ctx.stage .. "/" .. ctx.metadata.outputs.notice })
 
