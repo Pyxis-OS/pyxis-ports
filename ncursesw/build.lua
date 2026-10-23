@@ -7,9 +7,10 @@ return function(ctx)
     ctx.run({ "install", "-D", "-m", "644", source, ctx.stage .. "/" .. target })
   end
   install(ctx.build .. "/lib/libncursesw.a", ctx.metadata.outputs.library)
-  for _, name in ipairs({ "curses.h", "ncurses.h", "term.h", "termcap.h", "unctrl.h", "ncurses_dll.h" }) do
+  for _, name in ipairs({ "curses.h", "term.h", "termcap.h", "unctrl.h", "ncurses_dll.h" }) do
     install(ctx.build .. "/include/" .. name, "dev/include/" .. name)
   end
+  install(ctx.build .. "/include/curses.h", ctx.metadata.outputs.header_alias)
   install(ctx.recipe .. "/ncursesw.pc", ctx.metadata.outputs.pc)
   install(ctx.recipe .. "/ncurses.pc", ctx.metadata.outputs.pc_alias)
   install(ctx.recipe .. "/pyxis.ti", ctx.metadata.outputs.terminfo_source)
