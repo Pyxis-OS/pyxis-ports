@@ -172,6 +172,35 @@
  
  	    _nc_signal_handler(TRUE);
  	    result = SP_PARM;
+--- a/ncurses/base/resizeterm.c
++++ b/ncurses/base/resizeterm.c
+@@ -482,7 +482,7 @@
+ 	SP_PARM->_sig_winch = FALSE;
+ 
+ 	if (NCURSES_SP_NAME(is_term_resized) (NCURSES_SP_ARGx ToLines, ToCols)) {
+-#if USE_SIGWINCH
++#if USE_SIGWINCH || defined(__pyxis__)
+ 	    ripoff_t *rop;
+ 	    bool slk_visible = (SP_PARM != NULL
+ 				&& SP_PARM->_slk != NULL
+@@ -494,7 +494,7 @@
+ #endif
+ 	    result = NCURSES_SP_NAME(resize_term) (NCURSES_SP_ARGx ToLines, ToCols);
+ 
+-#if USE_SIGWINCH
++#if USE_SIGWINCH || defined(__pyxis__)
+ 	    clearok(CurScreen(SP_PARM), TRUE);	/* screen contents are unknown */
+ 
+ 	    /* ripped-off lines are a special case: if we did not lengthen
+@@ -524,7 +524,7 @@
+ 	    }
+ #endif
+ 	}
+-#if USE_SIGWINCH
++#if USE_SIGWINCH || defined(__pyxis__)
+ 	safe_ungetch(SP_PARM, KEY_RESIZE);	/* so application can know this */
+ #endif
+     }
 --- a/ncurses/build.priv.h
 +++ b/ncurses/build.priv.h
 @@ -51,6 +51,9 @@
@@ -512,7 +541,7 @@
      } else {
 --- /dev/null
 +++ b/ncurses/tinfo/pyxis_driver.c
-@@ -0,0 +1,320 @@
+@@ -0,0 +1,329 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#ifdef __pyxis__
 +#include <pyxis/descriptor.h>
@@ -650,12 +679,21 @@
 +int
 +_nc_pyxis_resize_pending(SCREEN *sp)
 +{
-+  struct console_size_reply size;
 +  struct native_terminal *state = native_state(TCBOf(sp));
-+  if (state == NULL || pyxis_terminal_get_size(sp->_ofd, &size) != 0)
++  if (state == NULL)
 +    return FALSE;
-+  if (state->generation != size.generation)
-+    sp->_sig_winch = TRUE;
++  if (!sp->_sig_winch) {
++    uint64_t events = 0;
++    enum call_status status = pyxis_terminal_wait(sp->_ofd, WAIT_RESIZED,
++        state->generation, 0, &events);
++    if (status != CALL_OK || (events & (WAIT_CLOSED | WAIT_ERROR))) {
++      state->output_error = status == CALL_OK ? EIO : native_errno(status);
++      errno = state->output_error;
++      return FALSE;
++    }
++    if (events & WAIT_RESIZED)
++      sp->_sig_winch = TRUE;
++  }
 +  return sp->_sig_winch;
 +}
 +
@@ -882,7 +920,33 @@
      TCB->magic = TCBMAGIC;
  
  #if (NCURSES_USE_DATABASE || NCURSES_USE_TERMCAP)
-@@ -418,6 +435,9 @@
+@@ -183,7 +200,7 @@
+ 
+ 	if (fallback) {
+ 	    T(("found fallback entry"));
+-	    TerminalType(termp) = *fallback;
++	    _nc_copy_termtype2(&TerminalType(termp), fallback);
+ 	    status = TGETENT_YES;
+ 	}
+     }
+@@ -324,7 +341,7 @@
+     AssertTCB();
+     SetSP();
+ 
+-    if (sp != NULL && orig_pair && orig_colors && (initialize_pair != NULL)) {
++    if (sp != NULL && (orig_pair || orig_colors) && initialize_pair == NULL) {
+ #if NCURSES_EXT_FUNCS
+ 	sp->_default_color = isDefaultColor(fg) || isDefaultColor(bg);
+ 	sp->_has_sgr_39_49 = (NCURSES_SP_NAME(tigetflag) (NCURSES_SP_ARGx
+@@ -335,6 +352,7 @@
+ 	if (sp->_color_pairs != NULL) {
+ 	    bool save = sp->_default_color;
+ 	    sp->_default_color = TRUE;
++	    sp->_assumed_color = TRUE;
+ 	    NCURSES_SP_NAME(init_pair) (NCURSES_SP_ARGx
+ 					0,
+ 					(short)fg,
+@@ -418,6 +436,9 @@
  static int
  drv_size(TERMINAL_CONTROL_BLOCK * TCB, int *linep, int *colp)
  {
@@ -892,7 +956,7 @@
      SCREEN *sp;
      bool useEnv = TRUE;
      bool useTioctl = TRUE;
-@@ -541,6 +561,7 @@
+@@ -541,6 +562,7 @@
  
      T(("screen size is %dx%d", *linep, *colp));
      return OK;
@@ -900,7 +964,7 @@
  }
  
  static int
-@@ -565,6 +586,9 @@
+@@ -565,6 +587,9 @@
  static int
  drv_sgmode(TERMINAL_CONTROL_BLOCK * TCB, int setFlag, TTY * buf)
  {
@@ -910,7 +974,7 @@
      SCREEN *sp = TCB->csp;
      TERMINAL *_term = (TERMINAL *) TCB;
      int result = OK;
-@@ -594,6 +618,7 @@
+@@ -594,6 +619,7 @@
  	}
      }
      return result;
@@ -918,7 +982,7 @@
  }
  
  static int
-@@ -618,8 +643,8 @@
+@@ -618,8 +644,8 @@
  	    if ((drv_sgmode(TCB, FALSE, &(_term->Nttyb)) == OK)) {
  #ifdef TERMIOS
  		_term->Nttyb.c_oflag &= (unsigned) ~OFLAGS_TABS;
@@ -929,7 +993,7 @@
  #else
  		_term->Nttyb.sg_flags &= (unsigned) ~XTABS;
  #endif
-@@ -649,8 +674,8 @@
+@@ -649,8 +675,8 @@
  #ifdef TERMIOS
  		if (_term->Ottyb.c_oflag & OFLAGS_TABS)
  		    tab = back_tab = NULL;
@@ -940,7 +1004,7 @@
  #else
  		if (_term->Ottyb.sg_flags & XTABS)
  		    tab = back_tab = NULL;
-@@ -670,6 +695,10 @@
+@@ -670,6 +696,10 @@
  #endif
  	}
      }
@@ -951,7 +1015,7 @@
      returnCode(code);
  }
  
-@@ -686,6 +715,9 @@
+@@ -686,6 +716,9 @@
  static void
  drv_release(TERMINAL_CONTROL_BLOCK * TCB GCC_UNUSED)
  {
@@ -961,7 +1025,7 @@
  }
  
  #  define SGR0_TEST(mode) (mode != NULL) && (exit_attribute_mode == NULL || strcmp(mode, exit_attribute_mode))
-@@ -1299,11 +1331,13 @@
+@@ -1299,11 +1332,13 @@
      n = _nc_console_read(sp,
  			 _nc_console_handle(sp->_ifd),
  			 buf);
@@ -976,7 +1040,7 @@
      *buf = (int) c2;
  #endif
      return n;
-@@ -1312,6 +1346,10 @@
+@@ -1312,6 +1347,10 @@
  static int
  drv_nap(TERMINAL_CONTROL_BLOCK * TCB GCC_UNUSED, int ms)
  {
@@ -987,7 +1051,7 @@
  #if HAVE_NANOSLEEP
      {
  	struct timespec request, remaining;
-@@ -1328,6 +1366,7 @@
+@@ -1328,6 +1367,7 @@
      _nc_timed_wait(NULL, 0, ms, (int *) 0 EVENTLIST_2nd(NULL));
  #endif
      return OK;
