@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: vorbisenc
+Description: Xiph vorbisenc static library
+Version: 1.3.7
+Requires: vorbis
+Libs: -L${libdir} -lvorbisenc
+Cflags: -I${includedir}

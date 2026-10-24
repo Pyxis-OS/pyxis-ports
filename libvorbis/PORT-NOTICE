@@ -1,0 +1,7 @@
+Original Pyxis build recipes, configuration, metadata and documentation are
+MPL-2.0, with source copies under share/libvorbis/pyxis and the full MPL and
+repository licensing notice under share/licenses/libvorbis.
+
+Upstream Xiph libvorbis remains under its BSD-style license, reproduced in
+COPYING, with author credits in AUTHORS. Selected profile: static Vorbis codec, encoder and FILE/callback decoder.
+Excluded: shared libraries, examples and tests.

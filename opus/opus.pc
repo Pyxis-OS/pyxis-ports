@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: opus
+Description: Xiph opus static library
+Version: 1.6.1
+Libs: -L${libdir} -lopus
+Cflags: -I${includedir} -Isdk://include/opus

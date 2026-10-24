@@ -1,0 +1,7 @@
+Original Pyxis build recipes, configuration, metadata and documentation are
+MPL-2.0, with source copies under share/libogg/pyxis and the full MPL and
+repository licensing notice under share/licenses/libogg.
+
+Upstream Xiph libogg remains under its BSD-style license, reproduced in
+COPYING, with author credits in AUTHORS. Selected profile: static Ogg framing and bit packing, native fixed-width types.
+Excluded: shared libraries, programs and tests.

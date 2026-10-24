@@ -1,0 +1,37 @@
+return {
+  source = {
+    url = "https://downloads.xiph.org/releases/ogg/libogg-1.3.6.tar.xz",
+    archive = {
+      url = "https://downloads.xiph.org/releases/ogg/libogg-1.3.6.tar.xz",
+      mirror = "https://repo.internal/repository/raw-xiph/releases/ogg/libogg-1.3.6.tar.xz",
+      sha256 = "5c8253428e181840cd20d41f3ca16557a9cc04bad4a3d04cce84808677fa1061",
+    },
+  },
+  version = "1.3.6",
+  license = "BSD-3-Clause",
+  dependencies = {
+    host = { "make", "curl", "sha256sum", "tar", "install", "xz" },
+    pyxis = { "libc" },
+  },
+  patches = {},
+  outputs = {
+    license = "dev/share/licenses/libogg/COPYING",
+    authors = "dev/share/licenses/libogg/AUTHORS",
+    provenance = "dev/share/libogg/source.txt",
+    notice = "dev/share/licenses/libogg/PORT-NOTICE",
+    pyxis_license = "dev/share/licenses/libogg/MPL-2.0",
+    licensing = "dev/share/licenses/libogg/LICENSING.md",
+    library_ogg = "dev/lib/libogg.a",
+    pc_ogg = "dev/lib/pkgconfig/ogg.pc",
+    header_1 = "dev/include/ogg/ogg.h",
+    header_2 = "dev/include/ogg/os_types.h",
+    header_3 = "dev/include/ogg/config_types.h",
+    pyxis_1 = "dev/share/libogg/pyxis/Makefile",
+    pyxis_2 = "dev/share/libogg/pyxis/build.lua",
+    pyxis_3 = "dev/share/libogg/pyxis/metadata.lua",
+    pyxis_4 = "dev/share/libogg/pyxis/README.md",
+    pyxis_5 = "dev/share/libogg/pyxis/PORT-NOTICE",
+    pyxis_6 = "dev/share/libogg/pyxis/ogg.pc",
+    pyxis_7 = "dev/share/libogg/pyxis/config_types.h",
+  },
+}
