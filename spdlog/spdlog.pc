@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: spdlog
+Description: Threaded logging with bundled fmt 12.0.0
+Version: 1.16.0
+Requires: libcxx
+Libs: -L${libdir} -lspdlog
+Cflags: -I${includedir} -DSPDLOG_COMPILED_LIB

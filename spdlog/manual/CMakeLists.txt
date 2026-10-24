@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.15)
+project(spdlog_manual LANGUAGES CXX)
+find_package(spdlog 1.16 CONFIG REQUIRED)
+add_executable(spdlog-manual main.cpp)
+target_compile_features(spdlog-manual PRIVATE cxx_std_23)
+target_link_libraries(spdlog-manual PRIVATE spdlog::spdlog)

@@ -35,6 +35,7 @@ return {
   raylib = "raylib",
   sbase = "sbase",
   sdl2 = "sdl2",
+  spdlog = "spdlog",
   stb = "stb",
   ["thread-pool"] = "thread-pool",
   tinyxml2 = "tinyxml2",

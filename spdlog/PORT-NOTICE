@@ -1,0 +1,9 @@
+spdlog 1.16.0 is Copyright (c) 2016 Gabi Melman and contributors, under MIT.
+Its bundled fmt 12.0.0 is Copyright (c) 2012-present Victor Zverovich,
+also under MIT. LICENSE and fmt-LICENSE retain their complete notices.
+
+Pyxis patches retain the upstream MIT terms of the files they modify.
+Original recipe, configuration and documentation are Mozilla Public License
+2.0 material; see MPL-2.0 and LICENSING.md. The matching Pyxis recipe and patch
+sources are installed under share/sources/spdlog. source.txt records the exact
+upstream commit, archive checksum, patches and selected profile.
