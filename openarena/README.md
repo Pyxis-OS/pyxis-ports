@@ -52,4 +52,5 @@ The same pack contains `demos/demo088-test1.dm_71`, a protocol-71 recording.
 `flyby_oa_dm3.dm_70`, `flyby_suspended.dm_70`, `stress_bases3.dm_70`,
 `stress_q3dm6ishv2.dm_70`, `stress_sago.dm_70` and `stress_schism.dm_70`.
 Some reference removed maps; these are an inventory, not a playback claim.
-`demo088-test1.dm_71` is the first candidate for manual playback qualification.
+`demo088-test1.dm_71` plays through ioquake3's protocol-71 demo reader in
+QEMU; the parent experiment record carries fixed-canvas timings.
