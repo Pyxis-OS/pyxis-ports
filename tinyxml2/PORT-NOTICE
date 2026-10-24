@@ -1,0 +1,11 @@
+Tinyxml2 10.0.0 is unchanged upstream source under the zlib license in
+LICENSE.txt. The recipe builds its static C++ library with standard FILE APIs.
+
+Upstream SaveFile ignores output and fclose failures. XML_SUCCESS does not
+establish complete output or storage durability; this package adds no new
+error-reporting API. Caller-owned FILE streams permit independent ferror,
+fflush and fclose checks. Path-based SaveFile hides its stream.
+
+Original Pyxis recipe, build files and documentation use MPL-2.0. Their complete
+source is installed under share/tinyxml2/pyxis, with the license alongside this
+notice. Upstream code and notices retain their own terms.

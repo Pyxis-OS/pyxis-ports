@@ -1,0 +1,14 @@
+include $(SDK)/share/pyxis.mk
+
+CMAKE_PYXIS_CXXFLAGS := $(filter-out -MMD -MP,$(PYXIS_CXXFLAGS))
+
+.PHONY: all
+all:
+	cmake -S $(SOURCE) -B $(BUILD) -G "Unix Makefiles" \
+	  -DCMAKE_TOOLCHAIN_FILE=$(PYXIS_SDK)/share/pyxis.cmake \
+	  -DPYXIS_CROSS_COMPILE=$(CROSS_COMPILE) \
+	  -DCMAKE_CXX_FLAGS="$(CMAKE_PYXIS_CXXFLAGS)" \
+	  -Dtinyxml2_SHARED_LIBS=OFF -Dtinyxml2_BUILD_TESTING=OFF \
+	  -DBUILD_TESTING=OFF -DCMAKE_INSTALL_LIBDIR=lib \
+	  -DCMAKE_INSTALL_INCLUDEDIR=include
+	$(MAKE) -C $(BUILD)

@@ -1,5 +1,6 @@
 return {
   blurgtext = "blurgtext",
+  tinyxml2 = "tinyxml2",
   ["ca-certificates"] = "ca-certificates",
   busybox = "busybox",
   caddy = "caddy",
