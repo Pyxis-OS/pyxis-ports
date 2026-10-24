@@ -11,10 +11,12 @@ engine or stage the ZIP's foreign engines, shared libraries or `missionpack`.
 Build inputs come from the pinned internal archive cache. The package needs
 the separate Pyxis ioquake3 bundle.
 
-Public binary package publication still requires a corresponding-source
-distribution arrangement. The runtime ZIP is insufficient: exported assets
-need their preferred source forms and QVMs need their matching C sources and
-build material. See `PORT-NOTICE` for the reviewed licences and source gap.
+Preferred asset forms and matching game C/build inputs are staged separately
+under `public-sources/openarena/0.8.8`, with a checksum inventory and recipient
+build instructions in `SOURCES.txt`. The parent publishes these alongside the
+binary package, without installing them. All 33 pinned Debian inputs and the
+local 0.8.5 reconstruction patch are verified before publication. See
+`PORT-NOTICE` for the reviewed licences.
 
 ## Inventory checked on 2026-10-24
 

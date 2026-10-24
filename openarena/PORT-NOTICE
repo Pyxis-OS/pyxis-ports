@@ -19,8 +19,9 @@ COPYING contains the GNU General Public License version 2.
 
 The PK3s contain compiled QVM game modules as well as exported models, maps,
 textures, music, sounds and recorded demos. Calling this a data package does
-not remove corresponding-source obligations. Their corresponding sources are supplied as separate public downloads next
-to the binary package, not installed game files. See SOURCES.txt and
+not remove corresponding-source obligations. Their corresponding sources are
+supplied as separate public downloads next to the binary package, not installed
+game files. See SOURCES.txt and
 source-downloads.sha256 for the location, exact filenames and SHA-256 pins.
 The eight Debian asset source snapshots preserve the supplied editable forms
 and exported payloads; separate matching-version game C sources cover the
