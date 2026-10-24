@@ -1,0 +1,8 @@
+prefix=sdk://
+includedir=sdk://include
+
+Name: stb
+Description: stb_image header with a consumer-owned implementation
+Version: 2.29
+Requires: pyxis
+Cflags: -I${includedir}

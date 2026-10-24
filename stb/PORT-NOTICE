@@ -1,0 +1,16 @@
+stb_image 2.29 is unchanged from the pinned stb snapshot, under MIT OR
+Unlicense. LICENSE and the complete embedded header notice retain
+Copyright (c) 2017 Sean Barrett and both license alternatives.
+
+The package supplies stb_image.h without an implementation archive. Each
+consumer owns exactly one STB_IMAGE_IMPLEMENTATION translation unit. Linking
+another global implementation alongside an existing one can duplicate symbols;
+STB_IMAGE_STATIC is not used to hide that ownership problem. Libultraship can
+retain its existing single implementation owner while using this header.
+
+No stdio, image-format, HDR, linear conversion, allocator, TLS or SIMD feature
+macros are imposed. No image data or private assets are included.
+
+Original Pyxis recipe and documentation use MPL-2.0. Their complete source is
+installed under share/stb/pyxis, with the license alongside this notice.
+Upstream code and notices retain their own terms.
