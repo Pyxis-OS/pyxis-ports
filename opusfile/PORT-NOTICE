@@ -1,0 +1,10 @@
+Original Pyxis build recipes, configuration, metadata and documentation are
+MPL-2.0, with source copies under share/opusfile/pyxis and the full MPL and
+repository licensing notice under share/licenses/opusfile.
+
+Upstream Xiph opusfile remains under its BSD-style license, reproduced in
+COPYING, with author credits in AUTHORS. Selected profile: static FILE/memory/callback Ogg Opus decoder, OP_HAVE_LRINTF.
+The patch under share/opusfile/patches modifies upstream files and retains
+their BSD-3-Clause terms. It marks op_freopen unavailable on Pyxis and omits
+only that definition; every other FILE/memory/callback API is preserved.
+Excluded: op_freopen, opusurl, HTTP/TLS, shared libraries, examples and tests.

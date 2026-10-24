@@ -1,0 +1,35 @@
+return {
+  source = {
+    url = "https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz",
+    archive = {
+      url = "https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz",
+      mirror = "https://repo.internal/repository/raw-xiph/releases/opus/opusfile-0.12.tar.gz",
+      sha256 = "118d8601c12dd6a44f52423e68ca9083cc9f2bfe72da7a8c1acb22a80ae3550b",
+    },
+  },
+  version = "0.12",
+  license = "BSD-3-Clause",
+  dependencies = {
+    host = { "make", "curl", "sha256sum", "tar", "install", "gzip" },
+    pyxis = { "libc" },
+  },
+  patches = { "patches/0001-pyxis-unavailable-freopen.patch" },
+  outputs = {
+    license = "dev/share/licenses/opusfile/COPYING",
+    authors = "dev/share/licenses/opusfile/AUTHORS",
+    provenance = "dev/share/opusfile/source.txt",
+    patch = "dev/share/opusfile/patches/0001-pyxis-unavailable-freopen.patch",
+    notice = "dev/share/licenses/opusfile/PORT-NOTICE",
+    pyxis_license = "dev/share/licenses/opusfile/MPL-2.0",
+    licensing = "dev/share/licenses/opusfile/LICENSING.md",
+    library_opusfile = "dev/lib/libopusfile.a",
+    pc_opusfile = "dev/lib/pkgconfig/opusfile.pc",
+    header_1 = "dev/include/opus/opusfile.h",
+    pyxis_1 = "dev/share/opusfile/pyxis/Makefile",
+    pyxis_2 = "dev/share/opusfile/pyxis/build.lua",
+    pyxis_3 = "dev/share/opusfile/pyxis/metadata.lua",
+    pyxis_4 = "dev/share/opusfile/pyxis/README.md",
+    pyxis_5 = "dev/share/opusfile/pyxis/PORT-NOTICE",
+    pyxis_6 = "dev/share/opusfile/pyxis/opusfile.pc",
+  },
+}

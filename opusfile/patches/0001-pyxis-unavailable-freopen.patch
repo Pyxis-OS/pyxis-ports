@@ -1,0 +1,32 @@
+diff --git a/include/opusfile.h b/include/opusfile.h
+--- a/include/opusfile.h
++++ b/include/opusfile.h
+@@ -969,6 +969,9 @@
+                         or op_freopen().
+    \return A stream handle to use with the callbacks, or <code>NULL</code> on
+             error.*/
++#if defined(__pyxis__)
++__attribute__((unavailable("op_freopen is unavailable on Pyxis")))
++#endif
+ OP_WARN_UNUSED_RESULT void *op_freopen(OpusFileCallbacks *_cb,
+  const char *_path,const char *_mode,void *_stream) OP_ARG_NONNULL(1)
+  OP_ARG_NONNULL(2) OP_ARG_NONNULL(3) OP_ARG_NONNULL(4);
+diff --git a/src/stream.c b/src/stream.c
+--- a/src/stream.c
++++ b/src/stream.c
+@@ -309,6 +309,7 @@
+   return fp;
+ }
+ 
++#if !defined(__pyxis__)
+ void *op_freopen(OpusFileCallbacks *_cb,const char *_path,const char *_mode,
+  void *_stream){
+   FILE *fp;
+@@ -331,6 +332,7 @@
+   if(fp!=NULL)*_cb=*op_get_file_callbacks(fp);
+   return fp;
+ }
++#endif
+ 
+ static int op_mem_read(void *_stream,unsigned char *_ptr,int _buf_size){
+   OpusMemStream *stream;

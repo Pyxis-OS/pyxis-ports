@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: opusfile
+Description: Xiph opusfile static library
+Version: 0.12
+Requires: ogg opus
+Libs: -L${libdir} -lopusfile
+Cflags: -I${includedir} -Isdk://include/opus
