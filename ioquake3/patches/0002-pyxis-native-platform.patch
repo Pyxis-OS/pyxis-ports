@@ -1,0 +1,132 @@
+diff --git a/code/qcommon/files.c b/code/qcommon/files.c
+index b3b9f1e..c3bf2f9 100644
+--- a/code/qcommon/files.c
++++ b/code/qcommon/files.c
+@@ -477,7 +477,14 @@ static void FS_ReplaceSeparators( char *path ) {
+ 	char	*s;
+ 	qboolean lastCharWasSep = qfalse;
+ 
+-	for ( s = path ; *s ; s++ ) {
++#ifdef __pyxis__
++	// Preserve the native scheme root; normalize only the path after it.
++	s = strstr(path, "://");
++	s = s ? s + 3 : path;
++#else
++	s = path;
++#endif
++	for ( ; *s ; s++ ) {
+ 		if ( *s == '/' || *s == '\\' ) {
+ 			if ( !lastCharWasSep ) {
+ 				*s = PATH_SEP;
+@@ -557,9 +564,16 @@ qboolean FS_CreatePath (const char *OSPath) {
+ 	FS_ReplaceSeparators( path );
+ 
+ 	// Skip creation of the root directory as it will always be there
+-	ofs = strchr( path, PATH_SEP );
+-	if ( ofs != NULL ) {
+-		ofs++;
++#ifdef __pyxis__
++	ofs = strstr(path, "://");
++	if (ofs != NULL)
++		ofs += 3;
++	else
++#endif
++	{
++		ofs = strchr( path, PATH_SEP );
++		if ( ofs != NULL )
++			ofs++;
+ 	}
+ 
+ 	for (; ofs != NULL && *ofs ; ofs++) {
+diff --git a/code/sys/sys_main.c b/code/sys/sys_main.c
+index e3b63cb..65925df 100644
+--- a/code/sys/sys_main.c
++++ b/code/sys/sys_main.c
+@@ -20,7 +20,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ ===========================================================================
+ */
+ 
++#ifndef __pyxis__
+ #include <signal.h>
++#endif
+ #include <stdlib.h>
+ #include <limits.h>
+ #include <sys/types.h>
+@@ -168,6 +170,7 @@ char *Sys_GetClipboardData(void)
+ #endif
+ }
+ 
++#ifndef __pyxis__
+ #ifdef DEDICATED
+ #	define PID_FILENAME PRODUCT_NAME "_server.pid"
+ #else
+@@ -277,6 +280,12 @@ void Sys_InitPIDFile( const char *gamedir ) {
+ 	}
+ }
+ 
++#else
++/* Pyxis has no POSIX process IDs. Do not create misleading PID files. */
++void Sys_RemovePIDFile(const char *gamedir) { (void)gamedir; }
++void Sys_InitPIDFile(const char *gamedir) { (void)gamedir; }
++#endif
++
+ /*
+ =================
+ Sys_OpenFolderInFileManager
+@@ -496,7 +505,14 @@ int Sys_FileTime( char *path )
+ 	if (stat (path,&buf) == -1)
+ 		return -1;
+ 
++#ifdef __pyxis__
++	if (!(buf.st_valid & STAT_MTIME_VALID) ||
++		buf.st_mtim.tv_sec < INT_MIN || buf.st_mtim.tv_sec > INT_MAX)
++		return -1;
++	return (int)buf.st_mtim.tv_sec;
++#else
+ 	return buf.st_mtime;
++#endif
+ }
+ 
+ /*
+@@ -737,7 +753,9 @@ char *Sys_ParseProtocolUri( const char *uri )
+ #endif
+ 
+ #ifndef DEFAULT_BASEDIR
+-#	if defined(DEFAULT_RELATIVE_BASEDIR)
++#	if defined(__pyxis__)
++#		define DEFAULT_BASEDIR "data://"
++#	elif defined(DEFAULT_RELATIVE_BASEDIR)
+ #		define DEFAULT_BASEDIR Sys_BinaryPathRelative(DEFAULT_RELATIVE_BASEDIR)
+ #	elif defined(__APPLE__)
+ #		define DEFAULT_BASEDIR Sys_StripAppBundle(Sys_BinaryPath())
+@@ -751,6 +769,7 @@ char *Sys_ParseProtocolUri( const char *uri )
+ Sys_SigHandler
+ =================
+ */
++#ifndef __pyxis__
+ void Sys_SigHandler( int signal )
+ {
+ 	static qboolean signalcaught = qfalse;
+@@ -777,6 +796,8 @@ void Sys_SigHandler( int signal )
+ 		Sys_Exit( 2 );
+ }
+ 
++#endif
++
+ /*
+ =================
+ main
+@@ -881,11 +902,13 @@ int main( int argc, char **argv )
+ 	Com_Init( commandLine );
+ 	NET_Init( );
+ 
++#ifndef __pyxis__
+ 	signal( SIGILL, Sys_SigHandler );
+ 	signal( SIGFPE, Sys_SigHandler );
+ 	signal( SIGSEGV, Sys_SigHandler );
+ 	signal( SIGTERM, Sys_SigHandler );
+ 	signal( SIGINT, Sys_SigHandler );
++#endif
+ 
+ #ifdef __EMSCRIPTEN__
+ 	emscripten_set_main_loop( Com_Frame, 0, 1 );
