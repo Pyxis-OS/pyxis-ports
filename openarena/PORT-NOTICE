@@ -1,0 +1,69 @@
+OpenArena 0.8.8 base-game data for Pyxis
+Upstream: https://openarena.ws/
+Archive: https://download.tuxfamily.org/openarena/rel/088/openarena-0.8.8.zip
+SHA-256: 5a8faf7f5b51f351b0a1618c06b6b98a5f1a6758f1d39818de2c87df2a0bac4a
+
+This recipe copies the nine baseoa PK3 archives unchanged. It includes the
+upstream COPYING, CREDITS, README and both release readmes. Additional credits
+and licences remain inside the PK3s. No foreign operating system engine,
+library, executable or missionpack is staged separately.
+
+The assets are copyrighted by the OpenArena Team, id Software and the many
+individual contributors named in the included credits and per-asset notices.
+Debian's corresponding split-package copyright reviews classify most assets
+as GPL version 2 or later. The merman model in pak2-players and the oa_thor map
+in pak6-patch088 carry GPL version 2 only notices. The included pul1duel map
+notice also specifies GPLv2. Preserve these notices and use GPL version 2 for
+the aggregate; this recipe does not grant later-version rights to those files.
+COPYING contains the GNU General Public License version 2.
+
+The PK3s contain compiled QVM game modules as well as exported models, maps,
+textures, music, sounds and recorded demos. Calling this a data package does
+not remove corresponding-source obligations. Before publishing a binary
+package, arrange distribution of its corresponding source under GPL version
+2 section 3. The runtime ZIP alone is not a complete corresponding-source
+distribution. Debian's README.source describes asset source snapshots from
+upstream SVN revisions 901, 931 and 947; the QVMs also require their matching
+game C sources and build material. No complete corresponding-source archive
+or public source-distribution arrangement has been verified by this recipe.
+
+Licence and inventory review references (checked 2026-10-24):
+https://sources.debian.org/src/openarena-data/0.8.5split-17/debian/copyright/
+https://sources.debian.org/src/openarena-data/0.8.5split-17/debian/README.source/
+https://sources.debian.org/src/openarena-players/0.8.5split-17/debian/copyright/
+https://sources.debian.org/src/openarena-088-data/0.8.8-17/debian/copyright/
+https://sources.debian.org/src/openarena/0.8.8%2Bdfsg-13/debian/copyright/
+
+All nine upstream PK3 directory inventories (5,433 entries including
+directories) match Debian's openarena-data 0.8.5split-17 debian/*.pk3.contents
+by filename, case, CRC-32 and order. This supports the identity of the reviewed
+runtime assets; it does not establish that the runtime ZIP contains sources.
+
+The game modules' C runtime replacement code (code/game/bg_lib.c) carries
+the following notice, retained here for the precompiled QVMs:
+
+Copyright (c) 1992, 1993
+The Regents of the University of California. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the University nor the names of its contributors may
+   be used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGE.
