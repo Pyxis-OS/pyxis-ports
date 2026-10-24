@@ -4,7 +4,10 @@ skeletons retain GPL-3.0-or-later notices plus the Bison exception allowing
 larger works to be distributed under their own terms (Mesa is not a parser
 generator). Both the notice and exception are retained verbatim in NOTICES.
 The OSMesa context/render frontend/header is restored from Mesa 25.0.7.
-OSMesaPostprocess and its removed filter stack are not included.
+OSMesaPostprocess and its removed filter stack are not included. The local
+OSMESA_DOUBLEBUFFER attribute and OSMesaSwapBuffers extension add real off-screen
+front/back resource exchange and CPU front-image readback; upstream defaults
+remain single-buffered.
 
 The selected profile is static softpipe OpenGL, no LLVM/JIT, GPU, DRM frontend,
 GLX/EGL/GBM, GLES, dynamic loader or disk shader cache. Native integration uses

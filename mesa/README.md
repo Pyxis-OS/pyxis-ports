@@ -18,6 +18,19 @@ and run it with a writable output path. It reports softpipe and writes a
 256x256 PPM. It requires declared memory, threads and monotonic clock/sleep,
 with no display or JIT grant. This is an opt-in manual program, not an image app.
 
+The Pyxis OSMesa extension accepts `OSMESA_DOUBLEBUFFER` (`0x38`) with
+`GL_TRUE` in `OSMesaCreateContextAttribs`. It creates distinct front/back
+resources and reports `GL_DOUBLEBUFFER`; drawing to `GL_BACK` works normally.
+`OSMesaSwapBuffers(context)` finishes rendering, exchanges those resources and
+copies the new front into the caller's `OSMesaMakeCurrent` CPU buffer, honoring
+`OSMESA_ROW_LENGTH` and `OSMESA_Y_UP`. Back contents are undefined after swapping.
+The context must be current on the calling thread; a failed completion or
+readback returns `GL_FALSE` and may already have exchanged the resources.
+Default contexts remain single-buffered, and swapping them finishes/copies the
+front without exchanging resources. The new function is also available through
+`OSMesaGetProcAddress`. Allocation or binding failures in `OSMesaMakeCurrent`
+return `GL_FALSE` while preserving the previous current binding.
+
 The profile has no LLVM/JIT, GPU, GLX/EGL/GBM, GLES, shared objects or disk cache.
 The optional SSE runtime vertex translator uses the generic C fallback instead;
 executable allocation is unavailable. OSMesaPostprocess is absent and its lookup

@@ -1,6 +1,5 @@
-prefix=sdk://
-libdir=${prefix}/lib
-includedir=${prefix}/include
+libdir=sdk://lib
+includedir=sdk://include
 
 Name: OSMesa
 Description: Static Mesa softpipe off-screen OpenGL
