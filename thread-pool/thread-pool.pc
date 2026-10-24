@@ -1,0 +1,8 @@
+prefix=sdk://
+includedir=sdk://include
+
+Name: thread-pool
+Description: C++17 thread pool with caller-selected features
+Version: 4.1.0
+Requires: libcxx
+Cflags: -I${includedir}

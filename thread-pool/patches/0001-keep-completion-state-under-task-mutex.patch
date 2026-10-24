@@ -1,0 +1,24 @@
+Keep the completion predicate under the existing task mutex.
+
+waiting, tasks_running, paused and tasks are plain state protected by
+tasks_mutex. Reading them after unlock races with wait(), queueing, pause
+and other workers. Notification while holding the mutex is valid; the
+following condition-variable wait releases it normally.
+
+Accepted by chronium, 2026-10-24. This upstream-derived patch retains MIT
+terms. Remove it when the selected upstream revision contains the fix.
+
+diff --git a/include/BS_thread_pool.hpp b/include/BS_thread_pool.hpp
+--- a/include/BS_thread_pool.hpp
++++ b/include/BS_thread_pool.hpp
+@@ -913,10 +913,8 @@ private:
+         while (true)
+         {
+             --tasks_running;
+-            tasks_lock.unlock();
+             if (waiting && (tasks_running == 0) && BS_THREAD_POOL_PAUSED_OR_EMPTY)
+                 tasks_done_cv.notify_all();
+-            tasks_lock.lock();
+             task_available_cv.wait(tasks_lock,
+                 [this]
+                 {

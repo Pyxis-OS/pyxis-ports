@@ -1,0 +1,17 @@
+BS thread-pool 4.1.0 is under the MIT license in LICENSE.txt, including its
+copyright, permission and warranty notice. The upstream-derived local patch
+retains those terms.
+
+Accepted by chronium, 2026-10-24: the worker completion predicate is evaluated
+under its existing task mutex. This corrects concurrent plain-state reads;
+actual workers, priorities, queueing, pause and futures are retained. Remove
+the local patch when the selected upstream revision contains the fix.
+
+Optional feature macros remain caller-selected. Use the same configuration
+before the first include in every translation unit of one consumer. Priority
+and pause macros change the C++ class and its inline methods. No compiled
+implementation or replacement scheduler is supplied.
+
+Original Pyxis recipe and documentation use MPL-2.0. Their complete source and
+the upstream-derived patch are installed under share/thread-pool/pyxis, with
+both licenses recorded alongside this notice.
