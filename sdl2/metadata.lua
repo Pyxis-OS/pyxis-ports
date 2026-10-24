@@ -19,6 +19,7 @@ return {
     "patches/0006-private-pyxis-clipboard-command-identity.patch",
     "patches/0007-pyxis-scroll-residue-and-32-buttons.patch",
     "patches/0008-register-the-pyxis-audio-driver.patch",
+    "patches/0009-pyxis-logical-gl-window.patch",
   },
   outputs = {
     dev_source_makefile = "dev/share/sources/sdl2/Makefile",

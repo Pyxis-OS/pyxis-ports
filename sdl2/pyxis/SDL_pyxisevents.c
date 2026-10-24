@@ -269,17 +269,18 @@ static bool ordinary_geometry(const struct pointer_event *event,
   return snapshot->available &&
       event->generation == geometry->generation &&
       event->mapping_identity == geometry->mapping_identity &&
-      geometry->generation == pyxis_video.generation &&
-      geometry->mapping_width == pyxis_video.buffer.width &&
-      geometry->mapping_height == pyxis_video.buffer.height &&
+      PYXIS_PointerGeometry(geometry->generation, geometry->mapping_width,
+          geometry->mapping_height) &&
       event->x >= SDL_MIN_SINT32 && event->x <= SDL_MAX_SINT32 &&
       event->y >= SDL_MIN_SINT32 && event->y <= SDL_MAX_SINT32;
 }
 
 static void send_ordinary_position(const struct pointer_event *event)
 {
+  int x = (int)event->x, y = (int)event->y;
+  PYXIS_MapPointer(&x, &y, false);
   SDL_SendMouseMotion(pointer_inside ? pyxis_video.window : NULL, 0, SDL_FALSE,
-      (int)event->x, (int)event->y);
+      x, y);
 }
 
 static void restore_ordinary_position(const struct pointer_event *event,

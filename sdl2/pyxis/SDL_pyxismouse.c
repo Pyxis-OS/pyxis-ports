@@ -91,6 +91,7 @@ static void PYXIS_WarpMouse(SDL_Window *window, int x, int y)
   struct pointer_geometry geometry;
   enum call_status status = pointer_geometry(pyxis_video.pointer, &geometry);
   if (status == CALL_OK) {
+    PYXIS_MapPointer(&x, &y, true);
     status = pointer_warp(pyxis_video.pointer, x, y, geometry.generation,
         geometry.mapping_identity);
   }
@@ -102,7 +103,7 @@ static void PYXIS_WarpMouse(SDL_Window *window, int x, int y)
 
 static int PYXIS_SetRelativeMouseMode(SDL_bool enabled)
 {
-  if (!pyxis_video.pointer_owned || (enabled && !pyxis_video.presented)) {
+  if (!pyxis_video.pointer_owned || (enabled && !PYXIS_HasPresented())) {
     return SDL_SetError("Pyxis relative mode needs a presented pointer surface");
   }
   enum call_status status = enabled ? pointer_lock(pyxis_video.pointer) :

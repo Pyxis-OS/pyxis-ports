@@ -1,0 +1,31 @@
+--- a/src/video/SDL_video.c
++++ b/src/video/SDL_video.c
+@@ -1399,6 +1399,14 @@
+ 
+     CHECK_WINDOW_MAGIC(window, -1);
+ 
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    /* Native output coverage is independent of the application's GL canvas.
++     * Keep show, hide and fullscreen transitions from changing its size. */
++    if ((window->flags & SDL_WINDOW_OPENGL) && SDL_strcmp(_this->name, "pyxis") == 0) {
++        return 0;
++    }
++#endif
++
+     /* if we are in the process of hiding don't go back to fullscreen */
+     if (window->is_hiding && fullscreen) {
+         return 0;
+@@ -2373,7 +2381,12 @@
+     window->windowed.w = w;
+     window->windowed.h = h;
+ 
+-    if (window->flags & SDL_WINDOW_FULLSCREEN) {
++    /* A Pyxis GL window owns a logical canvas, including in fullscreen. */
++    if ((window->flags & SDL_WINDOW_FULLSCREEN)
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++        && !((window->flags & SDL_WINDOW_OPENGL) && SDL_strcmp(_this->name, "pyxis") == 0)
++#endif
++    ) {
+         if (FULLSCREEN_VISIBLE(window) && (window->flags & SDL_WINDOW_FULLSCREEN_DESKTOP) != SDL_WINDOW_FULLSCREEN_DESKTOP) {
+             window->last_fullscreen_flags = 0;
+             SDL_UpdateFullscreenMode(window, SDL_TRUE);

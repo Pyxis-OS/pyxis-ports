@@ -30,6 +30,127 @@ struct pyxis_video pyxis_video = {
   .clipboard_shared = HANDLE_INVALID,
 };
 
+void PYXIS_LockVideo(void)
+{
+#ifdef PYXIS_USE_OSMESA
+  SDL_LockMutex(pyxis_video.mutex);
+#endif
+}
+
+void PYXIS_UnlockVideo(void)
+{
+#ifdef PYXIS_USE_OSMESA
+  SDL_UnlockMutex(pyxis_video.mutex);
+#endif
+}
+
+bool PYXIS_PointerGeometry(uint64_t generation, uint64_t width, uint64_t height)
+{
+  PYXIS_LockVideo();
+  bool valid = generation == pyxis_video.generation &&
+      width == pyxis_video.buffer.width && height == pyxis_video.buffer.height;
+  PYXIS_UnlockVideo();
+  return valid;
+}
+
+bool PYXIS_HasPresented(void)
+{
+  PYXIS_LockVideo();
+  bool presented = pyxis_video.presented;
+  PYXIS_UnlockVideo();
+  return presented;
+}
+
+void PYXIS_MapPointer(int *x, int *y, bool to_native)
+{
+#ifdef PYXIS_USE_OSMESA
+  PYXIS_LockVideo();
+  const SDL_Rect *v = &pyxis_video.viewport;
+  if (pyxis_video.canvas_width > 0 && v->w > 0 && v->h > 0) {
+    if (to_native) {
+      *x = v->x + (int)((int64_t)*x * v->w / pyxis_video.canvas_width);
+      *y = v->y + (int)((int64_t)*y * v->h / pyxis_video.canvas_height);
+    } else {
+      int64_t logical_x = ((int64_t)*x - v->x) * pyxis_video.canvas_width / v->w;
+      int64_t logical_y = ((int64_t)*y - v->y) * pyxis_video.canvas_height / v->h;
+      *x = (int)SDL_clamp(logical_x, 0, pyxis_video.canvas_width - 1);
+      *y = (int)SDL_clamp(logical_y, 0, pyxis_video.canvas_height - 1);
+    }
+  }
+  PYXIS_UnlockVideo();
+#else
+  (void)x;
+  (void)y;
+  (void)to_native;
+#endif
+}
+
+int PYXIS_AcquireDisplay(void)
+{
+  if (!pyxis_video.display_owned) {
+    enum call_status status = display_acquire(pyxis_video.display, &pyxis_video.buffer);
+    if (status != CALL_OK) {
+      return SDL_SetError("Pyxis display acquisition failed (status %u)", (unsigned)status);
+    }
+    pyxis_video.display_owned = true;
+  }
+  return 0;
+}
+
+#ifdef PYXIS_USE_OSMESA
+void PYXIS_UpdateViewport(void)
+{
+  int width = (int)pyxis_video.buffer.width;
+  int height = (int)pyxis_video.buffer.height;
+  int canvas_width = pyxis_video.canvas_width;
+  int canvas_height = pyxis_video.canvas_height;
+  if (!canvas_width || !canvas_height) {
+    pyxis_video.viewport = (SDL_Rect){0};
+    return;
+  }
+  int fit_width = width;
+  int fit_height = (int)((int64_t)width * canvas_height / canvas_width);
+  if (fit_height > height) {
+    fit_height = height;
+    fit_width = (int)((int64_t)height * canvas_width / canvas_height);
+  }
+  pyxis_video.viewport = (SDL_Rect){(width - fit_width) / 2, (height - fit_height) / 2,
+      SDL_max(fit_width, 1), SDL_max(fit_height, 1)};
+}
+
+int PYXIS_PresentPixels(const void *pixels, int width, int height)
+{
+  if (!pyxis_video.display_owned) {
+    return SDL_SetError("Pyxis window has no display session");
+  }
+  const struct display_buffer *buffer = &pyxis_video.buffer;
+  const SDL_Rect *v = &pyxis_video.viewport;
+  uint8_t *slot = (uint8_t *)display_slot_address(buffer, pyxis_video.slot);
+  for (uint64_t y = 0; y < buffer->height; ++y) {
+    SDL_memset(slot + y * buffer->pitch, 0, (size_t)buffer->width * PIXEL_BYTES);
+  }
+  for (int y = 0; y < v->h; ++y) {
+    uint32_t *destination = (uint32_t *)(slot + (size_t)(v->y + y) * buffer->pitch) + v->x;
+    const uint32_t *source = (const uint32_t *)pixels +
+        (size_t)((int64_t)y * height / v->h) * (size_t)width;
+    for (int x = 0; x < v->w; ++x) {
+      uint32_t pixel = source[(int64_t)x * width / v->w];
+      destination[x] = ((pixel >> 16) & 255) << buffer->red_shift |
+          ((pixel >> 8) & 255) << buffer->green_shift |
+          (pixel & 255) << buffer->blue_shift;
+    }
+  }
+  struct display_submit_reply submitted;
+  enum call_status status = display_submit(pyxis_video.display, pyxis_video.slot, &submitted);
+  if (status != CALL_OK) {
+    return SDL_SetError("Pyxis display submission failed (status %u)", (unsigned)status);
+  }
+  pyxis_video.slot = submitted.next;
+  pyxis_video.presented = true;
+  return 0;
+}
+#endif
+
 static bool display_mode(const struct display_size_reply *size, SDL_DisplayMode *mode)
 {
   SDL_zerop(mode);
@@ -99,20 +220,26 @@ void PYXIS_FollowDisplaySize(SDL_VideoDevice *device)
   }
 
   PYXIS_CancelClipboard();
+  PYXIS_LockVideo();
   if (pyxis_video.display_owned && pyxis_video.buffer.generation != size.generation) {
     enum call_status status = display_replace(pyxis_video.display, size.generation,
         &pyxis_video.buffer);
     if (status == CALL_BUSY) {
+      PYXIS_UnlockVideo();
       return; /* Geometry moved on again; the next pump sees the newer one. */
     }
     if (status != CALL_OK) {
       /* The old mapping stays in use; retry only after another change. */
       pyxis_video.generation = size.generation;
+      PYXIS_UnlockVideo();
       return;
     }
     /* Every new slot is held. Resubmit the last frame at the new geometry
      * rather than wait for the program's next update. */
     pyxis_video.slot = 0;
+#ifdef PYXIS_USE_OSMESA
+    PYXIS_UpdateViewport();
+#endif
     SDL_Surface *surface = pyxis_video.window ?
         SDL_GetWindowData(pyxis_video.window, PYXIS_SURFACE) : NULL;
     if (surface && pyxis_video.presented) {
@@ -120,6 +247,7 @@ void PYXIS_FollowDisplaySize(SDL_VideoDevice *device)
     }
   }
   pyxis_video.generation = size.generation;
+  PYXIS_UnlockVideo();
 
   SDL_DisplayMode mode;
   if (!display_mode(&size, &mode)) {
@@ -131,6 +259,12 @@ void PYXIS_FollowDisplaySize(SDL_VideoDevice *device)
   SDL_SetDesktopDisplayMode(display, &mode);
   SDL_SetCurrentDisplayMode(display, &mode);
   if (pyxis_video.window) {
+#ifdef PYXIS_USE_OSMESA
+    if (pyxis_video.window->flags & SDL_WINDOW_OPENGL) {
+      SDL_SendWindowEvent(pyxis_video.window, SDL_WINDOWEVENT_EXPOSED, 0, 0);
+      return; /* Output geometry does not change the application's canvas. */
+    }
+#endif
     pyxis_video.window->windowed.w = mode.w;
     pyxis_video.window->windowed.h = mode.h;
     SDL_SendWindowEvent(pyxis_video.window, SDL_WINDOWEVENT_RESIZED, mode.w, mode.h);
@@ -151,6 +285,12 @@ static void release_video_grants(void)
 
 static int PYXIS_VideoInit(SDL_VideoDevice *device)
 {
+#ifdef PYXIS_USE_OSMESA
+  pyxis_video.mutex = SDL_CreateMutex();
+  if (!pyxis_video.mutex) {
+    return -1;
+  }
+#endif
   environment_capability(startup_environment_handle(), "display", &pyxis_video.display);
   environment_capability(startup_environment_handle(), "keyboard", &pyxis_video.keyboard);
   environment_capability(startup_environment_handle(), "pointer", &pyxis_video.pointer);
@@ -189,13 +329,20 @@ static void PYXIS_VideoQuit(SDL_VideoDevice *device)
 {
   (void)device;
   release_input();
+  PYXIS_LockVideo();
   release_display();
   pyxis_video.window = NULL;
+  PYXIS_UnlockVideo();
   release_video_grants();
 }
 
 static int PYXIS_CreateWindow(SDL_VideoDevice *device, SDL_Window *window)
 {
+#ifdef PYXIS_USE_OSMESA
+  int canvas_width = window->windowed.w;
+  int canvas_height = window->windowed.h;
+  Uint32 fullscreen_flags = window->flags & SDL_WINDOW_FULLSCREEN_DESKTOP;
+#endif
   if (pyxis_video.window) {
     return SDL_SetError("Pyxis supports one window");
   }
@@ -213,6 +360,27 @@ static int PYXIS_CreateWindow(SDL_VideoDevice *device, SDL_Window *window)
   window->y = window->windowed.y = 0;
   window->w = window->windowed.w = mode->w;
   window->h = window->windowed.h = mode->h;
+#ifdef PYXIS_USE_OSMESA
+  if (window->flags & SDL_WINDOW_OPENGL) {
+    /* Fullscreen describes output coverage; canvas dimensions remain chosen
+     * by the application, independently of the native session's geometry. */
+    window->flags &= ~(Uint32)SDL_WINDOW_FULLSCREEN_DESKTOP;
+    window->flags |= fullscreen_flags;
+    window->w = window->windowed.w = canvas_width;
+    window->h = window->windowed.h = canvas_height;
+    pyxis_video.canvas_width = window->w;
+    pyxis_video.canvas_height = window->h;
+    PYXIS_LockVideo();
+    int result = PYXIS_AcquireDisplay();
+    PYXIS_UpdateViewport();
+    PYXIS_UnlockVideo();
+    if (result < 0 || PYXIS_AcquirePointer() < 0) {
+      release_input();
+      release_display();
+      return -1;
+    }
+  }
+#endif
   pyxis_video.window = window;
   return 0;
 }
@@ -225,8 +393,14 @@ static void PYXIS_DestroyWindow(SDL_VideoDevice *device, SDL_Window *window)
   }
   PYXIS_ResetInput();
   release_input();
+  PYXIS_LockVideo();
+#ifdef PYXIS_USE_OSMESA
+  PYXIS_GL_DestroyWindow(window);
+  pyxis_video.canvas_width = pyxis_video.canvas_height = 0;
+#endif
   release_display();
   pyxis_video.window = NULL;
+  PYXIS_UnlockVideo();
 }
 
 static void PYXIS_DestroyWindowFramebuffer(SDL_VideoDevice *device, SDL_Window *window)
@@ -239,13 +413,11 @@ static int PYXIS_CreateWindowFramebuffer(SDL_VideoDevice *device, SDL_Window *wi
     Uint32 *format, void **pixels, int *pitch)
 {
   PYXIS_DestroyWindowFramebuffer(device, window);
-  if (!pyxis_video.display_owned) {
-    enum call_status status = display_acquire(pyxis_video.display, &pyxis_video.buffer);
-    if (status != CALL_OK) {
-      return SDL_SetError("Pyxis display acquisition failed (status %u)", (unsigned)status);
-    }
-    pyxis_video.display_owned = true;
-    /* A change since VideoInit is followed on the next event pump. */
+  PYXIS_LockVideo();
+  int result = PYXIS_AcquireDisplay();
+  PYXIS_UnlockVideo();
+  if (result < 0) {
+    return -1;
   }
 
   if (PYXIS_AcquirePointer() < 0) {
@@ -276,11 +448,18 @@ static int PYXIS_UpdateWindowFramebuffer(SDL_VideoDevice *device, SDL_Window *wi
     return SDL_SetError("Pyxis window has no framebuffer");
   }
   /* The first submitted frame shows graphics. */
-  return submit_surface(surface);
+  PYXIS_LockVideo();
+  int result = submit_surface(surface);
+  PYXIS_UnlockVideo();
+  return result;
 }
 
 static void PYXIS_DeleteDevice(SDL_VideoDevice *device)
 {
+#ifdef PYXIS_USE_OSMESA
+  SDL_DestroyMutex(pyxis_video.mutex);
+  pyxis_video.mutex = NULL;
+#endif
   SDL_free(device);
 }
 
@@ -304,6 +483,10 @@ static SDL_VideoDevice *PYXIS_CreateDevice(void)
   device->CreateWindowFramebuffer = PYXIS_CreateWindowFramebuffer;
   device->UpdateWindowFramebuffer = PYXIS_UpdateWindowFramebuffer;
   device->DestroyWindowFramebuffer = PYXIS_DestroyWindowFramebuffer;
+#ifdef PYXIS_USE_OSMESA
+  device->SetWindowSize = PYXIS_GL_ResizeWindow;
+  PYXIS_GL_InitDevice(device);
+#endif
   device->free = PYXIS_DeleteDevice;
   return device;
 }
