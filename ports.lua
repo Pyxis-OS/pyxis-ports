@@ -33,6 +33,7 @@ return {
   neovim = "neovim",
   openarena = "openarena",
   opus = "opus",
+  opusfile = "opusfile",
   pciids = "pciids",
   picohttpparser = "picohttpparser",
   pkgconf = "pkgconf",

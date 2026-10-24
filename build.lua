@@ -85,6 +85,7 @@ local function main()
     print("Minesweeper requires --raylib and --sdl2 development prefixes.")
     print("Raylib, Chocolate Doom, Chocolate Quake and EDuke32 also require --sdl2 PATH to its development prefix.")
     print("Lua 5.1 also requires --libuv PATH to its development prefix.")
+    print("Opusfile requires --ogg and --opus PATH to their development prefixes.")
     print("Caddy requires --go PATH to the pinned native Go cross-toolchain.")
     print("Hexcurse also requires --ncursesw PATH to its development prefix.")
     print("Neovim also requires --lua51, --libuv, --utf8proc and --tree-sitter development prefixes.")
@@ -99,7 +100,8 @@ local function main()
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
       name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext",
-    ["--spdlog"] = name == "prism", ["--ogg"] = name == "libvorbis",
+    ["--spdlog"] = name == "prism", ["--ogg"] = name == "libvorbis" or name == "opusfile",
+    ["--opus"] = name == "opusfile",
     ["--raylib"] = name == "minesweeper", ["--libuv"] = name == "lua51" or name == "neovim",
     ["--lua51"] = name == "neovim", ["--utf8proc"] = name == "neovim",
     ["--tree-sitter"] = name == "neovim", ["--ncursesw"] = name == "hexcurse" }
@@ -225,11 +227,18 @@ local function main()
     require_file(sdl2_osmesa .. "/lib/cmake/SDL2OSMesa/SDL2OSMesaConfig.cmake")
   end
   local ogg
-  if name == "libvorbis" then
-    assert(options["--ogg"], "libvorbis needs --ogg PATH to its Ogg development prefix")
+  if name == "libvorbis" or name == "opusfile" then
+    assert(options["--ogg"], name .. " needs --ogg PATH to its Ogg development prefix")
     ogg = make_path(capture({ "realpath", "-e", "--", options["--ogg"] }))
     require_file(ogg .. "/lib/libogg.a")
     require_file(ogg .. "/include/ogg/ogg.h")
+  end
+  local opus
+  if name == "opusfile" then
+    assert(options["--opus"], "opusfile needs --opus PATH to its Opus development prefix")
+    opus = make_path(capture({ "realpath", "-e", "--", options["--opus"] }))
+    require_file(opus .. "/lib/libopus.a")
+    require_file(opus .. "/include/opus/opus.h")
   end
   local spdlog
   if name == "prism" then
@@ -336,7 +345,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, ogg = ogg, spdlog = spdlog, go = go, mesa = mesa, mbedtls = mbedtls, zlib = zlib,
+    metadata = metadata, run = run, ogg = ogg, opus = opus, spdlog = spdlog, go = go, mesa = mesa, mbedtls = mbedtls, zlib = zlib,
     libpng = libpng, fmt = fmt, sdl2 = sdl2, sdl2_osmesa = sdl2_osmesa, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
