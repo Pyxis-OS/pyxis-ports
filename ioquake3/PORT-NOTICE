@@ -4,9 +4,15 @@ The engine and upstream-derived changes retain GPL-2.0-or-later terms from
 COPYING.txt. Its bundled Ogg and Vorbis sources retain their BSD-style notices,
 zlib retains its zlib terms, and JPEG retains the Independent JPEG Group's
 notices in its source. Exact Ogg 1.3.6 and Vorbis 1.3.7 COPYING notices also
-accompany the bundle. This software is based in part on the work of the
+accompany the bundle, as does the complete IJG JPEG 9f README. This software is based in part on the work of the
 Independent JPEG Group. The complete patched engine source, including these
-notices, is shipped at share/sources/ioquake3/ioquake3-source.tar.gz.
+original source notices, is shipped at
+share/sources/ioquake3/ioquake3-source.tar.gz. Native adaptations, recipe and
+supplementary codec notices accompany it under share/sources/ioquake3/pyxis.
+The unbuilt code/tools/lcc compiler is omitted from this source archive: it is
+not part of the native client closure and has separate restricted terms.
+The interpreted QVM game-module sources name their external compiler/build
+requirements; no QVM compiler is installed or executed by this package.
 
 The client links one OpenGL 1 renderer and runs the QVM interpreter. All native
 QVM compilers are excluded. It does not load shared renderer/game libraries or

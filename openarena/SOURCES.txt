@@ -1,0 +1,33 @@
+OpenArena 0.8.8 corresponding-source downloads
+
+The preferred asset forms and release game-module C sources accompany the game
+as separate public downloads, not as installed game files. From the repository
+where you obtained this package, use:
+
+  sources/openarena/0.8.8/README.txt
+  sources/openarena/0.8.8/SHA256SUMS
+
+The individual source filenames and SHA-256 pins are also installed beside
+this notice in source-downloads.sha256. Internal build-cache URLs are not the
+public source location.
+
+The eight Debian data .orig archives preserve upstream asset exports and the
+available editable maps, models, images and music source. Their .dsc and Debian
+tars retain copyright/provenance, selected-source inventories and build rules.
+The source snapshots are r901 (0.8.1 assets), r931 (0.8.5 patch) and r947 (0.8.8
+patch). They are a manually assembled upstream export, not a guaranteed
+bit-reproducible asset pipeline. Music source includes the artist's supplied
+WAV samples and process notes, without claiming an additional DAW project.
+
+Game-source versions 0.8.1, 0.8.5 and 0.8.8 correspond to the QVMs retained in
+pak0.pk3, pak6-patch085.pk3 and pak6-patch088.pk3 respectively. Use the upstream
+source and its Makefile/module lists; Debian's gameplay patches are retained as
+provenance, not asserted to have produced the unchanged upstream QVMs.
+Building QVMs requires an external Quake bytecode C compiler and q3asm, not the
+native Pyxis C compiler. The pinned ioquake3 source contains a source-inspected
+candidate toolchain, with its own licences; lcc has restricted terms and is not
+shipped in the game. Bit-identical QVM rebuilds are not claimed. Playing uses
+the existing interpreted release QVMs and needs no compiler.
+
+The engine's native-client source, covered SDL backend source and their notices
+retain the ordinary bundle layout. No retail Quake 3/Team Arena data is present.

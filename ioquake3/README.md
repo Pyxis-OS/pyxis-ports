@@ -11,5 +11,6 @@ clock, display and keyboard. Pointer and audio are optional. Software drawing
 starts at a 320x240 logical canvas; change the ordinary `r_mode` setting for a
 larger canvas. This build uses the real double-buffer GL path.
 
-Publication is pending preferred asset/QVM source delivery and the complete
-bundled-code licence notices; the runtime archive alone is not a source release.
+Supplementary Ogg, Vorbis and JPEG notices are included. OpenArena preferred
+asset/QVM sources are separate public downloads; the parent publication target
+requires their checked source set before packing the binary.

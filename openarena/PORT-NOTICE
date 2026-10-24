@@ -19,13 +19,14 @@ COPYING contains the GNU General Public License version 2.
 
 The PK3s contain compiled QVM game modules as well as exported models, maps,
 textures, music, sounds and recorded demos. Calling this a data package does
-not remove corresponding-source obligations. Before publishing a binary
-package, arrange distribution of its corresponding source under GPL version
-2 section 3. The runtime ZIP alone is not a complete corresponding-source
-distribution. Debian's README.source describes asset source snapshots from
-upstream SVN revisions 901, 931 and 947; the QVMs also require their matching
-game C sources and build material. No complete corresponding-source archive
-or public source-distribution arrangement has been verified by this recipe.
+not remove corresponding-source obligations. Their corresponding sources are supplied as separate public downloads next
+to the binary package, not installed game files. See SOURCES.txt and
+source-downloads.sha256 for the location, exact filenames and SHA-256 pins.
+The eight Debian asset source snapshots preserve the supplied editable forms
+and exported payloads; separate matching-version game C sources cover the
+retained QVMs. Manual asset export and bit-reproducible QVM builds are not
+claimed. Original copyright, README, build rules and Debian source records
+accompany the downloads.
 
 Licence and inventory review references (checked 2026-10-24):
 https://sources.debian.org/src/openarena-data/0.8.5split-17/debian/copyright/

@@ -27,4 +27,23 @@ return function(ctx)
   assert(checksums:close())
   assert(provenance:close())
   ctx.run({ "sha256sum", "--check", "--status", ctx.build .. "/packs.sha256" })
+
+  -- These outputs are published beside the package, never packed into it.
+  local source_dir = ctx.stage .. "/" .. metadata.outputs.source_index:match("^(.*)/")
+  ctx.run({ "mkdir", "-p", source_dir })
+  local sums = assert(io.open(ctx.stage .. "/" .. metadata.outputs.source_checksums, "w"))
+  local verify = assert(io.open(ctx.build .. "/source-files.sha256", "w"))
+  for _, file in ipairs(metadata.source_files) do
+    local target = ctx.stage .. "/" .. file.output
+    ctx.run({ "curl", "--fail", "--location", "--proto", "=https", "--proto-redir", "=https",
+      "--output", target, "--", file.mirror })
+    assert(sums:write(file.sha256, "  ", file.name, "\n"))
+    assert(verify:write(file.sha256, "  ", target, "\n"))
+  end
+  assert(sums:close())
+  assert(verify:close())
+  ctx.run({ "sha256sum", "--check", "--status", ctx.build .. "/source-files.sha256" })
+  install(ctx.recipe .. "/SOURCES.txt", metadata.outputs.source_index)
+  install(ctx.recipe .. "/SOURCES.txt", metadata.outputs.source_notice)
+  install(ctx.stage .. "/" .. metadata.outputs.source_checksums, metadata.outputs.source_inventory)
 end

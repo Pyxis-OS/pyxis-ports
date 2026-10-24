@@ -18,6 +18,7 @@ return function(ctx)
   install(ctx.recipe .. "/PORT-NOTICE", out.notice)
   install(ctx.recipe .. "/notices/ogg-COPYING", out.ogg_notice)
   install(ctx.recipe .. "/notices/vorbis-COPYING", out.vorbis_notice)
+  install(ctx.recipe .. "/notices/jpeg9f-README", out.jpeg_notice)
   install(ctx.recipe .. "/../LICENSE", out.mpl)
   install(ctx.recipe .. "/../LICENSING.md", out.licensing)
   copy_tree(ctx.sdl2 .. "/share/licenses/sdl2", app .. "/share/licenses/sdl2")
@@ -28,10 +29,11 @@ return function(ctx)
   copy_tree(ctx.sdk .. "/share/toolchain", app .. "/share/licenses/sdk/toolchain")
 
   -- Keep the exact patched engine and original adaptation source with the
-  -- distributable GPL bundle; assets are supplied separately through packages.
+  -- distributable GPL bundle; unused restricted-licence lcc is omitted.
+  -- Assets and their game-module source are supplied separately.
   local source_dir = app .. "/share/sources/ioquake3"
   ctx.run({ "mkdir", "-p", source_dir })
-  ctx.run({ "tar", "--exclude=.git", "-czf", ctx.stage .. "/" .. out.source,
+  ctx.run({ "tar", "--exclude=.git", "--exclude=./code/tools/lcc", "-czf", ctx.stage .. "/" .. out.source,
     "-C", ctx.source, "." })
   copy_tree(ctx.recipe, source_dir .. "/pyxis")
   ctx.run({ "mkdir", "-p", app .. "/share/ioquake3" })
