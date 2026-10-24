@@ -1,0 +1,15 @@
+dr_wav 0.13.16, dr_mp3 0.6.39 and dr_flac 0.12.42 are unchanged headers
+from the pinned dr_libs snapshot, under MIT-0 OR Unlicense. The root LICENSE
+records Copyright 2020 David Reid; each header's complete license records
+Copyright 2023 David Reid. The staged per-header notices retain their actual
+years and text. dr_mp3-LICENSE.txt also retains the included minimp3 authors'
+worldwide public-domain dedication and upstream source attribution.
+
+The package supplies headers without an implementation archive. Each consumer
+owns one DR_WAV_IMPLEMENTATION, DR_MP3_IMPLEMENTATION and DR_FLAC_IMPLEMENTATION
+translation unit as needed. No stdio, wide path, conversion, CRC, container or
+SIMD feature macros are imposed. No codec data or private assets are included.
+
+Original Pyxis recipe and documentation use MPL-2.0. Their complete source is
+installed under share/dr_libs/pyxis, with the license alongside this notice.
+Upstream headers and notices retain their own terms.

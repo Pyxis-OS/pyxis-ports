@@ -1,0 +1,8 @@
+prefix=sdk://
+includedir=sdk://include
+
+Name: dr_libs
+Description: WAV, MP3 and FLAC decoder headers with consumer-owned implementations
+Version: 0.git.da35f9d6c737
+Requires: pyxis
+Cflags: -I${includedir}
