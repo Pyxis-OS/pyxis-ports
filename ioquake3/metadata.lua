@@ -13,6 +13,7 @@ return {
   patches = {
     "patches/0001-pyxis-static-engine.patch",
     "patches/0002-pyxis-native-platform.patch",
+    "patches/0003-pyxis-input-and-factory-defaults.patch",
   },
   outputs = {
     executable = "bin/ioquake3.pxb/app/bin/ioquake3.pxe",

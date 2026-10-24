@@ -1,0 +1,70 @@
+diff --git a/code/sdl/sdl_input.c b/code/sdl/sdl_input.c
+--- a/code/sdl/sdl_input.c
++++ b/code/sdl/sdl_input.c
+@@ -350,6 +350,24 @@
+ 	if (!mouseAvailable || !SDL_WasInit( SDL_INIT_VIDEO ) )
+ 		return;
+ 
++#ifdef __pyxis__
++	qboolean relative = isFullscreen || !in_nograb->integer;
++
++	// Native focus changes can revoke the lock independently of engine state.
++	if( relative && !SDL_GetRelativeMouseMode() )
++		mouseActive = qfalse;
++
++	if( SDL_SetRelativeMouseMode( relative ? SDL_TRUE : SDL_FALSE ) < 0 )
++	{
++		mouseActive = qfalse;
++		return;
++	}
++	SDL_SetWindowGrab( SDL_window, relative ? SDL_TRUE : SDL_FALSE );
++	if( !mouseActive || in_nograb->modified )
++		IN_GobbleMotionEvents();
++	in_nograb->modified = qfalse;
++	mouseActive = qtrue;
++#else
+ 	if( !mouseActive )
+ 	{
+ 		SDL_SetRelativeMouseMode( SDL_TRUE );
+@@ -376,6 +394,7 @@
+ 	}
+ 
+ 	mouseActive = qtrue;
++#endif
+ }
+ 
+ /*
+diff --git a/code/qcommon/common.c b/code/qcommon/common.c
+--- a/code/qcommon/common.c
++++ b/code/qcommon/common.c
+@@ -2709,7 +2709,11 @@
+ 	CL_InitKeyCommands();
+ 
+ 	com_standalone = Cvar_Get("com_standalone", "0", CVAR_ROM);
++#ifdef __pyxis__
++	com_basegame = Cvar_Get("com_basegame", "baseoa", CVAR_INIT);
++#else
+ 	com_basegame = Cvar_Get("com_basegame", BASEGAME, CVAR_INIT);
++#endif
+ 	com_homepath = Cvar_Get("com_homepath", "", CVAR_INIT|CVAR_PROTECTED);
+ 
+ 	FS_InitFilesystem ();
+diff --git a/code/qcommon/vm.c b/code/qcommon/vm.c
+--- a/code/qcommon/vm.c
++++ b/code/qcommon/vm.c
+@@ -70,9 +70,15 @@
+ ==============
+ */
+ void VM_Init( void ) {
++#ifdef __pyxis__
++	Cvar_Get( "vm_cgame", "1", CVAR_ARCHIVE );
++	Cvar_Get( "vm_game", "1", CVAR_ARCHIVE );
++	Cvar_Get( "vm_ui", "1", CVAR_ARCHIVE );
++#else
+ 	Cvar_Get( "vm_cgame", "2", CVAR_ARCHIVE );	// !@# SHIP WITH SET TO 2
+ 	Cvar_Get( "vm_game", "2", CVAR_ARCHIVE );	// !@# SHIP WITH SET TO 2
+ 	Cvar_Get( "vm_ui", "2", CVAR_ARCHIVE );		// !@# SHIP WITH SET TO 2
++#endif
+ 
+ 	Cmd_AddCommand ("vmprofile", VM_VmProfile_f );
+ 	Cmd_AddCommand ("vminfo", VM_VmInfo_f );
