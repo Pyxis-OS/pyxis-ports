@@ -41,7 +41,7 @@ return function(ctx)
     assert(verify:write(file.sha256, "  ", target, "\n"))
   end
   local patch_name = "openarena-0.8.5-qagame-runtime.patch"
-  local patch_digest = "59af96f43e869d3a19ad570179394864c496231b5592d234b5f0de596f5860fb"
+  local patch_digest = "c95be69796d53ee8200658f917e9ffca462749ba8d8846a0a40c3aa2935f92d6"
   install(ctx.recipe .. "/" .. patch_name, metadata.outputs.qvm_patch)
   assert(sums:write(patch_digest, "  ", patch_name, "\n"))
   assert(verify:write(patch_digest, "  ", ctx.stage, "/", metadata.outputs.qvm_patch, "\n"))
