@@ -1,0 +1,15 @@
+include $(SDK)/share/pyxis.mk
+CMAKE_PYXIS_CFLAGS := $(filter-out -MMD -MP,$(PYXIS_CFLAGS))
+
+.PHONY: all
+all:
+	cmake -S $(RECIPE)/manual -B $(BUILD) -G "Unix Makefiles" \
+	  -DCMAKE_TOOLCHAIN_FILE=$(PYXIS_SDK)/share/pyxis.cmake \
+	  -DPYXIS_CROSS_COMPILE=$(CROSS_COMPILE) \
+	  -DCMAKE_C_FLAGS="$(CMAKE_PYXIS_CFLAGS)" \
+	  -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-DNDEBUG \
+	  -DCMAKE_FIND_ROOT_PATH="$(LIBZIP);$(ZLIB)" \
+	  -DCMAKE_PREFIX_PATH="$(LIBZIP);$(ZLIB)" \
+	  -DZLIB_INCLUDE_DIR=$(ZLIB)/include -DZLIB_LIBRARY=$(ZLIB)/lib/libz.a \
+	  -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+	$(MAKE) -C $(BUILD)

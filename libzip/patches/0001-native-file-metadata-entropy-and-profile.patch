@@ -1,0 +1,389 @@
+diff --git a/lib/CMakeLists.txt b/lib/CMakeLists.txt
+index 6baaadd..96a156b 100644
+--- a/lib/CMakeLists.txt
++++ b/lib/CMakeLists.txt
+@@ -145,6 +145,10 @@ else(WIN32)
+   set(ZIP_SOURCES ${ZIP_SOURCES} zip_source_file_stdio_named.c zip_random_unix.c)
+ endif(WIN32)
+ 
++if(CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
++  list(REMOVE_ITEM ZIP_SOURCES zip_pkware.c zip_source_pkware_decode.c zip_source_pkware_encode.c)
++endif()
++
+ if(HAVE_LIBBZ2)
+   set(ZIP_SOURCES ${ZIP_SOURCES} zip_algorithm_bzip2.c)
+   set(ZIP_LIBRARIES ${ZIP_LIBRARIES} BZip2::BZip2)
+diff --git a/lib/compat.h b/lib/compat.h
+index 93543ab..9d7cb28 100644
+--- a/lib/compat.h
++++ b/lib/compat.h
+@@ -63,6 +63,9 @@ typedef char bool;
+ #endif
+ 
+ #include <errno.h>
++#ifdef HAVE_STRINGS_H
++#include <strings.h>
++#endif
+ 
+ /* at least MinGW does not provide EOPNOTSUPP, see
+  * http://sourceforge.net/p/mingw/bugs/263/
+diff --git a/lib/zip_close.c b/lib/zip_close.c
+index 3832298..965e1f8 100644
+--- a/lib/zip_close.c
++++ b/lib/zip_close.c
+@@ -414,7 +414,16 @@ static int add_data(zip_t *za, zip_source_t *src, zip_dirent_t *de) {
+                 mtime_before_copy = st.mtime;
+             }
+             else {
++#ifdef __pyxis__
++                struct timespec now;
++                if (timespec_get(&now, TIME_UTC) != TIME_UTC) {
++                    zip_error_set(&za->error, ZIP_ER_INTERNAL, 0);
++                    return -1;
++                }
++                mtime_before_copy = now.tv_sec;
++#else
+                 time(&mtime_before_copy);
++#endif
+             }
+             if (_zip_u2d_time(mtime_before_copy, &de->last_mod, &za->error) < 0) {
+                 return -1;
+diff --git a/lib/zip_dirent.c b/lib/zip_dirent.c
+index 0fdd7c3..30c32eb 100644
+--- a/lib/zip_dirent.c
++++ b/lib/zip_dirent.c
+@@ -1413,7 +1413,17 @@ int zip_dirent_check_consistency(zip_dirent_t *dirent) {
+ 
+ time_t zip_dirent_get_last_mod_mtime(zip_dirent_t *de) {
+     if (!de->last_mod_mtime_valid) {
++#ifdef __pyxis__
++        int saved_errno = errno;
++        errno = 0;
++#endif
+         de->last_mod_mtime = _zip_d2u_time(&de->last_mod);
++#ifdef __pyxis__
++        if (de->last_mod_mtime == (time_t)-1 && errno != 0) {
++            return de->last_mod_mtime;
++        }
++        errno = saved_errno;
++#endif
+         de->last_mod_mtime_valid = true;
+     }
+ 
+diff --git a/lib/zip_get_encryption_implementation.c b/lib/zip_get_encryption_implementation.c
+index 6bfcc7d..3ad3d28 100644
+--- a/lib/zip_get_encryption_implementation.c
++++ b/lib/zip_get_encryption_implementation.c
+@@ -36,6 +36,11 @@
+ 
+ 
+ zip_encryption_implementation _zip_get_encryption_implementation(zip_uint16_t em, int operation) {
++#ifdef __pyxis__
++    (void)em;
++    (void)operation;
++    return NULL;
++#else
+     switch (em) {
+     case ZIP_EM_TRAD_PKWARE:
+         return operation == ZIP_CODEC_DECODE ? zip_source_pkware_decode : zip_source_pkware_encode;
+@@ -50,6 +55,7 @@ zip_encryption_implementation _zip_get_encryption_implementation(zip_uint16_t em
+     default:
+         return NULL;
+     }
++#endif
+ }
+ 
+ ZIP_EXTERN int zip_encryption_method_supported(zip_uint16_t method, int encode) {
+diff --git a/lib/zip_random_unix.c b/lib/zip_random_unix.c
+index 558d682..cf5c6e2 100644
+--- a/lib/zip_random_unix.c
++++ b/lib/zip_random_unix.c
+@@ -37,6 +37,25 @@
+ #include "zip_crypto.h"
+ #endif
+ 
++#ifdef __pyxis__
++#include <sys/random.h>
++
++bool zip_secure_random(zip_uint8_t *buffer, zip_uint16_t length) {
++    if (length == 0) {
++        return getentropy(buffer, 0) == 0;
++    }
++    while (length != 0) {
++        size_t count = length > 256 ? 256 : length;
++        if (getentropy(buffer, count) != 0) {
++            return false;
++        }
++        buffer += count;
++        length -= (zip_uint16_t)count;
++    }
++    return true;
++}
++
++#else
+ #ifdef HAVE_ARC4RANDOM
+ 
+ #include <stdlib.h>
+@@ -104,3 +123,5 @@ zip_uint32_t zip_random_uint32(void) {
+ #endif
+ 
+ #endif /* HAVE_ARC4RANDOM */
++
++#endif /* __pyxis__ */
+diff --git a/lib/zip_source_buffer.c b/lib/zip_source_buffer.c
+index 175bf53..93cedd3 100644
+--- a/lib/zip_source_buffer.c
++++ b/lib/zip_source_buffer.c
+@@ -285,7 +285,10 @@ static zip_int64_t read_data(void *state, void *data, zip_uint64_t len, zip_sour
+         st->comp_size = st->size;
+         st->comp_method = ZIP_CM_STORE;
+         st->encryption_method = ZIP_EM_NONE;
+-        st->valid = ZIP_STAT_MTIME | ZIP_STAT_SIZE | ZIP_STAT_COMP_SIZE | ZIP_STAT_COMP_METHOD | ZIP_STAT_ENCRYPTION_METHOD;
++        st->valid = ZIP_STAT_SIZE | ZIP_STAT_COMP_SIZE | ZIP_STAT_COMP_METHOD | ZIP_STAT_ENCRYPTION_METHOD;
++#ifndef __pyxis__
++        st->valid |= ZIP_STAT_MTIME;
++#endif
+ 
+         return sizeof(*st);
+     }
+@@ -700,7 +703,12 @@ static read_data_t *read_data_new(void) {
+     zip_error_init(&ctx->error);
+     ctx->in = NULL;
+     ctx->out = NULL;
++#ifdef __pyxis__
++    /* A memory buffer has no intrinsic modification time. */
++    ctx->mtime = 0;
++#else
+     ctx->mtime = time(NULL);
++#endif
+     zip_file_attributes_init(&ctx->attributes);
+     return ctx;
+ }
+diff --git a/lib/zip_source_file.h b/lib/zip_source_file.h
+index 49ccd52..de67935 100644
+--- a/lib/zip_source_file.h
++++ b/lib/zip_source_file.h
+@@ -36,7 +36,10 @@
+ 
+ struct zip_source_file_stat {
+     zip_uint64_t size; /* must be valid for regular files */
+-    time_t mtime;      /* must always be valid, is initialized to current time */
++    time_t mtime;      /* must always be valid except when native mtime_valid is false */
++#ifdef __pyxis__
++    bool mtime_valid;
++#endif
+     bool exists;       /* must always be valid */
+     bool regular_file; /* must always be valid */
+ };
+diff --git a/lib/zip_source_file_common.c b/lib/zip_source_file_common.c
+index a3cbc95..8c23ba2 100644
+--- a/lib/zip_source_file_common.c
++++ b/lib/zip_source_file_common.c
+@@ -43,7 +43,12 @@ static zip_int64_t read_file(void *state, void *data, zip_uint64_t len, zip_sour
+ 
+ static void zip_source_file_stat_init(zip_source_file_stat_t *st) {
+     st->size = 0;
++#ifdef __pyxis__
++    st->mtime = 0;
++    st->mtime_valid = false;
++#else
+     st->mtime = time(NULL);
++#endif
+     st->exists = false;
+     st->regular_file = false;
+ }
+@@ -144,7 +149,11 @@ zip_source_t *zip_source_file_common_new(const char *fname, void *file, zip_uint
+         }
+     }
+     else {
+-        if ((ctx->st.valid & ZIP_STAT_MTIME) == 0) {
++        if ((ctx->st.valid & ZIP_STAT_MTIME) == 0
++#ifdef __pyxis__
++            && sb.mtime_valid
++#endif
++        ) {
+             ctx->st.mtime = sb.mtime;
+             ctx->st.valid |= ZIP_STAT_MTIME;
+         }
+diff --git a/lib/zip_source_file_stdio.c b/lib/zip_source_file_stdio.c
+index d87dfc8..8f439a4 100644
+--- a/lib/zip_source_file_stdio.c
++++ b/lib/zip_source_file_stdio.c
+@@ -146,16 +146,28 @@ bool _zip_stdio_op_stat(zip_source_file_context_t *ctx, zip_source_file_stat_t *
+     }
+ 
+     st->size = (zip_uint64_t)sb.st_size;
++#ifdef __pyxis__
++    st->mtime_valid = (sb.st_valid & STAT_MTIME_VALID) != 0;
++    if (st->mtime_valid) {
++        st->mtime = sb.st_mtim.tv_sec;
++    }
++#else
+     st->mtime = sb.st_mtime;
++#endif
+ 
+     st->regular_file = S_ISREG(sb.st_mode);
+     st->exists = true;
+ 
++#ifdef __pyxis__
++    /* Native file types carry no Unix permission or creator-system metadata. */
++    zip_file_attributes_init(&ctx->attributes);
++#else
+     /* We're using UNIX file API, even on Windows; thus, we supply external file attributes with Unix values. */
+     /* TODO: This could be improved on Windows by providing Windows-specific file attributes */
+     ctx->attributes.valid = ZIP_FILE_ATTRIBUTES_HOST_SYSTEM | ZIP_FILE_ATTRIBUTES_EXTERNAL_FILE_ATTRIBUTES;
+     ctx->attributes.host_system = ZIP_OPSYS_UNIX;
+     ctx->attributes.external_file_attributes = (((zip_uint32_t)sb.st_mode) << 16) | ((sb.st_mode & S_IWUSR) ? 0 : 1);
++#endif
+ 
+     return true;
+ }
+diff --git a/lib/zip_source_file_stdio_named.c b/lib/zip_source_file_stdio_named.c
+index f35875f..6c624a4 100644
+--- a/lib/zip_source_file_stdio_named.c
++++ b/lib/zip_source_file_stdio_named.c
+@@ -55,7 +55,9 @@
+ #define CAN_CLONE
+ #endif
+ 
++#ifndef __pyxis__
+ static bool copy_permissions(zip_source_file_context_t *ctx);
++#endif
+ static int create_temp_file(zip_source_file_context_t *ctx, bool create_file);
+ 
+ static zip_int64_t _zip_stdio_op_commit_write(zip_source_file_context_t *ctx);
+@@ -122,9 +124,11 @@ static zip_int64_t _zip_stdio_op_commit_write(zip_source_file_context_t *ctx) {
+         return -1;
+     }
+ 
++#ifndef __pyxis__
+     if (!ctx->temp_output_created) {
+         ok = copy_permissions(ctx);
+     }
++#endif
+ 
+     if (fclose((FILE *)ctx->fout) < 0) {
+         zip_error_set(&ctx->error, ZIP_ER_CLOSE, errno);
+@@ -308,6 +312,10 @@ static int create_temp_file(zip_source_file_context_t *ctx, bool create_file) {
+     int fd = 0;
+     char *start, *end;
+ 
++#ifdef __pyxis__
++    /* Native creation policy, not a POSIX permission mode. */
++    mode = 0666;
++#else
+     if (zip_os_stat(ctx->fname, &st) == 0) {
+         /* If the file already exists, we copy permissions on commit, so err on the side of caution. */
+         ctx->temp_output_created = false;
+@@ -319,6 +327,8 @@ static int create_temp_file(zip_source_file_context_t *ctx, bool create_file) {
+         mode = 0666;
+     }
+ 
++#endif
++
+     size_t temp_size = strlen(ctx->fname) + 13;
+     if ((temp = (char *)malloc(temp_size)) == NULL) {
+         zip_error_set(&ctx->error, ZIP_ER_MEMORY, 0);
+@@ -329,7 +339,16 @@ static int create_temp_file(zip_source_file_context_t *ctx, bool create_file) {
+     start = end - 6;
+ 
+     for (;;) {
+-        zip_uint32_t value = zip_random_uint32();
++        zip_uint32_t value;
++#ifdef __pyxis__
++        if (!zip_secure_random((zip_uint8_t *)&value, sizeof(value))) {
++            zip_error_set(&ctx->error, ZIP_ER_TMPOPEN, errno);
++            free(temp);
++            return -1;
++        }
++#else
++        value = zip_random_uint32();
++#endif
+         char *xs = start;
+ 
+         while (xs < end) {
+@@ -402,6 +421,7 @@ static FILE *_zip_fopen_close_on_exec(const char *name, bool writeable) {
+     return fp;
+ }
+ 
++#ifndef __pyxis__
+ static bool copy_permissions(zip_source_file_context_t *ctx) {
+     zip_os_stat_t st;
+     bool ok = true;
+@@ -432,3 +452,5 @@ static bool copy_permissions(zip_source_file_context_t *ctx) {
+ 
+     return true;
+ }
++
++#endif /* __pyxis__ */
+diff --git a/lib/zip_stat_index.c b/lib/zip_stat_index.c
+index 670f6be..6d0c6b3 100644
+--- a/lib/zip_stat_index.c
++++ b/lib/zip_stat_index.c
+@@ -77,6 +77,11 @@ ZIP_EXTERN int zip_stat_index(zip_t *za, zip_uint64_t index, zip_flags_t flags,
+         if (entry->changes != NULL && entry->changes->changed & ZIP_DIRENT_LAST_MOD) {
+             st->mtime = zip_dirent_get_last_mod_mtime(de);
+             st->valid |= ZIP_STAT_MTIME;
++#ifdef __pyxis__
++            if (!de->last_mod_mtime_valid) {
++                st->valid &= ~ZIP_STAT_MTIME;
++            }
++#endif
+         }
+     }
+     else {
+@@ -89,6 +94,11 @@ ZIP_EXTERN int zip_stat_index(zip_t *za, zip_uint64_t index, zip_flags_t flags,
+         st->comp_method = (zip_uint16_t)de->comp_method;
+         st->encryption_method = de->encryption_method;
+         st->valid = (de->crc_valid ? ZIP_STAT_CRC : 0) | ZIP_STAT_SIZE | ZIP_STAT_MTIME | ZIP_STAT_COMP_SIZE | ZIP_STAT_COMP_METHOD | ZIP_STAT_ENCRYPTION_METHOD;
++#ifdef __pyxis__
++        if (!de->last_mod_mtime_valid) {
++            st->valid &= ~ZIP_STAT_MTIME;
++        }
++#endif
+         if (entry->changes != NULL && entry->changes->changed & ZIP_DIRENT_COMP_METHOD) {
+             st->valid &= ~ZIP_STAT_COMP_SIZE;
+         }
+@@ -97,11 +107,28 @@ ZIP_EXTERN int zip_stat_index(zip_t *za, zip_uint64_t index, zip_flags_t flags,
+     if ((za->ch_flags & ZIP_AFL_WANT_TORRENTZIP) && (flags & ZIP_FL_UNCHANGED) == 0) {
+         if (za->torrent_mtime == 0) {
+             zip_dostime_t dostime = {0xbc00, 0x2198};
++#ifdef __pyxis__
++            int saved_errno = errno;
++            errno = 0;
++#endif
+             za->torrent_mtime = _zip_d2u_time(&dostime);
++#ifdef __pyxis__
++            if (za->torrent_mtime == (time_t)-1 && errno != 0) {
++                za->torrent_mtime = 0;
++            }
++            else {
++                errno = saved_errno;
++            }
++#endif
+         }
+         st->comp_method = ZIP_CM_DEFLATE;
+         st->mtime = za->torrent_mtime;
+         st->valid |= ZIP_STAT_MTIME | ZIP_STAT_COMP_METHOD;
++#ifdef __pyxis__
++        if (za->torrent_mtime == 0) {
++            st->valid &= ~ZIP_STAT_MTIME;
++        }
++#endif
+         st->valid &= ~ZIP_STAT_COMP_SIZE;
+     }
+ 
+diff --git a/lib/zipint.h b/lib/zipint.h
+index 5de9052..63ad6c1 100644
+--- a/lib/zipint.h
++++ b/lib/zipint.h
+@@ -651,7 +651,9 @@ int _zip_progress_update(zip_progress_t *progress, double value);
+ bool zip_realloc(void **memory, zip_uint64_t *alloced_elements, zip_uint64_t element_size, zip_uint64_t additional_elements, zip_error_t *error);
+ 
+ bool zip_secure_random(zip_uint8_t *buffer, zip_uint16_t length);
++#ifndef __pyxis__
+ zip_uint32_t zip_random_uint32(void);
++#endif
+ 
+ int _zip_read(zip_source_t *src, zip_uint8_t *data, zip_uint64_t length, zip_error_t *error);
+ int _zip_read_at_offset(zip_source_t *src, zip_uint64_t offset, unsigned char *b, size_t length, zip_error_t *error);

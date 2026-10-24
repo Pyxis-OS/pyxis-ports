@@ -95,7 +95,7 @@ local function main()
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
     ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "ioquake3" or name == "blurgtext",
     ["--sdl2-osmesa"] = name == "ioquake3" or name == "blurgtext",
-    ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
+    ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
       name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext",
@@ -192,7 +192,7 @@ local function main()
     require_file(mbedtls .. "/share/mbedtls.mk")
   end
   local zlib
-  if name == "libpng" or name == "devilutionx" then
+  if name == "libpng" or name == "devilutionx" or name == "libzip" then
     assert(options["--zlib"], name .. " needs --zlib PATH to its development prefix")
     zlib = make_path(capture({ "realpath", "-e", "--", options["--zlib"] }))
     require_file(zlib .. "/include/zlib.h")

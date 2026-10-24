@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.15)
+project(libzip_manual LANGUAGES C)
+find_package(libzip 1.12 CONFIG REQUIRED)
+add_executable(libzip-manual main.c)
+target_compile_features(libzip-manual PRIVATE c_std_23)
+target_link_libraries(libzip-manual PRIVATE libzip::zip)

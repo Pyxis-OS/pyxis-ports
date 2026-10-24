@@ -19,6 +19,7 @@ return {
   kilo = "kilo",
   libpng = "libpng",
   libuv = "libuv",
+  libzip = "libzip",
   links = "links",
   lua = "lua",
   lua51 = "lua51",

@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: libzip
+Description: ZIP archives with store and deflate, without encryption
+Version: 1.12.1
+Requires.private: zlib
+Libs: -L${libdir} -lzip
+Cflags: -I${includedir}
