@@ -24,3 +24,11 @@ TZ or denied clock must report a real failure rather than a fabricated date.
 The direct clock/calendar calls propagate exceptions to the program's stderr
 handler. This source uses public strings only. Building it establishes link
 closure; no runtime behavior is claimed until an actual run is recorded.
+
+For the denied-clock fixture, run `spdlog-manual --clock-errors` without clock
+authority. It requires two error-handler calls, one each for raw and formatted
+messages, and checks that the raw message's source location reaches the handler.
+A direct clock-helper call must still throw. The explicitly authored timestamp
+overload must add no current-clock request. This mode uses an empty logger with
+no sinks; it requires no filesystem or new worker thread. Its result is only
+meaningful when the launch actually denies clock authority.

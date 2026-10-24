@@ -232,6 +232,28 @@ index 6879273..9d0f96f 100644
  #endif
      }
  }
+diff --git a/include/spdlog/logger.h b/include/spdlog/logger.h
+index 8c3cd91..f8845a7 100644
+--- a/include/spdlog/logger.h
++++ b/include/spdlog/logger.h
+@@ -119,8 +119,15 @@ public:
+             return;
+         }
+ 
+-        details::log_msg log_msg(loc, name_, lvl, msg);
+-        log_it_(log_msg, log_enabled, traceback_enabled);
++#ifdef __pyxis__
++        SPDLOG_TRY {
++#endif
++            details::log_msg log_msg(loc, name_, lvl, msg);
++            log_it_(log_msg, log_enabled, traceback_enabled);
++#ifdef __pyxis__
++        }
++        SPDLOG_LOGGER_CATCH(loc)
++#endif
+     }
+ 
+     void log(level::level_enum lvl, string_view_t msg) { log(source_loc{}, lvl, msg); }
 diff --git a/include/spdlog/pattern_formatter-inl.h b/include/spdlog/pattern_formatter-inl.h
 index fd408ed..9e023de 100644
 --- a/include/spdlog/pattern_formatter-inl.h

@@ -25,10 +25,12 @@ and throw on invalid TZ, unavailable zone files or an unrepresentable calendar.
 Convenience calendar calls use the checked clock, preserving valid pre-epoch
 timestamps. There is no invented PID, epoch or fallback date. The native
 default error handler writes a timestamp-free stderr message, without querying
-the failed clock or calendar again. The ordinary templated logging path handles
-these errors through spdlog's error handler; direct `details::os` calls and
-non-format string-view logging overloads can propagate `spdlog_ex` to callers.
+the failed clock or calendar again. Formatted and raw string-view logging both
+route admission failures through spdlog's error handler, preserving source
+location. Direct `details::os` calls still propagate `spdlog_ex` to callers.
 Set a custom error handler when the application needs explicit error accounting.
+Exceptions thrown by that handler retain the caller's policy. The overload
+accepting an explicit timestamp does not acquire a current timestamp.
 
 Recursive log-directory creation preserves complete native `name://` roots,
 including a filename directly under a root. FILE access, stat, mkdir, rename,
