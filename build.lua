@@ -87,6 +87,7 @@ local function main()
     print("Lua 5.1 also requires --libuv PATH to its development prefix.")
     print("Opusfile requires --ogg and --opus PATH to their development prefixes.")
     print("Caddy requires --go PATH to the pinned native Go cross-toolchain.")
+    print("ImGui requires --sdl2, --sdl2-osmesa and --mesa development prefixes.")
     print("Hexcurse also requires --ncursesw PATH to its development prefix.")
     print("Neovim also requires --lua51, --libuv, --utf8proc and --tree-sitter development prefixes.")
     return
@@ -94,12 +95,12 @@ local function main()
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
-    ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "ioquake3" or name == "blurgtext",
-    ["--sdl2-osmesa"] = name == "ioquake3" or name == "blurgtext",
+    ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
+    ["--sdl2-osmesa"] = name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
-      name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext",
+      name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--spdlog"] = name == "prism", ["--ogg"] = name == "libvorbis" or name == "opusfile",
     ["--opus"] = name == "opusfile",
     ["--raylib"] = name == "minesweeper", ["--libuv"] = name == "lua51" or name == "neovim",
@@ -181,7 +182,7 @@ local function main()
     require_file(go .. "/src/syscall/native_pyxis.go")
   end
   local mesa
-  if name == "sdl2" or name == "ioquake3" or name == "blurgtext" then
+  if name == "sdl2" or name == "ioquake3" or name == "blurgtext" or name == "imgui" then
     assert(options["--mesa"], name .. " needs --mesa PATH to its OSMesa development prefix")
     mesa = make_path(capture({ "realpath", "-e", "--", options["--mesa"] }))
     require_file(mesa .. "/include/GL/osmesa.h")
@@ -214,13 +215,13 @@ local function main()
     require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
   end
   if name == "devilutionx" or name == "chocolate-doom" or name == "chocolate-quake" or
-      name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext" then
+      name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext" or name == "imgui" then
     assert(options["--sdl2"], name .. " needs --sdl2 PATH to its development prefix")
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
   end
   local sdl2_osmesa
-  if name == "ioquake3" or name == "blurgtext" then
+  if name == "ioquake3" or name == "blurgtext" or name == "imgui" then
     assert(options["--sdl2-osmesa"], name .. " needs --sdl2-osmesa PATH to its GL development prefix")
     sdl2_osmesa = make_path(capture({ "realpath", "-e", "--", options["--sdl2-osmesa"] }))
     require_file(sdl2_osmesa .. "/lib/libSDL2-osmesa.a")

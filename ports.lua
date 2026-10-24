@@ -13,6 +13,7 @@ return {
   fmt = "fmt",
   fonts = "fonts",
   hexcurse = "hexcurse",
+  imgui = "imgui",
   ioquake3 = "ioquake3",
   jq = "jq",
   json = "json",

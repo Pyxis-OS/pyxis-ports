@@ -1,0 +1,14 @@
+Dear ImGui v1.91.9b-docking, commit 4806a1924ff6181180bf5e4b8b79ab4394118875.
+Upstream: https://github.com/ocornut/imgui (MIT).
+Embedded ProggyClean font: Copyright (c) 2004, 2005 Tristan Grimmer (MIT).
+Japanese glyph-range data: Agency for Cultural Affairs / Ministry of Justice,
+Japan, CC BY 4.0; attribution and terms link in Japanese-ranges.txt.
+The imstb_* headers retain their embedded MIT/public-domain notices.
+
+Original Pyxis port files: MPL-2.0; upstream patches retain upstream terms, see the ports repository LICENSE.
+Configuration is part of the library ABI: ImTextureID=void*, math operators,
+default shell helpers disabled. Built-in SDL2/OpenGL3 backends are separate
+static archives. OpenGL uses the official custom-loader mode and static Mesa.
+SDL2 uses one owned window; no gamepad auto-discovery, global mouse capture,
+system cursor shapes, URL opener or native system clipboard claim. ImGui's
+context-local clipboard buffer remains available. No OS API success stubs.

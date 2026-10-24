@@ -1,0 +1,113 @@
+--- a/imconfig.h
++++ b/imconfig.h
+@@ -42,7 +42,7 @@
+ //#define IMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS         // [Win32] [Default with non-Visual Studio compilers] Don't implement default IME handler (won't require imm32.lib/.a)
+ //#define IMGUI_DISABLE_WIN32_FUNCTIONS                     // [Win32] Won't use and link with any Win32 function (clipboard, IME).
+ //#define IMGUI_ENABLE_OSX_DEFAULT_CLIPBOARD_FUNCTIONS      // [OSX] Implement default OSX clipboard handler (need to link with '-framework ApplicationServices', this is why this is not the default).
+-//#define IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS             // Don't implement default platform_io.Platform_OpenInShellFn() handler (Win32: ShellExecute(), require shell32.lib/.a, Mac/Linux: use system("")).
++#define IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS             // Don't implement default platform_io.Platform_OpenInShellFn() handler (Win32: ShellExecute(), require shell32.lib/.a, Mac/Linux: use system("")).
+ //#define IMGUI_DISABLE_DEFAULT_FORMAT_FUNCTIONS            // Don't implement ImFormatString/ImFormatStringV so you can implement them yourself (e.g. if you don't want to link with vsnprintf)
+ //#define IMGUI_DISABLE_DEFAULT_MATH_FUNCTIONS              // Don't implement ImFabs/ImSqrt/ImPow/ImFmod/ImCos/ImSin/ImAcos/ImAtan2 so you can implement them yourself.
+ //#define IMGUI_DISABLE_FILE_FUNCTIONS                      // Don't implement ImFileOpen/ImFileClose/ImFileRead/ImFileWrite and ImFileHandle at all (replace them with dummies)
+@@ -110,7 +110,7 @@
+         operator MyVec4() const { return MyVec4(x,y,z,w); }
+ */
+ //---- ...Or use Dear ImGui's own very basic math operators.
+-//#define IMGUI_DEFINE_MATH_OPERATORS
++#define IMGUI_DEFINE_MATH_OPERATORS
+ 
+ //---- Use 32-bit vertex indices (default is 16-bit) is one way to allow large meshes with more than 64K vertices.
+ // Your renderer backend will need to support it (most example renderer backends support both 16/32-bit indices).
+@@ -139,3 +139,6 @@
+     void MyFunction(const char* name, MyMatrix44* mtx);
+ }
+ */
++
++// Match the native consumers of this pinned docking profile.
++#define ImTextureID void*
+--- a/backends/imgui_impl_sdl2.cpp
++++ b/backends/imgui_impl_sdl2.cpp
+@@ -122,7 +122,7 @@
+ #include <emscripten/em_js.h>
+ #endif
+ 
+-#if SDL_VERSION_ATLEAST(2,0,4) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS) && !defined(__amigaos4__)
++#if SDL_VERSION_ATLEAST(2,0,4) && !defined(__pyxis__) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS) && !defined(__amigaos4__)
+ #define SDL_HAS_CAPTURE_AND_GLOBAL_MOUSE    1
+ #else
+ #define SDL_HAS_CAPTURE_AND_GLOBAL_MOUSE    0
+@@ -509,6 +509,14 @@
+     IMGUI_CHECKVERSION();
+     IM_ASSERT(io.BackendPlatformUserData == nullptr && "Already initialized a platform backend!");
+ 
++#ifdef __pyxis__
++    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
++    {
++        SDL_SetError("Pyxis SDL2 owns one window; ImGui multi-viewports are unavailable");
++        return false;
++    }
++#endif
++
+     // Check and store if we are on a SDL backend that supports global mouse position
+     // ("wayland" and "rpi" don't support it, but we chose to use a white-list instead of a black-list)
+     bool mouse_can_use_global_state = false;
+@@ -524,7 +532,9 @@
+     ImGui_ImplSDL2_Data* bd = IM_NEW(ImGui_ImplSDL2_Data)();
+     io.BackendPlatformUserData = (void*)bd;
+     io.BackendPlatformName = "imgui_impl_sdl2";
++#ifndef __pyxis__
+     io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;           // We can honor GetMouseCursor() values (optional)
++#endif
+     io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;            // We can honor io.WantSetMousePos requests (optional, rarely used)
+     if (mouse_can_use_global_state)
+         io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;  // We can create multi-viewports on the Platform side (optional)
+@@ -542,6 +552,9 @@
+     bd->MouseCanReportHoveredViewport = false;
+ #endif
+ 
++#ifndef __pyxis__
++    // Pyxis clipboard reads/writes require the original physical gesture;
++    // deferred ImGui widgets retain the core's context-local buffer instead.
+     ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+     platform_io.Platform_SetClipboardTextFn = ImGui_ImplSDL2_SetClipboardText;
+     platform_io.Platform_GetClipboardTextFn = ImGui_ImplSDL2_GetClipboardText;
+@@ -553,13 +566,20 @@
+     platform_io.Platform_OpenInShellFn = [](ImGuiContext*, const char* url) { return SDL_OpenURL(url) == 0; };
+ #endif
+ 
++#endif
++
+     // Update monitor a first time during init
+     ImGui_ImplSDL2_UpdateMonitors();
+ 
+     // Gamepad handling
++#ifdef __pyxis__
++    bd->GamepadMode = ImGui_ImplSDL2_GamepadMode_Manual;
++#else
+     bd->GamepadMode = ImGui_ImplSDL2_GamepadMode_AutoFirst;
++#endif
+     bd->WantUpdateGamepadsList = true;
+ 
++#ifndef __pyxis__
+     // Load mouse cursors
+     bd->MouseCursors[ImGuiMouseCursor_Arrow] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
+     bd->MouseCursors[ImGuiMouseCursor_TextInput] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_IBEAM);
+@@ -572,6 +592,8 @@
+     bd->MouseCursors[ImGuiMouseCursor_Wait] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAIT);
+     bd->MouseCursors[ImGuiMouseCursor_Progress] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAITARROW);
+     bd->MouseCursors[ImGuiMouseCursor_NotAllowed] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NO);
++
++#endif
+ 
+     // Set platform dependent data in viewport
+     // Our mouse update function expect PlatformHandle to be filled for the main viewport
+@@ -969,7 +991,8 @@
+         io.BackendFlags &= ~ImGuiBackendFlags_HasMouseHoveredViewport;
+ 
+     ImGui_ImplSDL2_UpdateMouseData();
+-    ImGui_ImplSDL2_UpdateMouseCursor();
++    if (io.BackendFlags & ImGuiBackendFlags_HasMouseCursors)
++        ImGui_ImplSDL2_UpdateMouseCursor();
+ 
+     // Update game controllers (if enabled and available)
+     ImGui_ImplSDL2_UpdateGamepads();

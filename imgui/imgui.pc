@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: ImGui
+Description: Dear ImGui static core (Pyxis pinned configuration)
+Version: 1.91.9b
+Libs: -L${libdir} -limgui
+Requires: libcxx
+Cflags: -I${includedir}

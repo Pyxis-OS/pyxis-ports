@@ -1,0 +1,13 @@
+Japanese glyph-range data in ImFontAtlas::GetGlyphRangesJapanese(), imgui_draw.cpp:
+2136 Joyo Kanji from the Agency for Cultural Affairs, Japan:
+https://www.bunka.go.jp/kokugo_nihongo/sisaku/joho/joho/kijun/naikaku/kanji/
+863 Jinmeiyo Kanji from the Ministry of Justice, Japan:
+http://www.moj.go.jp/MINJI/minji86.html
+
+Creative Commons Attribution 4.0 International (CC BY 4.0):
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+Upstream ImGui encodes these code-point lists as cumulative offsets and omits
+one Joyo code point (U+20B9F). This Pyxis port leaves that table unchanged.
+The source retains the attribution and generation references. This component
+notice does not change the MIT terms for Dear ImGui's code.

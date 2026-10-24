@@ -1,0 +1,35 @@
+return {
+  source = {
+    url = "https://github.com/ocornut/imgui",
+    commit = "4806a1924ff6181180bf5e4b8b79ab4394118875",
+    archive = {
+      url = "https://github.com/ocornut/imgui/archive/4806a1924ff6181180bf5e4b8b79ab4394118875.tar.gz",
+      mirror = "https://repo.internal/repository/raw-github/ocornut/imgui/archive/4806a1924ff6181180bf5e4b8b79ab4394118875.tar.gz",
+      sha256 = "cc35a88df717dff3c488e43b4b148dcfe968bd3ff6798f60751b106eb9bcee48",
+    },
+  },
+  version = "1.91.9b-docking",
+  license = "MIT AND CC-BY-4.0",
+  dependencies = {
+    host = { "make", "curl", "sha256sum", "tar", "install" },
+    pyxis = { "libc", "libpyxis", "libc++", "libc++abi", "libunwind" },
+  },
+  patches = { "patches/0001-native-profile.patch" },
+  outputs = {
+    core = "dev/lib/libimgui.a",
+    header = "dev/include/imgui.h",
+    config = "dev/include/imconfig.h",
+    pc = "dev/lib/pkgconfig/imgui.pc",
+    cmake = "dev/lib/cmake/ImGui/ImGuiConfig.cmake",
+    license = "dev/share/licenses/imgui/LICENSE.txt",
+    ranges_notice = "dev/share/licenses/imgui/Japanese-ranges.txt",
+    font_license = "dev/share/licenses/imgui/ProggyClean.txt",
+    provenance = "dev/share/imgui/source.txt",
+    sdl2 = "sdl2-gl-dev/lib/libimgui-sdl2.a",
+    opengl3 = "sdl2-gl-dev/lib/libimgui-opengl3.a",
+    backend_pc = "sdl2-gl-dev/lib/pkgconfig/imgui-sdl2-opengl3.pc",
+    backend_cmake = "sdl2-gl-dev/lib/cmake/ImGuiSDL2OpenGL3/ImGuiSDL2OpenGL3Config.cmake",
+    executable = "bin/imgui-demo.pxb/app/bin/imgui-demo.pxe",
+    manifest = "bin/imgui-demo.pxb/manifest.json",
+  },
+}

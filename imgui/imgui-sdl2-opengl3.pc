@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: ImGui-SDL2-OpenGL3
+Description: Dear ImGui native SDL2 and static OpenGL3 backends
+Version: 1.91.9b
+Libs: -L${libdir} -limgui-sdl2 -limgui-opengl3
+Requires: imgui sdl2-osmesa
+Cflags: -I${includedir}

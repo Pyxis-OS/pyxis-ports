@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "id": "org.pyxis.imgui-demo",
+  "entry": "bin/imgui-demo.pxe",
+  "commands": {
+    "imgui-demo": "bin/imgui-demo.pxe"
+  },
+  "resource_dirs": {},
+  "grants": [
+    {
+      "name": "memory",
+      "resource": "memory",
+      "rights": [
+        "manage"
+      ],
+      "required": true
+    },
+    {
+      "name": "clock",
+      "resource": "clock",
+      "rights": [
+        "read",
+        "precise",
+        "sleep"
+      ],
+      "required": true
+    },
+    {
+      "name": "display",
+      "resource": "display",
+      "rights": [
+        "draw"
+      ],
+      "required": true
+    },
+    {
+      "name": "keyboard",
+      "resource": "keyboard",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    },
+    {
+      "name": "pointer",
+      "resource": "pointer",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    },
+    {
+      "name": "threads",
+      "resource": "threads",
+      "rights": [
+        "manage"
+      ],
+      "required": true
+    },
+    {
+      "name": "pipe",
+      "resource": "pipe",
+      "rights": [
+        "create"
+      ],
+      "required": true
+    }
+  ],
+  "stack_bytes": 8388608
+}
