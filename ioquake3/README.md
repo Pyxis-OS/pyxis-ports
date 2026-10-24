@@ -1,17 +1,15 @@
-# ioquake3
+# ioquake3 on Pyxis
 
-Pinned ioquake3 client with the static OpenGL 1 renderer, SDL2's OSMesa profile
-and Mesa softpipe. Game modules run as interpreted QVMs from separately supplied
-packages. The engine contains no game assets.
+The pinned client uses the SDL2 OSMesa link profile, Mesa softpipe, one static
+opengl1 renderer and interpreted QVMs. It has no JIT or external networking.
+The public OpenArena package supplies `pkg://openarena/baseoa`; preferences and
+saves use `home://ioquake3`. Retail Quake 3 data is not included.
 
-Build with the ordinary ports runner, supplying `--sdl2` (the SDL2 development
-prefix), `--sdl2-osmesa` (its separate GL development prefix) and `--mesa` (the
-Mesa development prefix). The SDK supplies the C++ runtime archives. The recipe
-stages `ioquake3.pxb`, including licenses, the patched engine source and Pyxis
-adapter sources. Its default logical canvas is 320 by 240; use the normal
-`r_mode` cvar to change it.
+Build with `make game-packages GAMES=openarena REPOSITORY=/path/to/repository`
+from the parent checkout. Required bundle grants cover memory, threads, precise
+clock, display and keyboard. Pointer and audio are optional. Software drawing
+starts at a 320x240 logical canvas; change the ordinary `r_mode` setting for a
+larger canvas. This build uses the real double-buffer GL path.
 
-There is no network transport, native game-module loader or QVM compiler in
-this profile. OpenAL, HTTP downloads, VoIP, Mumble and Opus are disabled. SDL
-provides audio; bundled Ogg/Vorbis provides OpenArena music. Bundled zlib and
-IJG JPEG remain on the exact engine source pin.
+Publication is pending preferred asset/QVM source delivery and the complete
+bundled-code licence notices; the runtime archive alone is not a source release.

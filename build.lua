@@ -93,11 +93,12 @@ local function main()
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
-    ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2",
+    ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "ioquake3",
+    ["--sdl2-osmesa"] = name == "ioquake3",
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
-      name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper",
+      name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3",
     ["--raylib"] = name == "minesweeper", ["--libuv"] = name == "lua51" or name == "neovim",
     ["--lua51"] = name == "neovim", ["--utf8proc"] = name == "neovim",
     ["--tree-sitter"] = name == "neovim", ["--ncursesw"] = name == "hexcurse" }
@@ -177,8 +178,8 @@ local function main()
     require_file(go .. "/src/syscall/native_pyxis.go")
   end
   local mesa
-  if name == "sdl2" then
-    assert(options["--mesa"], "SDL2 needs --mesa PATH to build its separate OSMesa archive")
+  if name == "sdl2" or name == "ioquake3" then
+    assert(options["--mesa"], name .. " needs --mesa PATH to its OSMesa development prefix")
     mesa = make_path(capture({ "realpath", "-e", "--", options["--mesa"] }))
     require_file(mesa .. "/include/GL/osmesa.h")
     require_file(mesa .. "/lib/libOSMesa.a")
@@ -210,10 +211,17 @@ local function main()
     require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
   end
   if name == "devilutionx" or name == "chocolate-doom" or name == "chocolate-quake" or
-      name == "eduke32" or name == "raylib" or name == "minesweeper" then
+      name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" then
     assert(options["--sdl2"], name .. " needs --sdl2 PATH to its development prefix")
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
+  end
+  local sdl2_osmesa
+  if name == "ioquake3" then
+    assert(options["--sdl2-osmesa"], "ioquake3 needs --sdl2-osmesa PATH to its GL development prefix")
+    sdl2_osmesa = make_path(capture({ "realpath", "-e", "--", options["--sdl2-osmesa"] }))
+    require_file(sdl2_osmesa .. "/lib/libSDL2-osmesa.a")
+    require_file(sdl2_osmesa .. "/lib/cmake/SDL2OSMesa/SDL2OSMesaConfig.cmake")
   end
   local raylib
   if name == "minesweeper" then
@@ -314,7 +322,7 @@ local function main()
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
     metadata = metadata, run = run, go = go, mesa = mesa, mbedtls = mbedtls, zlib = zlib,
-    libpng = libpng, fmt = fmt, sdl2 = sdl2, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
+    libpng = libpng, fmt = fmt, sdl2 = sdl2, sdl2_osmesa = sdl2_osmesa, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))

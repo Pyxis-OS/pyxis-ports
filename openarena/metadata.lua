@@ -19,7 +19,7 @@ for _, pack in ipairs(packs) do
   outputs[pack.name] = "share/openarena/baseoa/" .. pack.name
 end
 for _, name in ipairs(notices) do
-  outputs[name] = "share/licenses/openarena/" .. name
+  outputs[name == "COPYING" and "license" or name] = "share/licenses/openarena/" .. name
 end
 
 return {

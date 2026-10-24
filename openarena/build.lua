@@ -8,7 +8,7 @@ return function(ctx)
     install(ctx.source .. "/baseoa/" .. pack.name, metadata.outputs[pack.name])
   end
   for _, name in ipairs(metadata.notices) do
-    install(ctx.source .. "/" .. name, metadata.outputs[name])
+    install(ctx.source .. "/" .. name, metadata.outputs[name == "COPYING" and "license" or name])
   end
   install(ctx.recipe .. "/PORT-NOTICE", metadata.outputs.notice)
 

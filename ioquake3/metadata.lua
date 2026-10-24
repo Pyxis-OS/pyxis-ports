@@ -4,6 +4,17 @@ return {
     mirror = "https://git.internal/mirrors/ioq3",
     commit = "87a99d18206e878a20289f05ac3c16005dcae5c3",
   },
+  -- Exact release notices omitted from ioq3's vendored subset.
+  notices = {
+    { path = "notices/ogg-COPYING",
+      url = "https://github.com/xiph/ogg/raw/be05b13e98b048f0b5a0f5fa8ce514d56db5f822/COPYING",
+      mirror = "https://repo.internal/repository/raw-github/xiph/ogg/raw/be05b13e98b048f0b5a0f5fa8ce514d56db5f822/COPYING",
+      sha256 = "d2ab5758336489da61c12cc5bb757da5339c4ae9001f9bb0562b4370249af814" },
+    { path = "notices/vorbis-COPYING",
+      url = "https://github.com/xiph/vorbis/raw/0657aee69dec8508a0011f47f3b69d7538e9d262/COPYING",
+      mirror = "https://repo.internal/repository/raw-github/xiph/vorbis/raw/0657aee69dec8508a0011f47f3b69d7538e9d262/COPYING",
+      sha256 = "ec1815db59fcd302846df949d7424876cb2e2dc5ed1606c5fb0b36787b1cf43a" },
+  },
   version = "1.36-g87a99d1820",
   license = "GPL-2.0-or-later AND Zlib AND BSD-3-Clause AND IJG AND MPL-2.0",
   dependencies = {
@@ -21,6 +32,8 @@ return {
     license = "bin/ioquake3.pxb/app/share/licenses/ioquake3/COPYING.txt",
     notice = "bin/ioquake3.pxb/app/share/licenses/ioquake3/PORT-NOTICE",
     mpl = "bin/ioquake3.pxb/app/share/licenses/ioquake3/MPL-2.0",
+    ogg_notice = "bin/ioquake3.pxb/app/share/licenses/ioquake3/ogg-COPYING",
+    vorbis_notice = "bin/ioquake3.pxb/app/share/licenses/ioquake3/vorbis-COPYING",
     licensing = "bin/ioquake3.pxb/app/share/licenses/ioquake3/LICENSING.md",
     source = "bin/ioquake3.pxb/app/share/sources/ioquake3/ioquake3-source.tar.gz",
     provenance = "bin/ioquake3.pxb/app/share/ioquake3/source.txt",

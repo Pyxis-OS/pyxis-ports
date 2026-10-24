@@ -3,7 +3,9 @@ https://github.com/ioquake/ioq3.git (the internal mirror is used for builds).
 The engine and upstream-derived changes retain GPL-2.0-or-later terms from
 COPYING.txt. Its bundled Ogg and Vorbis sources retain their BSD-style notices,
 zlib retains its zlib terms, and JPEG retains the Independent JPEG Group's
-notices in its source. The complete patched engine source, including these
+notices in its source. Exact Ogg 1.3.6 and Vorbis 1.3.7 COPYING notices also
+accompany the bundle. This software is based in part on the work of the
+Independent JPEG Group. The complete patched engine source, including these
 notices, is shipped at share/sources/ioquake3/ioquake3-source.tar.gz.
 
 The client links one OpenGL 1 renderer and runs the QVM interpreter. All native

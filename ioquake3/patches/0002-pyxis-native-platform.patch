@@ -94,7 +94,7 @@ index e3b63cb..65925df 100644
  #ifndef DEFAULT_BASEDIR
 -#	if defined(DEFAULT_RELATIVE_BASEDIR)
 +#	if defined(__pyxis__)
-+#		define DEFAULT_BASEDIR "data://"
++#		define DEFAULT_BASEDIR "pkg://openarena"
 +#	elif defined(DEFAULT_RELATIVE_BASEDIR)
  #		define DEFAULT_BASEDIR Sys_BinaryPathRelative(DEFAULT_RELATIVE_BASEDIR)
  #	elif defined(__APPLE__)
@@ -116,6 +116,17 @@ index e3b63cb..65925df 100644
  /*
  =================
  main
+@@ -859,6 +880,10 @@ int main( int argc, char **argv )
+ 		containsSpaces = strchr(argv[i], ' ') != NULL;
++#ifdef __pyxis__
++		// Keep native roots intact through the engine's // comment tokenizer.
++		containsSpaces |= strstr(argv[i], "://") != NULL;
++#endif
+ 		if (containsSpaces)
+ 			Q_strcat( commandLine, sizeof( commandLine ), "\"" );
+ 
+ 		Q_strcat( commandLine, sizeof( commandLine ), argv[ i ] );
+ 
 @@ -881,11 +902,13 @@ int main( int argc, char **argv )
  	Com_Init( commandLine );
  	NET_Init( );
