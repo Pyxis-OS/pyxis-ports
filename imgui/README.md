@@ -28,8 +28,8 @@ grants they need; the development packages convey no authority.
 
 `stage/bin/imgui-demo.pxb` is an asset-free demonstration with explicit display,
 keyboard, pointer, memory, thread, pipe and precise-clock grants. Escape exits;
-Tab/arrows navigate, the input field accepts text, and the canvas buttons
-exercise logical resize. It requests GL 3.3 compatibility, no MSAA and interval
+Tab/arrows navigate, the input field accepts text, and the canvas follows
+the real output size at 1:1, including output resize. It requests GL 3.3 compatibility, no MSAA and interval
 zero. It is an optional program package, never a boot-archive dependency.
 
 Core sources, the embedded font and stb notices, backend sources, provenance

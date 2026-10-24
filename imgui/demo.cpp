@@ -12,6 +12,12 @@ int main()
     std::fprintf(stderr, "imgui-demo: SDL initialization: %s\n", SDL_GetError());
     return 1;
   }
+  SDL_DisplayMode output;
+  if (SDL_GetCurrentDisplayMode(0, &output) != 0) {
+    std::fprintf(stderr, "imgui-demo: output size: %s\n", SDL_GetError());
+    SDL_Quit();
+    return 1;
+  }
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
@@ -20,7 +26,7 @@ int main()
   SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
   SDL_Window *window = SDL_CreateWindow("Dear ImGui on Pyxis", SDL_WINDOWPOS_CENTERED,
-      SDL_WINDOWPOS_CENTERED, 960, 640, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+      SDL_WINDOWPOS_CENTERED, output.w, output.h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
   SDL_GLContext gl = window ? SDL_GL_CreateContext(window) : nullptr;
   if (!gl || SDL_GL_MakeCurrent(window, gl) != 0 || SDL_GL_SetSwapInterval(0) != 0) {
     std::fprintf(stderr, "imgui-demo: OpenGL initialization: %s\n", SDL_GetError());
@@ -50,6 +56,7 @@ int main()
     return 1;
   }
   bool done = false, show_demo = false;
+  int result = 0;
   int clicks = 0;
   float slider = 0.5f;
   char text[128] = "Hello from Pyxis";
@@ -61,6 +68,22 @@ int main()
         done = true;
     }
     if (done) break;
+    if (SDL_GetCurrentDisplayMode(SDL_GetWindowDisplayIndex(window), &output) != 0) {
+      std::fprintf(stderr, "imgui-demo: output size: %s\n", SDL_GetError());
+      result = 1;
+      break;
+    }
+    int width, height;
+    SDL_GL_GetDrawableSize(window, &width, &height);
+    if (width != output.w || height != output.h) {
+      SDL_SetWindowSize(window, output.w, output.h);
+      SDL_GL_GetDrawableSize(window, &width, &height);
+      if (width != output.w || height != output.h) {
+        std::fprintf(stderr, "imgui-demo: cannot follow output size: %s\n", SDL_GetError());
+        result = 1;
+        break;
+      }
+    }
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
@@ -76,11 +99,7 @@ int main()
     ImGui::SameLine();
     ImGui::Text("%d clicks", clicks);
     ImGui::Checkbox("Show upstream demo", &show_demo);
-    if (ImGui::Button("Canvas 960 x 640")) SDL_SetWindowSize(window, 960, 640);
-    ImGui::SameLine();
-    if (ImGui::Button("Canvas 640 x 480")) SDL_SetWindowSize(window, 640, 480);
-    int width, height;
-    SDL_GL_GetDrawableSize(window, &width, &height);
+    ImGui::Text("Canvas follows output 1:1; resize the output to check.");
     ImGui::Text("Drawable: %d x %d | %.1f frames/s", width, height, io.Framerate);
     ImGui::TextWrapped("Tab and arrows navigate; Escape exits. Clipboard is local to this ImGui context. External clipboard, gamepads and extra platform windows are not enabled.");
     ImGui::End();
@@ -100,5 +119,5 @@ int main()
   SDL_GL_DeleteContext(gl);
   SDL_DestroyWindow(window);
   SDL_Quit();
-  return 0;
+  return result;
 }
