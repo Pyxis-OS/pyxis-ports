@@ -1,0 +1,23 @@
+ioquake3 is pinned to 87a99d18206e878a20289f05ac3c16005dcae5c3 from
+https://github.com/ioquake/ioq3.git (the internal mirror is used for builds).
+The engine and upstream-derived changes retain GPL-2.0-or-later terms from
+COPYING.txt. Its bundled Ogg and Vorbis sources retain their BSD-style notices,
+zlib retains its zlib terms, and JPEG retains the Independent JPEG Group's
+notices in its source. The complete patched engine source, including these
+notices, is shipped at share/sources/ioquake3/ioquake3-source.tar.gz.
+
+The client links one OpenGL 1 renderer and runs the QVM interpreter. All native
+QVM compilers are excluded. It does not load shared renderer/game libraries or
+use fork, POSIX signal handlers or BSD sockets. Networking is unavailable;
+engine loopback remains. SDL2 supplies native input, video, sound and timers.
+The default 320 by 240 software canvas is an ordinary r_mode default.
+
+SDL2, its native MPL-2.0 backend, Mesa softpipe and the SDK's C++ runtime are
+statically linked. Their complete license/notice directories accompany the
+bundle. Covered SDL backend sources and the engine's native adapters are kept
+under share/sources. No Quake 3, Team Arena or OpenArena assets are included.
+
+Original Pyxis recipe, configuration, adapters and documentation are MPL-2.0,
+except where their files preserve an upstream license. MPL-2.0's secondary
+license provisions allow combination with the GPL engine. The full MPL and
+repository licensing guide accompany this notice.
