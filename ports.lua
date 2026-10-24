@@ -25,6 +25,7 @@ return {
   mbedtls = "mbedtls",
   mesa = "mesa",
   minesweeper = "minesweeper",
+  monocypher = "monocypher",
   ncursesw = "ncursesw",
   neovim = "neovim",
   openarena = "openarena",
