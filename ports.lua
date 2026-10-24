@@ -32,6 +32,7 @@ return {
   pciids = "pciids",
   picohttpparser = "picohttpparser",
   pkgconf = "pkgconf",
+  prism = "prism",
   quake = "quake",
   raylib = "raylib",
   sbase = "sbase",

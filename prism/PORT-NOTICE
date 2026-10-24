@@ -1,0 +1,8 @@
+The original Pyxis recipe, Makefile, pkg-config metadata and documentation
+are MPL-2.0. Copies are provided under share/prism/pyxis with the full MPL
+and repository licensing notice under share/licenses/prism.
+
+Prism retains its upstream MIT license (2025 Lywx & coco875). This recipe
+builds unmodified library sources, not the standalone CLI or shader examples.
+spdlog with bundled fmt is an independent dependency; preserve its notices
+when distributing a statically linked executable.

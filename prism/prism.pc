@@ -1,0 +1,11 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: prism
+Description: Prism text preprocessor library
+Version: 0.git.1de054450e7b3c5f777d2e3dfcb228ad120c329d
+Requires: libcxx
+Requires.private: spdlog
+Libs: -L${libdir} -lprism
+Cflags: -I${includedir}

@@ -99,6 +99,7 @@ local function main()
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
       name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext",
+    ["--spdlog"] = name == "prism",
     ["--raylib"] = name == "minesweeper", ["--libuv"] = name == "lua51" or name == "neovim",
     ["--lua51"] = name == "neovim", ["--utf8proc"] = name == "neovim",
     ["--tree-sitter"] = name == "neovim", ["--ncursesw"] = name == "hexcurse" }
@@ -223,6 +224,13 @@ local function main()
     require_file(sdl2_osmesa .. "/lib/libSDL2-osmesa.a")
     require_file(sdl2_osmesa .. "/lib/cmake/SDL2OSMesa/SDL2OSMesaConfig.cmake")
   end
+  local spdlog
+  if name == "prism" then
+    assert(options["--spdlog"], "prism needs --spdlog PATH to its compiled development prefix")
+    spdlog = make_path(capture({ "realpath", "-e", "--", options["--spdlog"] }))
+    require_file(spdlog .. "/lib/libspdlog.a")
+    require_file(spdlog .. "/include/spdlog/spdlog.h")
+  end
   local raylib
   if name == "minesweeper" then
     assert(options["--raylib"], "Minesweeper needs --raylib PATH to its development prefix")
@@ -321,7 +329,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, go = go, mesa = mesa, mbedtls = mbedtls, zlib = zlib,
+    metadata = metadata, run = run, spdlog = spdlog, go = go, mesa = mesa, mbedtls = mbedtls, zlib = zlib,
     libpng = libpng, fmt = fmt, sdl2 = sdl2, sdl2_osmesa = sdl2_osmesa, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
