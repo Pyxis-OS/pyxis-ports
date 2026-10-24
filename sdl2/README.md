@@ -43,8 +43,9 @@ output needs the `audio` grant and, for SDL's callback thread, `threads/manage`.
 The files in `pyxis/` are the platform layer:
 
 - **Video** (`SDL_pyxisvideo.c`):
-  - **Window.** One window, always the size of the display content area and
-    marked fullscreen. A second window is refused.
+  - **Window.** One native window covers the display content area. Software
+    windows follow its dimensions; GL windows keep an app-selected canvas.
+    A second window is refused.
   - **Sessions.** Creating the window acquires the keyboard. Creating its
     framebuffer acquires graphics and then the optional pointer subscription;
     destroying the window releases these sessions.
@@ -64,7 +65,8 @@ The files in `pyxis/` are the platform layer:
     Super suppress text.
   - **Pointer.** Ordinary motion uses native surface-local positions with matching
     destination and mapping identities, including anchored drags outside the
-    window. SDL does not integrate device counts or scale ordinary motion.
+    window. GL maps absolute positions/warps through its aspect-fit viewport;
+    relative motion remains raw native counts.
     The pump reuses one lazily queried geometry snapshot for matching events,
     refreshing on state/geometry boundaries; identities and extents are still
     checked per event. No motion, button or wheel events are removed.
@@ -244,11 +246,21 @@ may override `includedir` and `libdir` with the relocated SDK directories.
 ## OSMesa link profile
 
 Install `sdl2-osmesa-dev` with its `sdl2-dev`, `mesa-dev` and `libcxx-dev`
-dependencies. Its `sdl2-osmesa.pc` selects `-lSDL2-osmesa` and follows `osmesa`
+dependencies. `pkg-config --static --libs sdl2-osmesa` selects `-lSDL2-osmesa` and follows `osmesa`
 to the real Mesa/C++ closure. Select this profile instead of `sdl2`; linking both
 SDL archives in one program is unsupported. No public compiler flag is needed:
 `PYXIS_USE_OSMESA` is private to the variant's backend objects. The archives share
 SDL's API and headers. SDL's dynamic API remains disabled in both.
+
+SDL's default double-buffer request creates independent GL front/back buffers.
+`SDL_GL_SwapWindow` finishes, swaps and copies the new front to native slots;
+back contents are undefined afterward. Single-buffer requests also work. GL
+canvas dimensions survive fullscreen/output changes; absolute input follows
+aspect-fit scaling. Contexts can move between synchronised threads after detach.
+Reject unsupported stereo, MSAA, ES, context flags/precision and nonzero swap
+intervals. Library paths are unsupported; NULL/empty selects the static backend.
+The GL bundle needs `threads/manage` as well as ordinary video grants.
+See the asset-free [gears program](manual/gears/README.md) for the manual check.
 
 For cross-builds, `find_package(SDL2OSMesa CONFIG REQUIRED)` provides
 `SDL2::SDL2-osmesa-static`. Add both SDL development prefixes and Mesa's prefix

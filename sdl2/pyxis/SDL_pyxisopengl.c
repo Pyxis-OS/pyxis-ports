@@ -143,6 +143,12 @@ static bool supported_attributes(SDL_VideoDevice *device)
     SDL_SetError("Pyxis OpenGL uses an eight-bit BGRA canvas");
     return false;
   }
+  if (device->gl_config.depth_size > 32 || device->gl_config.stencil_size > 8 ||
+      device->gl_config.accum_red_size > 16 || device->gl_config.accum_green_size > 16 ||
+      device->gl_config.accum_blue_size > 16 || device->gl_config.accum_alpha_size > 16) {
+    SDL_SetError("OSMesa cannot provide the requested depth, stencil or accumulation precision");
+    return false;
+  }
   return true;
 }
 

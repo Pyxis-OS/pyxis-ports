@@ -10,7 +10,7 @@ The selected fdlibm sources retain Sun Microsystems' 1993 permission grant,
 preserved verbatim from src/libm/s_sin.c in fdlibm-NOTICE. The licence label
 LicenseRef-Sun-fdlibm refers to that complete notice.
 
-Pyxis builds upstream sources as a static library with eight patches:
+Pyxis builds upstream sources as a static library with ordered patches:
 the dynamic API is off, the Pyxis video and audio drivers are registered, and the Steam
 virtual gamepad file is not read because Pyxis stat has no modification time,
 and Pyxis pointer positions, warp and lock are authoritative in SDL mouse core.
@@ -19,6 +19,8 @@ A private Pyxis event identity follows physical clipboard commands through
 the original queue node; shared commands change only their event modifiers.
 Native opposite scroll increments cancel fractional wheel residue, and the
 public mouse-button mask uses an unsigned shift to represent button 32.
+The GL profile preserves the logical canvas across native output/fullscreen
+changes and queries actual context attributes.
 The patches retain SDL's zlib license.
 
 The Pyxis backend in pyxis/ (video, OpenGL, input, clipboard, audio, timer, threads and paths) and SDL_config.h
@@ -40,3 +42,5 @@ stubs are included.
 
 The opt-in manual SDL clipboard exercise in manual/ is original Pyxis material
 under MPL-2.0. Its small bitmap glyph rows follow the native mousetest tool.
+The asset-free manual/gears program and its lettering are original Pyxis
+material under MPL-2.0.

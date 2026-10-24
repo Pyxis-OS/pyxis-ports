@@ -1,0 +1,53 @@
+--- a/src/video/SDL_video.c
++++ b/src/video/SDL_video.c
+@@ -3873,6 +3873,33 @@
+         return SDL_UninitializedVideo();
+     }
+ 
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    /* OSMesa may provide a newer context than requested. */
++    if (SDL_strcmp(_this->name, "pyxis") == 0 &&
++        (attr == SDL_GL_CONTEXT_MAJOR_VERSION || attr == SDL_GL_CONTEXT_MINOR_VERSION ||
++         attr == SDL_GL_CONTEXT_FLAGS || attr == SDL_GL_CONTEXT_PROFILE_MASK ||
++         attr == SDL_GL_ACCELERATED_VISUAL || attr == SDL_GL_RETAINED_BACKING)) {
++        const GLubyte *(APIENTRY *get_string)(GLenum) = SDL_GL_GetProcAddress("glGetString");
++        const char *version = get_string ? (const char *)get_string(GL_VERSION) : NULL;
++        int major = 0, minor = 0;
++        if (!version || SDL_sscanf(version, "%d.%d", &major, &minor) != 2) {
++            return SDL_SetError("No current Pyxis OpenGL context");
++        }
++        if (attr == SDL_GL_CONTEXT_MAJOR_VERSION || attr == SDL_GL_CONTEXT_MINOR_VERSION) {
++            *value = attr == SDL_GL_CONTEXT_MAJOR_VERSION ? major : minor;
++        } else if (attr == SDL_GL_CONTEXT_PROFILE_MASK && (major > 3 || (major == 3 && minor >= 2))) {
++            void(APIENTRY *get_integer)(GLenum, GLint *) = SDL_GL_GetProcAddress("glGetIntegerv");
++            if (!get_integer) {
++                return -1;
++            }
++            get_integer(GL_CONTEXT_PROFILE_MASK, (GLint *)value);
++        }
++        /* Context flags are rejected at creation; software rendering has no
++         * acceleration or retained back contents after swap. */
++        return 0;
++    }
++#endif
++
+     switch (attr) {
+     case SDL_GL_RED_SIZE:
+ #ifdef SDL_VIDEO_OPENGL
+@@ -4058,6 +4085,16 @@
+             glGetIntegervFunc(GL_DRAW_FRAMEBUFFER_BINDING, &current_fbo);
+         }
+ 
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++        if (attachment == GL_BACK_LEFT && glGetIntegervFunc && SDL_strcmp(_this->name, "pyxis") == 0) {
++            GLint double_buffer = 0;
++            glGetIntegervFunc(GL_DOUBLEBUFFER, &double_buffer);
++            if (!double_buffer) {
++                attachment = GL_FRONT_LEFT;
++            }
++        }
++#endif
++
+         glGetFramebufferAttachmentParameterivFunc = SDL_GL_GetProcAddress("glGetFramebufferAttachmentParameteriv");
+         if (glGetFramebufferAttachmentParameterivFunc) {
+             if (glBindFramebufferFunc && (current_fbo != 0)) {

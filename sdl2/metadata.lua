@@ -20,6 +20,7 @@ return {
     "patches/0007-pyxis-scroll-residue-and-32-buttons.patch",
     "patches/0008-register-the-pyxis-audio-driver.patch",
     "patches/0009-pyxis-logical-gl-window.patch",
+    "patches/0010-pyxis-current-gl-attributes.patch",
   },
   outputs = {
     dev_source_makefile = "dev/share/sources/sdl2/Makefile",
