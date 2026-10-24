@@ -1,0 +1,7 @@
+prefix=sdk://
+includedir=${prefix}include
+Name: nlohmann_json
+Description: JSON for Modern C++, native SDK header profile
+Version: 3.12.0
+Cflags: -I${includedir}
+Libs:

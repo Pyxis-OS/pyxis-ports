@@ -15,6 +15,7 @@ return {
   kilo = "kilo",
   ioquake3 = "ioquake3",
   jq = "jq",
+  json = "json",
   links = "links",
   libpng = "libpng",
   libuv = "libuv",
