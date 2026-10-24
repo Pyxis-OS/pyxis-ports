@@ -1,0 +1,25 @@
+blurgtext Pyxis port
+
+Pinned CallumDev/blurgtext e11c19f4bc124ea8bb1cc7a30e82737a676198f0, MIT.
+The exact direct and nested submodules, FreeType 2.15.0 and HarfBuzz 15.0.0
+are in metadata.lua and the installed source.txt. All archives are fetched
+through the cache and verified before use; bundled CMake uses those local bytes.
+
+The first port retains upstream's FT -> HB -> FT static build and PNG shim.
+It does not substitute Pyxis libfont. PlutoVG's upstream stb code remains its
+own optional SVG/text support. A reusable FreeType/HarfBuzz package is later work.
+
+The unchanged demo draws over native SDL2/OSMesa. The package-only Pyxis sysfonts
+backend adds family/weight/italic selection and coverage fallback. It uses only
+the declared fonts package. Font loading is separate from canonical registration
+so synthetic/fallback instances cannot replace the family's real faces. Each
+returned fallback instance is distinct because blurgtext's fallback links mutate.
+
+Original upstream files retain their licences. The Pyxis adaptations and build
+files are MPL-2.0 under pyxis-ports/LICENSE; their patches and complete modified
+source files are included. SDL2/OSMesa, Mesa and SDK notices and covered backend
+sources are retained separately. See ATTRIBUTION and the full adjacent notices.
+
+No font bytes, demo text, coordinates, colours or style spans are changed.
+Only platform build/loading, error handling, presentation pacing and cleanup
+are adapted in the demo. Assets are read from pkg://fonts, never host paths.

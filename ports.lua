@@ -1,4 +1,5 @@
 return {
+  blurgtext = "blurgtext",
   ["ca-certificates"] = "ca-certificates",
   busybox = "busybox",
   caddy = "caddy",

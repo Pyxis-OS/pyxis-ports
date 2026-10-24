@@ -1,0 +1,100 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -12,14 +12,23 @@ else()
+     set(BT_BUILD_FTHB_DEFAULT OFF)
+ endif()
+ option(BT_BUILD_FTHB "Build statically linked freetype+harfbuzz" ${BT_BUILD_FTHB_DEFAULT})
++set(BT_FTHB_CMAKE_ARGS "" CACHE STRING "Additional CMake arguments for bundled FreeType/Harfbuzz")
+ 
+-add_library(blurgtext SHARED
++option(BT_BUILD_SHARED "Build blurgtext as a shared library" ON)
++if(BT_BUILD_SHARED)
++    set(BT_LIBRARY_TYPE SHARED)
++else()
++    set(BT_LIBRARY_TYPE STATIC)
++endif()
++
++add_library(blurgtext ${BT_LIBRARY_TYPE}
+     src/blurgtext.c
+     src/hashmap.c
+     src/glyphatlas.c
+     src/fontmanager.c
+     src/font.c
+     src/util.c
++    src/sysfonts_pyxis.c
+     src/sysfonts_fontconfig.c
+     src/sysfonts_directwrite.cpp
+     src/sysfonts_coretext.cpp
+@@ -44,6 +53,8 @@ if(BT_ENABLE_SYSTEMFONTS)
+         #enable directwrite (both mingw and MSVC)
+         target_compile_definitions(blurgtext PRIVATE -DBT_ENABLE_DIRECTWRITE=1)
+         target_link_libraries(blurgtext PRIVATE gdi32 dwrite)
++    elseif(CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
++        target_compile_definitions(blurgtext PRIVATE BT_ENABLE_PYXIS=1)
+     elseif(APPLE)
+         target_compile_definitions(blurgtext PRIVATE -DBT_ENABLE_CORETEXT=1)
+     elseif(UNIX)
+@@ -63,6 +74,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows" AND ${CMAKE_CXX_COMPILER_ID} MATCHES "
+ endif()
+ 
+ set_target_properties(blurgtext PROPERTIES C_VISIBILITY_PRESET hidden)
++if(NOT BT_BUILD_SHARED)
++    target_compile_definitions(blurgtext PUBLIC BLURG_STATIC)
++endif()
+ target_compile_definitions(blurgtext PRIVATE -DBUILDING_BLURG)
+ target_include_directories(blurgtext PUBLIC "include")
+ 
+@@ -135,6 +149,7 @@ if(BT_BUILD_FTHB)
+         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+         -DFT_DOWNLOADS_DIR=${FT_DOWNLOADS_DIR}
++        ${BT_FTHB_CMAKE_ARGS}
+         -G ${CMAKE_GENERATOR}
+     )
+     ExternalProject_Get_Property(FTHB INSTALL_DIR)
+diff --git a/include/blurgtext.h b/include/blurgtext.h
+--- a/include/blurgtext.h
++++ b/include/blurgtext.h
+@@ -4,7 +4,9 @@
+ extern "C" {
+ #endif
+ 
+-#ifdef _WIN32
++#if defined(BLURG_STATIC)
++#define BLURGAPI
++#elif defined(_WIN32)
+ #if BUILDING_BLURG
+ #define BLURGAPI __declspec(dllexport)
+ #else
+diff --git a/deps/ft-hb-bundle/CMakeLists.txt b/deps/ft-hb-bundle/CMakeLists.txt
+--- a/deps/ft-hb-bundle/CMakeLists.txt
++++ b/deps/ft-hb-bundle/CMakeLists.txt
+@@ -8,9 +8,9 @@ endif()
+ 
+ option(FT_DOWNLOADS_DIR "Folder to contain downloaded source files" "${CMAKE_CURRENT_BINARY_DIR}/sources")
+ 
+-SET(FREETYPE_URL "https://download.savannah.gnu.org/releases/freetype/freetype-2.15.0.tar.xz" "https://downloads.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz")
++set(FREETYPE_URL "https://download.savannah.gnu.org/releases/freetype/freetype-2.15.0.tar.xz" "https://downloads.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz" CACHE STRING "FreeType source URLs")
+ SET(FREETYPE_HASH "SHA256=93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5")
+-SET(HARFBUZZ_URL "https://github.com/harfbuzz/harfbuzz/releases/download/15.0.0/harfbuzz-15.0.0.tar.xz")
++set(HARFBUZZ_URL "https://github.com/harfbuzz/harfbuzz/releases/download/15.0.0/harfbuzz-15.0.0.tar.xz" CACHE STRING "Harfbuzz source URL")
+ SET(HARFBUZZ_HASH "SHA256=968536e9abd782f07f7954044c0c4020199fcdd39b41d221ec42d2a3be4a44df")
+ 
+ set(FT_PATCH
+@@ -69,6 +69,7 @@ endif()
+         DEPENDS FT1
+         CMAKE_ARGS
+         -DCMAKE_PREFIX_PATH=${FT1_DIR}
++        -DCMAKE_FIND_ROOT_PATH=${FT1_DIR}
+         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+         -DCMAKE_MODULE_PATH=${CMAKE_CURRENT_LIST_DIR}
+@@ -97,6 +98,7 @@ endif()
+         -DCMAKE_POLICY_VERSION_MINIMUM=3.15
+         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+         -DCMAKE_PREFIX_PATH=${HARFBUZZ_INSTALL_DIR}
++        -DCMAKE_FIND_ROOT_PATH=${HARFBUZZ_INSTALL_DIR}
+         -DCMAKE_MODULE_PATH=${FT2_MODULES}
+         -DFT_REQUIRE_HARFBUZZ=True
+         -DFT_REQUIRE_PNG=True

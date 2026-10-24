@@ -1,0 +1,167 @@
+diff --git a/demo/CMakeLists.txt b/demo/CMakeLists.txt
+--- a/demo/CMakeLists.txt
++++ b/demo/CMakeLists.txt
+@@ -5,6 +5,7 @@ add_executable(blurgtest
+   main.c
+   glad/src/glad.c
+ )
++if(NOT CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
+ configure_file(Roboto-Regular.ttf Roboto-Regular.ttf COPYONLY)
+ configure_file(Roboto-Bold.ttf Roboto-Bold.ttf COPYONLY)
+ configure_file(Roboto-Italic.ttf Roboto-Italic.ttf COPYONLY)
+@@ -13,6 +14,8 @@ configure_file(Roboto-ThinItalic.ttf Roboto-ThinItalic.ttf COPYONLY)
+ configure_file(Roboto-Black.ttf Roboto-Black.ttf COPYONLY)
+ configure_file(EmojiOneColor.otf EmojiOneColor.otf COPYONLY)
+ 
++endif()
++
+ 
+ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows" AND ${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
+     set(IS_MINGW_BUILD "Y")
+@@ -24,6 +27,13 @@ endif()
+ target_link_libraries(blurgtest PRIVATE blurgtext)
+ target_include_directories(blurgtest PRIVATE "./glad/include")
+ 
++# SDL2 dependency: keep the renderer choice explicit.
++if(CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
++    find_package(SDL2OSMesa CONFIG REQUIRED)
++    target_link_libraries(blurgtest PRIVATE SDL2::SDL2-osmesa-static)
++    target_compile_definitions(blurgtest PRIVATE GLAD_NO_BUILTIN_LOADER=1)
++    set_target_properties(blurgtest PROPERTIES LINKER_LANGUAGE CXX)
++else()
+  # SDL2 Dependency
+ if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)
+ message(STATUS "blurgtest: using pre-defined SDL2 variables SDL2_INCLUDE_DIRS and SDL2_LIBRARIES")
+@@ -49,6 +59,8 @@ else()
+ endif()
+ endif()
+ 
++endif()
++
+ if(WIN32)
+ add_custom_command(TARGET blurgtest POST_BUILD
+   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:blurgtest> $<TARGET_FILE_DIR:blurgtest>
+diff --git a/demo/main.c b/demo/main.c
+--- a/demo/main.c
++++ b/demo/main.c
+@@ -2,7 +2,7 @@
+ #include <stdio.h>
+ 
+ // Homebrew seems to include the SDL2 folder itself rather than standard include.
+-#ifdef __APPLE__
++#if defined(__APPLE__) || defined(__pyxis__)
+ #include <SDL.h>
+ #else
+ #include <SDL2/SDL.h>
+@@ -177,11 +177,20 @@ static void drawString(blurg_t* blurg, blurg_font_t *font, const char *text, int
+ 
+ static blurg_font_t* loadFont(blurg_t *blurg, const char *filename)
+ {
++#ifdef __pyxis__
++    char path[1000];
++    const char *directory = !strcmp(filename, "EmojiOneColor.otf") ? "emojione-color" : "roboto";
++    int length = snprintf(path, sizeof(path), "pkg://fonts/%s/%s", directory, filename);
++    if(length < 0 || (size_t)length >= sizeof(path))
++        return NULL;
++    return blurg_font_add_file(blurg, path);
++#else
+     char *basePath = SDL_GetBasePath();
+     char path[1000];
+     snprintf(path, 1000, "%s/%s", basePath, filename);
+     SDL_free(basePath);
+     return blurg_font_add_file(blurg, path);
++#endif
+ }
+ 
+ static void shaderSource(uint32_t id, const char *a, const char *b)
+@@ -262,17 +271,48 @@ int main(int argc, char* argv[])
+     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+     SDL_Window *Window = SDL_CreateWindow("OpenGL Test", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 600, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
++    if(!Window) {
++        fprintf(stderr, "Window: %s\n", SDL_GetError());
++        SDL_Quit();
++        return 1;
++    }
+     SDL_GLContext Context = SDL_GL_CreateContext(Window);
++    if(!Context || SDL_GL_MakeCurrent(Window, Context) != 0) {
++        fprintf(stderr, "OpenGL context: %s\n", SDL_GetError());
++        if(Context)
++            SDL_GL_DeleteContext(Context);
++        SDL_DestroyWindow(Window);
++        SDL_Quit();
++        return 1;
++    }
+     SDL_GL_MakeCurrent(Window, Context);
+-    SDL_GL_SetSwapInterval(1); // Enable vsync
+-    gladLoadGLLoader(SDL_GL_GetProcAddress);
++    if(SDL_GL_SetSwapInterval(1) != 0)
++        SDL_GL_SetSwapInterval(0);
++    if(!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
++        fprintf(stderr, "OpenGL procedure loading failed\n");
++        SDL_GL_DeleteContext(Context);
++        SDL_DestroyWindow(Window);
++        SDL_Quit();
++        return 1;
++    }
+     
+     // Generate string
+     blurg_t *blurg = blurg_create(tallocate, tupdate);
++    if(!blurg) {
++        SDL_GL_DeleteContext(Context);
++        SDL_DestroyWindow(Window);
++        SDL_Quit();
++        return 1;
++    }
+     blurg_font_t *font = loadFont(blurg, "Roboto-Regular.ttf");
+     blurg_font_t *emojiFont = loadFont(blurg, "EmojiOneColor.otf");
+-    if(!blurg_enable_system_fonts(blurg)) {
+-        printf("System fonts not available\n");
++    if(!font || !emojiFont || !blurg_enable_system_fonts(blurg)) {
++        fprintf(stderr, "Demo fonts unavailable (Roboto, EmojiOne and system font package)\n");
++        blurg_destroy(blurg);
++        SDL_GL_DeleteContext(Context);
++        SDL_DestroyWindow(Window);
++        SDL_Quit();
++        return 1;
+     }
+ 
+     loadFont(blurg, "Roboto-Bold.ttf");
+@@ -462,9 +502,17 @@ int main(int argc, char* argv[])
+     drawSingle(200 + result.cursors[2].x, 100 + result.cursors[2].y, 1, result.cursors[2].height, 0xFFFFFFFF);
+     blurg_free_result(&result);
+ 
++    SDL_ClearError();
+     SDL_GL_SwapWindow(Window);
++    if(*SDL_GetError() || glGetError() != GL_NO_ERROR) {
++        fprintf(stderr, "Presentation failed: %s\n", SDL_GetError());
++        Running = 0;
++    }
++    SDL_Delay(16);
+   }
+   blurg_destroy(blurg);
++  SDL_GL_DeleteContext(Context);
++  SDL_DestroyWindow(Window);
+   SDL_Quit();
+   return 0;
+ }
+diff --git a/demo/glad/src/glad.c b/demo/glad/src/glad.c
+--- a/demo/glad/src/glad.c
++++ b/demo/glad/src/glad.c
+@@ -24,6 +24,7 @@
+ #include <string.h>
+ #include <glad/glad.h>
+ 
++#ifndef GLAD_NO_BUILTIN_LOADER
+ static void* get_proc(const char *namez);
+ 
+ #if defined(_WIN32) || defined(__CYGWIN__)
+@@ -156,6 +157,8 @@ int gladLoadGL(void) {
+     return status;
+ }
+ 
++#endif
++
+ struct gladGLversionStruct GLVersion = { 0, 0 };
+ 
+ #if defined(GL_ES_VERSION_3_0) || defined(GL_VERSION_3_0)

@@ -1,0 +1,52 @@
+[
+  {
+    "file": "hashmap-MIT",
+    "archive": "hashmap.tar.gz",
+    "archive_sha256": "45c51cd2abe266995b88bb9609551806cfaf69919579ea186942f7c4e0fae913",
+    "member": "LICENSE",
+    "sha256": "f61e7bc66f7caf8c9690fb59a10b4fa55e28ac1ea075273c4560e0558d3d4fda",
+    "mirror": "https://repo.internal/repository/raw-github/tidwall/hashmap.c/archive/3735986914fc1c4e6a9123b406d0970666aa4aec.tar.gz",
+    "upstream": "https://github.com/tidwall/hashmap.c/archive/3735986914fc1c4e6a9123b406d0970666aa4aec.tar.gz"
+  },
+  {
+    "file": "xxHash-BSD-2-Clause",
+    "archive": "xxhash.tar.gz",
+    "archive_sha256": "3bb6b7d6f30c591dd65aaaff1c8b7a5b94d81687998ca9400082c739a690436c",
+    "member": "LICENSE",
+    "sha256": "553d0035773ddd1590045f8fdc3a4c6ead31e36336721aeca8421e88ed1c9f80",
+    "mirror": "https://repo.internal/repository/raw-github/Cyan4973/xxHash/archive/refs/tags/v0.8.1.tar.gz",
+    "upstream": "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.1.tar.gz"
+  },
+  {
+    "file": "CC0-1.0",
+    "archive": "spdx.tar.gz",
+    "archive_sha256": "d69195f5b11d4b84ffccd12d943e90732694d00fea42dc81fcc66f79d6cc8104",
+    "member": "text/CC0-1.0.txt",
+    "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+    "mirror": "https://repo.internal/repository/raw-github/spdx/license-list-data/archive/refs/tags/v3.29.0.tar.gz",
+    "upstream": "https://github.com/spdx/license-list-data/archive/refs/tags/v3.29.0.tar.gz"
+  },
+  {
+    "file": "GLAD-LICENSE",
+    "archive": "glad.tar.gz",
+    "archive_sha256": "8470ed1b0e9fbe88e10c34770505c8a1dc8ccb78cadcf673331aaf5224f963d2",
+    "member": "LICENSE",
+    "sha256": "3d6e8bb9a06887b182a1da966937678b69fb8faeacf05dbf058cec8d0e4dc872",
+    "mirror": "https://repo.internal/repository/raw-github/Dav1dde/glad/archive/refs/tags/v0.1.36.tar.gz",
+    "upstream": "https://github.com/Dav1dde/glad/archive/refs/tags/v0.1.36.tar.gz"
+  },
+  {
+    "file": "GLAD-README.md",
+    "archive": "glad.tar.gz",
+    "archive_sha256": "8470ed1b0e9fbe88e10c34770505c8a1dc8ccb78cadcf673331aaf5224f963d2",
+    "member": "README.md",
+    "sha256": "1fe8a9fbf2f1c683ba644b4aa357556afa257629a9be11c83639ea81925e858d",
+    "mirror": "https://repo.internal/repository/raw-github/Dav1dde/glad/archive/refs/tags/v0.1.36.tar.gz",
+    "upstream": "https://github.com/Dav1dde/glad/archive/refs/tags/v0.1.36.tar.gz"
+  },
+  {
+    "file": "Unicode-3.0",
+    "source": "../sbase/UNICODE-LICENSE.txt",
+    "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+  }
+]

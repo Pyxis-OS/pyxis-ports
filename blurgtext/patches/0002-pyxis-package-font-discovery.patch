@@ -1,0 +1,275 @@
+diff --git a/src/blurgtext_internal.h b/src/blurgtext_internal.h
+--- a/src/blurgtext_internal.h
++++ b/src/blurgtext_internal.h
+@@ -14,7 +14,7 @@ extern "C" {
+ #define MAX_TEXTURES 16
+ #define BLURG_TEXTURE_SIZE 1024
+ 
+-#if (BT_ENABLE_FONTCONFIG || BT_ENABLE_DIRECTWRITE || BT_ENABLE_CORETEXT)
++#if (BT_ENABLE_FONTCONFIG || BT_ENABLE_DIRECTWRITE || BT_ENABLE_CORETEXT || BT_ENABLE_PYXIS)
+ #define SYSFONTS
+ #endif
+ 
+@@ -79,6 +79,7 @@ void glyphatlas_get(blurg_t *blurg, blurg_font_t *font, uint32_t index, blurg_gl
+ void glyphatlas_destroy(blurg_t *blurg);
+ 
+ blurg_font_t *blurg_from_freetype(FT_Face face);
++blurg_font_t *blurg_font_load_file(blurg_t *blurg, const char *filename);
+ blurg_font_t *blurg_font_create_internal(blurg_t *blurg, allocated_font *data);
+ void blurg_font_rehash(blurg_font_t *fnt);
+ blurg_font_t *blurg_font_fallback(blurg_t *blurg, blurg_font_t *font, uint32_t character);
+diff --git a/src/sysfonts_pyxis.c b/src/sysfonts_pyxis.c
+new file mode 100644
+--- /dev/null
++++ b/src/sysfonts_pyxis.c
+@@ -0,0 +1,250 @@
++#if BT_ENABLE_PYXIS
++#include "blurgtext_internal.h"
++#include FT_TRUETYPE_TABLES_H
++#include <ctype.h>
++#include <dirent.h>
++#include <errno.h>
++#include <stdio.h>
++#include <string.h>
++#include <sys/stat.h>
++
++#define PYXIS_FONT_ROOT "pkg://fonts"
++#define PYXIS_FONT_LIMIT 512
++#define PYXIS_FONT_DIRECTORY_LIMIT 64
++#define PYXIS_FONT_BYTE_LIMIT (32 * 1024 * 1024)
++#define PYXIS_FONT_PATH_LIMIT 1024
++
++typedef struct {
++    char *path;
++    FT_Face face;
++    int weight;
++    int italic;
++} pyxis_font;
++
++typedef struct {
++    FT_Library library;
++    pyxis_font *fonts;
++    size_t count;
++    size_t directories;
++} sys_pyxis;
++
++static int equal_name(const char *a, const char *b)
++{
++    while(*a && *b) {
++        if(tolower((unsigned char)*a++) != tolower((unsigned char)*b++))
++            return 0;
++    }
++    return *a == *b;
++}
++
++static void destroy_context(sys_pyxis *ctx)
++{
++    for(size_t i = 0; i < ctx->count; ++i) {
++        FT_Done_Face(ctx->fonts[i].face);
++        free(ctx->fonts[i].path);
++    }
++    free(ctx->fonts);
++    if(ctx->library)
++        FT_Done_FreeType(ctx->library);
++    free(ctx);
++}
++
++static int import_font(sys_pyxis *ctx, const char *path, off_t bytes)
++{
++    if(ctx->count == PYXIS_FONT_LIMIT || bytes > PYXIS_FONT_BYTE_LIMIT) {
++        errno = EOVERFLOW;
++        return 0;
++    }
++    FT_Face face = NULL;
++    if(bytes <= 0 || FT_New_Face(ctx->library, path, 0, &face) ||
++       !face->family_name || FT_Select_Charmap(face, FT_ENCODING_UNICODE)) {
++        if(face)
++            FT_Done_Face(face);
++        errno = EINVAL;
++        return 0;
++    }
++    /* The public file loader opens face zero; collections need an indexed API. */
++    if(face->num_faces != 1) {
++        FT_Done_Face(face);
++        errno = ENOTSUP;
++        return 0;
++    }
++    char *copy = strdup(path);
++    pyxis_font *fonts = realloc(ctx->fonts, (ctx->count + 1) * sizeof(*fonts));
++    if(!copy || !fonts) {
++        if(fonts)
++            ctx->fonts = fonts;
++        free(copy);
++        FT_Done_Face(face);
++        errno = ENOMEM;
++        return 0;
++    }
++    ctx->fonts = fonts;
++    TT_OS2 *os2 = FT_Get_Sfnt_Table(face, ft_sfnt_os2);
++    int weight = os2 && os2->usWeightClass >= 1 && os2->usWeightClass <= 1000 ?
++        os2->usWeightClass : (face->style_flags & FT_STYLE_FLAG_BOLD ? 700 : 400);
++    ctx->fonts[ctx->count++] = (pyxis_font) {
++        .path = copy, .face = face, .weight = weight,
++        .italic = !!(face->style_flags & FT_STYLE_FLAG_ITALIC),
++    };
++    return 1;
++}
++
++static int scan_directory(sys_pyxis *ctx, const char *path, int root)
++{
++    DIR *dir = opendir(path);
++    if(!dir)
++        return 0;
++    int success = 1;
++    for(;;) {
++        errno = 0;
++        struct dirent *entry = readdir(dir);
++        if(!entry) {
++            if(errno)
++                success = 0;
++            break;
++        }
++        const char *name = entry->d_name;
++        if(!strcmp(name, ".") || !strcmp(name, ".."))
++            continue;
++        if(!*name || strpbrk(name, "/\\:")) {
++            errno = EINVAL;
++            success = 0;
++            break;
++        }
++        char child[PYXIS_FONT_PATH_LIMIT];
++        int length = snprintf(child, sizeof(child), "%s/%s", path, name);
++        if(length < 0 || (size_t)length >= sizeof(child)) {
++            errno = ENAMETOOLONG;
++            success = 0;
++            break;
++        }
++        struct stat st;
++        if(stat(child, &st)) {
++            success = 0;
++            break;
++        }
++        if(S_ISDIR(st.st_mode) && root) {
++            if(++ctx->directories > PYXIS_FONT_DIRECTORY_LIMIT) {
++                errno = EOVERFLOW;
++                success = 0;
++                break;
++            }
++            if(!scan_directory(ctx, child, 0)) {
++                success = 0;
++                break;
++            }
++        } else if(S_ISREG(st.st_mode)) {
++            const char *ext = strrchr(name, '.');
++            if(ext && (equal_name(ext, ".ttf") || equal_name(ext, ".otf")) &&
++               !import_font(ctx, child, st.st_size)) {
++                success = 0;
++                break;
++            }
++        }
++    }
++    int saved = errno;
++    if(closedir(dir) && success)
++        return 0;
++    errno = saved;
++    return success;
++}
++
++static int compare_path(const void *a, const void *b)
++{
++    return strcmp(((const pyxis_font *)a)->path, ((const pyxis_font *)b)->path);
++}
++
++BLURGAPI int blurg_enable_system_fonts(blurg_t *blurg)
++{
++    if(!blurg) {
++        errno = EINVAL;
++        return 0;
++    }
++    if(blurg->sysFontData)
++        return 1;
++    sys_pyxis *ctx = calloc(1, sizeof(*ctx));
++    if(!ctx)
++        return 0;
++    /* Independent metadata faces survive until this backend's destroy hook. */
++    if(FT_Init_FreeType(&ctx->library)) {
++        free(ctx);
++        errno = ENOMEM;
++        return 0;
++    }
++    if(!scan_directory(ctx, PYXIS_FONT_ROOT, 1) || !ctx->count) {
++        int saved = errno ? errno : ENOENT;
++        destroy_context(ctx);
++        errno = saved;
++        return 0;
++    }
++    qsort(ctx->fonts, ctx->count, sizeof(*ctx->fonts), compare_path);
++    blurg->sysFontData = ctx;
++    return 1;
++}
++
++static pyxis_font *select_font(sys_pyxis *ctx, const char *family,
++    int weight, int italic, uint32_t character)
++{
++    pyxis_font *best = NULL;
++    int best_style = 2;
++    long best_weight = 1001;
++    for(size_t i = 0; i < ctx->count; ++i) {
++        pyxis_font *font = &ctx->fonts[i];
++        if(family && !equal_name(font->face->family_name, family))
++            continue;
++        if(character && !FT_Get_Char_Index(font->face, character))
++            continue;
++        int style = font->italic != !!italic;
++        long difference = labs((long)font->weight - weight);
++        if(style < best_style || (style == best_style && difference < best_weight)) {
++            best = font;
++            best_style = style;
++            best_weight = difference;
++        }
++    }
++    return best;
++}
++
++blurg_font_t *blurg_sysfonts_query(blurg_t *blurg, const char *family,
++    int weight, int italic, uint32_t character)
++{
++    if(!blurg || !blurg->sysFontData || !family || weight < 1 || weight > 1000 ||
++       character > 0x10FFFF || (character >= 0xD800 && character <= 0xDFFF)) {
++        errno = EINVAL;
++        return NULL;
++    }
++    if(equal_name(family, "sans-serif"))
++        family = "Noto Sans";
++    else if(equal_name(family, "serif"))
++        family = "Noto Serif";
++    else if(equal_name(family, "monospace"))
++        family = "Noto Sans Mono";
++    sys_pyxis *ctx = blurg->sysFontData;
++    pyxis_font *font = select_font(ctx, family, weight, italic, character);
++    if(!font)
++        font = select_font(ctx, "Noto Sans", weight, italic, character);
++    if(!font && character)
++        font = select_font(ctx, NULL, weight, italic, character);
++    if(!font)
++        return NULL;
++    int embolden = weight >= BLURG_WEIGHT_BOLD && font->weight <= BLURG_WEIGHT_REGULAR;
++    /* Fallback links are mutable: each query needs its own face, as fontconfig does. */
++    blurg_font_t *loaded = blurg_font_load_file(blurg, font->path);
++    if(!loaded)
++        return NULL;
++    loaded->weight = font->weight;
++    loaded->italic = font->italic;
++    loaded->embolden = embolden;
++    blurg_font_rehash(loaded);
++    return loaded;
++}
++
++void blurg_sysfonts_destroy(blurg_t *blurg)
++{
++    if(blurg->sysFontData) {
++        destroy_context(blurg->sysFontData);
++        blurg->sysFontData = NULL;
++    }
++}
++#endif
