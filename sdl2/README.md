@@ -7,8 +7,15 @@ records the commit, patches and profile; `dev/share/licenses/sdl2/` keeps the
 upstream license and the port notice.
 
 ```sh
-lua build.lua sdl2 --sdk /path/to/pyxis/build/sdk
+lua build.lua mesa --sdk /path/to/pyxis/build/sdk
+lua build.lua sdl2 --sdk /path/to/pyxis/build/sdk --mesa build/mesa/stage/dev
 ```
+
+The recipe builds two archives. `stage/dev` contains the ordinary `libSDL2.a`,
+shared public headers and covered Pyxis backend source. `stage/gl-dev` contains
+`libSDL2-osmesa.a` and its metadata and notices. The explicit Mesa prefix is a
+build prerequisite; the recipe never modifies the SDK. The ordinary archive and
+its consumers retain their C-only link closure.
 
 ## Using it
 
@@ -19,8 +26,9 @@ provides upstream's static target `SDL2::SDL2-static` and the usual
 `SDL2_INCLUDE_DIRS` and `SDL2_LIBRARIES` variables. There is no shared
 `SDL2::SDL2` or `SDL2::SDL2main`.
 
-The installed `SDL_config.h` replaces upstream's platform dispatcher, so
-programs see the same configuration the library was built with. SDL uses
+The installed `SDL_config.h` replaces upstream's platform dispatcher. Both
+archives share this configuration and compile the generic OpenGL API; only the
+OSMesa archive installs GL backend hooks. SDL uses
 libc's environment (`getenv`, `setenv`), `strtok_r`, `trunc` and the other
 declared functions, and its own versions of the rest. `SDL_iconv` stays SDL's
 own, because libc's `iconv` lacks the UCS-2, UCS-4 and UTF-32 forms SDL uses.
@@ -217,7 +225,8 @@ These facilities report themselves as unsupported, as upstream does:
 - **Thread priorities and detach.** Only normal priority succeeds, and
   detached threads are not collected before exit.
 - **Audio capture** and output device selection: there is one default output.
-- **Haptics, sensors, HIDAPI, shared objects, power, OpenGL and Vulkan.**
+- **Haptics, sensors, HIDAPI, shared objects, power and Vulkan.**
+- **OpenGL in the ordinary archive.** Select the separate OSMesa archive for GL.
 - **Joysticks.** They use SDL's dummy driver: `SDL_INIT_JOYSTICK` succeeds
   with zero devices.
 
@@ -229,5 +238,26 @@ Named SDL system-cursor shapes and message boxes are unsupported.
 The development prefix includes `lib/pkgconfig/sdl2.pc`. The separate `sdl2-dev`
 package contributes it, its headers and `libSDL2.a` to the shared `sdk://` view.
 The metadata describes only the actual static Pyxis library; no SDL_main,
-OpenGL, dynamic loader or Unix thread libraries are invented. Host cross-builds
+dynamic loader or Unix thread libraries are invented. Host cross-builds
 may override `includedir` and `libdir` with the relocated SDK directories.
+
+## OSMesa link profile
+
+Install `sdl2-osmesa-dev` with its `sdl2-dev`, `mesa-dev` and `libcxx-dev`
+dependencies. Its `sdl2-osmesa.pc` selects `-lSDL2-osmesa` and follows `osmesa`
+to the real Mesa/C++ closure. Select this profile instead of `sdl2`; linking both
+SDL archives in one program is unsupported. No public compiler flag is needed:
+`PYXIS_USE_OSMESA` is private to the variant's backend objects. The archives share
+SDL's API and headers. SDL's dynamic API remains disabled in both.
+
+For cross-builds, `find_package(SDL2OSMesa CONFIG REQUIRED)` provides
+`SDL2::SDL2-osmesa-static`. Add both SDL development prefixes and Mesa's prefix
+to the toolchain's `CMAKE_FIND_ROOT_PATH`; the toolchain finds the C++ archives
+in the exported SDK. The imported target advertises those full archive paths
+and uses the shared SDL headers. The ordinary `SDL2::SDL2-static` target retains
+its existing C link interface.
+
+Static application packages using this profile must carry SDL's licenses,
+notices and covered backend source from `sdl2-dev`, the profile notice and
+provenance from `sdl2-osmesa-dev`, Mesa's notices and provenance from `mesa-dev`,
+and the SDK's C++ runtime notices.

@@ -1,9 +1,16 @@
 return function(ctx)
   ctx.run({ "make", "-f", ctx.recipe .. "/Makefile",
     "SDK=" .. ctx.sdk, "SOURCE=" .. ctx.source, "BUILD=" .. ctx.build,
-    "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile })
+    "RECIPE=" .. ctx.recipe, "MESA=" .. ctx.mesa,
+    "CROSS_COMPILE=" .. ctx.cross_compile, "all", "osmesa" })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/libSDL2.a",
     ctx.stage .. "/" .. ctx.metadata.outputs.library })
+  ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/libSDL2-osmesa.a",
+    ctx.stage .. "/" .. ctx.metadata.outputs.gl_library })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/sdl2-osmesa.pc",
+    ctx.stage .. "/" .. ctx.metadata.outputs.gl_pc })
+  ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/cmake/SDL2OSMesaConfig.cmake",
+    ctx.stage .. "/" .. ctx.metadata.outputs.gl_package })
   ctx.run({ "mkdir", "-p", "--", ctx.stage .. "/dev/include" })
   ctx.run({ "cp", "-R", "--", ctx.build .. "/include/SDL2", ctx.stage .. "/dev/include/" })
   for _, name in ipairs({ "SDL2Config.cmake", "SDL2ConfigVersion.cmake" }) do
@@ -31,18 +38,26 @@ return function(ctx)
       ctx.stage .. "/" .. ctx.metadata.outputs[name] })
   end
 
-  ctx.run({ "mkdir", "-p", ctx.stage .. "/dev/share/sdl2" })
-  local provenance = assert(io.open(ctx.stage .. "/" .. ctx.metadata.outputs.provenance, "w"))
-  assert(provenance:write("source=" .. ctx.metadata.source.url .. "\n",
-    "commit=" .. ctx.metadata.source.commit .. "\n",
-    "version=" .. ctx.metadata.version .. "\n",
-    "license=" .. ctx.metadata.license .. "\n"))
-  for _, patch in ipairs(ctx.metadata.patches) do
-    assert(provenance:write("patch=" .. patch .. "\n"))
+  local function write_provenance(output, profile, omitted, dependencies)
+    local path = ctx.stage .. "/" .. ctx.metadata.outputs[output]
+    ctx.run({ "mkdir", "-p", assert(path:match("^(.*)/")) })
+    local provenance = assert(io.open(path, "w"))
+    assert(provenance:write("source=" .. ctx.metadata.source.url .. "\n",
+      "commit=" .. ctx.metadata.source.commit .. "\n",
+      "version=" .. ctx.metadata.version .. "\n",
+      "license=" .. ctx.metadata.license .. "\n"))
+    for _, patch in ipairs(ctx.metadata.patches) do
+      assert(provenance:write("patch=" .. patch .. "\n"))
+    end
+    assert(provenance:write("profile=" .. profile .. "\n", "omitted=" .. omitted .. "\n"))
+    if dependencies then assert(provenance:write("dependencies=" .. dependencies .. "\n")) end
+    assert(provenance:close())
   end
-  assert(provenance:write("profile=static library, Pyxis video/input/audio/timer/threads/paths, software renderer\n",
-    "omitted=thread priorities and detach, audio capture, haptics, sensors, HIDAPI, shared objects, OpenGL/Vulkan, SDL_main, SDL_test\n"))
-  assert(provenance:close())
+  local common_profile = "static library, Pyxis video/input/audio/timer/threads/paths, software renderer"
+  local common_omitted = "thread priorities and detach, audio capture, haptics, sensors, HIDAPI, shared objects, Vulkan, SDL_main, SDL_test"
+  write_provenance("provenance", common_profile, common_omitted .. ", OpenGL backend")
+  write_provenance("gl_provenance", common_profile .. ", PYXIS_USE_OSMESA, static Mesa softpipe OpenGL",
+    common_omitted, "sdl2-dev (shared headers and MPL backend source), mesa-dev, libcxx-dev")
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/sdl2.pc",
     ctx.stage .. "/dev/lib/pkgconfig/sdl2.pc" })
 
@@ -61,6 +76,7 @@ return function(ctx)
     "pyxis/SDL_pyxisclipboard.c",
     "pyxis/SDL_pyxisevents.c",
     "pyxis/SDL_pyxismouse.c",
+    "pyxis/SDL_pyxisopengl.c",
     "pyxis/SDL_pyxisvideo.c",
     "pyxis/SDL_pyxisvideo.h",
     "pyxis/SDL_syscond.c",
@@ -72,4 +88,17 @@ return function(ctx)
       ctx.stage .. "/dev/share/sources/sdl2/" .. name })
   end
 
+  -- sdl2-osmesa-dev depends on sdl2-dev for the shared public headers and
+  -- covered backend source. Keep profile-specific notices beside its archive.
+  for _, entry in ipairs({
+    { "license", "gl_license" },
+    { "yuv_license", "gl_yuv_license" },
+    { "libm_notice", "gl_libm_notice" },
+    { "notice", "gl_notice" },
+    { "dev_pyxis_license", "gl_pyxis_license" },
+    { "dev_licensing", "gl_licensing" },
+  }) do
+    ctx.run({ "install", "-D", "-m", "644", ctx.stage .. "/" .. ctx.metadata.outputs[entry[1]],
+      ctx.stage .. "/" .. ctx.metadata.outputs[entry[2]] })
+  end
 end

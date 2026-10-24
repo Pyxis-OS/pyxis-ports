@@ -26,11 +26,14 @@ UPSTREAM_SOURCES := $(wildcard $(S)/src/*.c) \
   $(S)/src/thread/pthread/SDL_sysmutex.c $(S)/src/thread/pthread/SDL_systls.c \
   $(wildcard $(S)/src/timer/*.c) \
   $(wildcard $(S)/src/video/*.c) $(wildcard $(S)/src/video/yuv2rgb/*.c)
-BACKEND_SOURCES := $(wildcard $(RECIPE)/pyxis/*.c)
+BACKEND_SOURCES := $(filter-out $(RECIPE)/pyxis/SDL_pyxisopengl.c,$(wildcard $(RECIPE)/pyxis/*.c))
+GL_BACKEND_SOURCES := $(BACKEND_SOURCES) $(RECIPE)/pyxis/SDL_pyxisopengl.c
 
 UPSTREAM_OBJECTS := $(patsubst $(S)/%.c,$(BUILD)/upstream/%.o,$(UPSTREAM_SOURCES))
 BACKEND_OBJECTS := $(patsubst $(RECIPE)/pyxis/%.c,$(BUILD)/pyxis/%.o,$(BACKEND_SOURCES))
 OBJECTS := $(UPSTREAM_OBJECTS) $(BACKEND_OBJECTS)
+GL_BACKEND_OBJECTS := $(patsubst $(RECIPE)/pyxis/%.c,$(BUILD)/osmesa/pyxis/%.o,$(GL_BACKEND_SOURCES))
+GL_OBJECTS := $(UPSTREAM_OBJECTS) $(GL_BACKEND_OBJECTS)
 
 # The installed tree replaces upstream's platform-dispatching SDL_config.h, so
 # the library and its consumers use one configuration.
@@ -43,8 +46,10 @@ CPPFLAGS := -I$(INCLUDE) -I$(S)/src -I$(RECIPE)/pyxis $(PYXIS_CPPFLAGS)
 UPSTREAM_CFLAGS := $(filter-out -std=gnu23 -Wextra,$(PYXIS_CFLAGS)) -std=gnu17 -fno-strict-aliasing
 BACKEND_CFLAGS := $(PYXIS_CFLAGS) -fno-strict-aliasing
 
-.PHONY: all
+.PHONY: all osmesa
 all: $(BUILD)/libSDL2.a
+
+osmesa: $(BUILD)/libSDL2-osmesa.a
 
 $(HEADER_STAMP): $(PUBLIC_HEADERS) $(RECIPE)/SDL_config.h $(RECIPE)/Makefile
 	rm -rf $(INCLUDE)
@@ -61,8 +66,16 @@ $(BUILD)/pyxis/%.o: $(RECIPE)/pyxis/%.c $(HEADER_STAMP)
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(BACKEND_CFLAGS) -c $< -o $@
 
+$(BUILD)/osmesa/pyxis/%.o: $(RECIPE)/pyxis/%.c $(HEADER_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -I$(MESA)/include -DPYXIS_USE_OSMESA=1 $(BACKEND_CFLAGS) -c $< -o $@
+
 $(BUILD)/libSDL2.a: $(OBJECTS)
 	rm -f $@
 	$(AR) rcs $@ $(OBJECTS)
 
--include $(OBJECTS:.o=.d)
+$(BUILD)/libSDL2-osmesa.a: $(GL_OBJECTS)
+	rm -f $@
+	$(AR) rcs $@ $(GL_OBJECTS)
+
+-include $(OBJECTS:.o=.d) $(GL_BACKEND_OBJECTS:.o=.d)

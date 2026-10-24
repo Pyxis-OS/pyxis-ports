@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: SDL2-OSMesa
+Description: Simple DirectMedia Layer with static Mesa softpipe OpenGL
+Version: 2.32.10
+Libs: -L${libdir} -lSDL2-osmesa
+Requires.private: osmesa
+Cflags: -I${includedir} -I${includedir}/SDL2 -D_REENTRANT

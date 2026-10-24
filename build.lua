@@ -78,6 +78,7 @@ local function main()
   if arg[1] == "--help" or not arg[1] then
     print("Usage: lua build.lua PORT --sdk PATH [--work PATH] [--cross-prefix PREFIX]")
     print("The work directory must not exist; default: build/PORT.")
+    print("SDL2 requires --mesa PATH to its staged development prefix; it builds both static profiles.")
     print("Lua also requires --mbedtls PATH to its configured development prefix.")
     print("Libpng also requires --zlib PATH to its development prefix.")
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
@@ -92,7 +93,7 @@ local function main()
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
-    ["--go"] = name == "caddy",
+    ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2",
     ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
@@ -174,6 +175,13 @@ local function main()
     require_file(go .. "/bin/go")
     require_file(go .. "/share/pyxis-go/revision")
     require_file(go .. "/src/syscall/native_pyxis.go")
+  end
+  local mesa
+  if name == "sdl2" then
+    assert(options["--mesa"], "SDL2 needs --mesa PATH to build its separate OSMesa archive")
+    mesa = make_path(capture({ "realpath", "-e", "--", options["--mesa"] }))
+    require_file(mesa .. "/include/GL/osmesa.h")
+    require_file(mesa .. "/lib/libOSMesa.a")
   end
   local mbedtls
   if name == "lua" then
@@ -305,7 +313,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, go = go, mbedtls = mbedtls, zlib = zlib,
+    metadata = metadata, run = run, go = go, mesa = mesa, mbedtls = mbedtls, zlib = zlib,
     libpng = libpng, fmt = fmt, sdl2 = sdl2, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do

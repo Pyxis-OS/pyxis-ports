@@ -21,13 +21,21 @@ Native opposite scroll increments cancel fractional wheel residue, and the
 public mouse-button mask uses an unsigned shift to represent button 32.
 The patches retain SDL's zlib license.
 
-The Pyxis backend in pyxis/ (video, input, clipboard, audio, timer, threads and paths) and SDL_config.h
+The Pyxis backend in pyxis/ (video, OpenGL, input, clipboard, audio, timer, threads and paths) and SDL_config.h
 are original Pyxis material under the Mozilla Public License, version 2.0;
 see the ports repository's LICENSE and LICENSING.md. The backend uses the
 shared US key layout exported by the Pyxis SDK.
 
-Audio capture, haptics, sensors, HIDAPI, shared objects, OpenGL,
-Vulkan, SDL_main and SDL_test are not built. No host libc or compatibility
+The ordinary libSDL2.a has no OpenGL backend or Mesa/C++ dependency. The
+separate libSDL2-osmesa.a compiles the Pyxis backend with PYXIS_USE_OSMESA and
+binds statically to Mesa softpipe; select it instead of the ordinary archive.
+Both use the same SDL API and public headers. Covered backend source and build
+configuration are retained in sdl2-dev at share/sources/sdl2; the OSMesa
+development package depends on sdl2-dev, mesa-dev and libcxx-dev. Static
+consumers must retain Mesa and C++ runtime notices as well.
+
+Audio capture, haptics, sensors, HIDAPI, shared objects, Vulkan, SDL_main and
+SDL_test are not built. No host libc or compatibility
 stubs are included.
 
 The opt-in manual SDL clipboard exercise in manual/ is original Pyxis material

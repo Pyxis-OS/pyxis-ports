@@ -94,6 +94,8 @@
 
 #define SDL_VIDEO_DRIVER_PYXIS 1
 #define SDL_VIDEO_RENDER_SW 1
+/* The generic GL API is shared; only the opt-in archive supplies GL hooks. */
+#define SDL_VIDEO_OPENGL 1
 #define SDL_AUDIO_DRIVER_PYXIS 1
 #define SDL_TIMER_PYXIS 1
 #define SDL_FILESYSTEM_PYXIS 1
