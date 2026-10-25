@@ -56,7 +56,7 @@ target_link_libraries(libultraship PUBLIC ImGui::SDL2OpenGL3 libzip::zip
 
 # Compile consumers with the same CVar and structure configuration as the archive.
 get_directory_property(_profile DIRECTORY "${SOURCE}/src" COMPILE_DEFINITIONS)
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pyxis_profile.h" "#pragma once\n#include <stdint.h>\n#define CONTROLLERBUTTONS_T uint32_t\n#define F3DEX_GBI_2\n#define BS_THREAD_POOL_ENABLE_PRIORITY\n#define BS_THREAD_POOL_ENABLE_PAUSE\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pyxis_profile.h" "#pragma once\n#include <stdint.h>\n#define CONTROLLERBUTTONS_T uint32_t\n#define F3DEX_GBI_2\n#define ENABLE_OPENGL\n#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE\n#ifdef _DEBUG\n#error The packaged LUS uses its release Context layout\n#endif\n#define BS_THREAD_POOL_ENABLE_PRIORITY\n#define BS_THREAD_POOL_ENABLE_PAUSE\n")
 foreach(_definition IN LISTS _profile)
   if(_definition MATCHES "^(CVAR_[A-Z_]+)=(.*)$")
     file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/pyxis_profile.h" "#define ${CMAKE_MATCH_1} ${CMAKE_MATCH_2}\n")

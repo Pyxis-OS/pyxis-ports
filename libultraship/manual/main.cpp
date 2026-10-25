@@ -130,9 +130,9 @@ int main(int argc, char** argv) {
         auto parsed = std::dynamic_pointer_cast<Ship::Json>(manager->LoadResource("fixture/message.json", true));
         require(parsed && parsed->Data.at("value") == 42, "public O2R resource did not decode");
         auto all = manager->LoadResourcesAsync("fixture/bulk.json");
-        const auto bulk = all.get();
+        auto bulk = all.get();
         require(bulk && bulk->size() == 1, "bulk resource load failed");
-        const auto bulk_json = std::dynamic_pointer_cast<Ship::Json>(bulk->at(0));
+        auto bulk_json = std::dynamic_pointer_cast<Ship::Json>(bulk->at(0));
         require(bulk_json && bulk_json->Data.at("value") == 43, "bulk resource decode failed");
         require(manager->LoadResource("fixture/not-present", true) == nullptr, "missing resource unexpectedly loaded");
         auto source_archive = manager->GetArchiveManager()->GetArchiveFromFile("fixture/message.json");
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
         SDL_StopTextInput();
         stop_audio = true;
         audio.join();
-        player.reset(); parsed.reset(); manager.reset();
+        player.reset(); parsed.reset(); bulk_json.reset(); bulk.reset(); all = {}; manager.reset();
         require(ctx->GetConfig()->Save(), "writable config publication failed");
         // Context owns ordered worker/GUI/GL/audio teardown; release extra frontend owners first.
         window.reset(); gui.reset();
