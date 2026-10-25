@@ -5,7 +5,8 @@ TEE_OBJECTS := $(BUILD)/tee.o $(BUILD)/libutil/eprintf.o $(BUILD)/libutil/ealloc
                $(BUILD)/libutil/writeall.o
 UNIQ_OBJECTS := $(BUILD)/uniq.o $(BUILD)/libutil/eprintf.o $(BUILD)/libutil/ealloc.o \
                 $(BUILD)/libutil/fshut.o $(BUILD)/libutil/strtonum.o
-SHA256SUM_OBJECTS := $(BUILD)/sha256sum.o $(BUILD)/libutil/crypt.o $(BUILD)/libutil/sha256.o \
+SHA256_LIBRARY := $(PYXIS_SYSROOT)/usr/lib/libsha256.a
+SHA256SUM_OBJECTS := $(BUILD)/sha256sum.o $(BUILD)/libutil/crypt.o \
                      $(BUILD)/libutil/eprintf.o $(BUILD)/libutil/fshut.o
 
 UTF_COMMON := $(BUILD)/libutf/rune.o $(BUILD)/libutf/utf.o $(BUILD)/libutf/runetype.o
@@ -44,8 +45,8 @@ $(BUILD)/tee.pxe: $(TEE_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKE
 $(BUILD)/uniq.pxe: $(UNIQ_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(UNIQ_OBJECTS) $(PYXIS_LDLIBS)
 
-$(BUILD)/sha256sum.pxe: $(SHA256SUM_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
-	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(SHA256SUM_OBJECTS) $(PYXIS_LDLIBS)
+$(BUILD)/sha256sum.pxe: $(SHA256SUM_OBJECTS) $(SHA256_LIBRARY) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
+	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(SHA256SUM_OBJECTS) $(SHA256_LIBRARY) $(PYXIS_LDLIBS)
 
 $(BUILD)/wc.pxe: $(WC_OBJECTS) $(PYXIS_START) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)
 	$(CC) $(PYXIS_LDFLAGS) -o $@ $(PYXIS_START) $(WC_OBJECTS) $(PYXIS_LDLIBS)

@@ -7,7 +7,7 @@ return {
   license = "MIT AND ISC AND BSD-3-Clause AND Unicode-3.0",
   dependencies = {
     host = { "make" },
-    pyxis = { "libc", "libpyxis" },
+    pyxis = { "libc", "libpyxis", "libsha256" },
   },
   patches = {
     "patches/0001-narrow-cksum-helper-header.patch",
@@ -17,6 +17,7 @@ return {
     "patches/0005-refuse-tail-follow.patch",
     "patches/0006-grep-recursive-search.patch",
     "patches/0007-count-pipe-values-by-size.patch",
+    "patches/0008-use-shared-sha256.patch",
   },
   outputs = {
     executable = "bin/cksum.pxe",
