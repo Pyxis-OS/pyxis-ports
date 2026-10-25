@@ -13,7 +13,10 @@ LuaLS worker protocol. Its `fd()` returns a typed readiness object; selectors
 only support channel READ readiness, with actual queue predicates and a shared
 condition variable. Publication, capacity release and stop use the same mutex.
 Capacity exhaustion waits for the consumer or cancellation; an oversized or
-unserializable message fails the service rather than disappearing.
+unserializable message fails the service rather than disappearing. The selected
+bee patch checks C++ serializer allocations and releases scratch blocks on both
+allocation exceptions and Lua's C++ error transfer. Allocation failure returns
+through the protected pack call, releasing the admission before service stop.
 
 Provisional implementation limits, pending public-fixture qualification:
 

@@ -1,0 +1,78 @@
+--- a/3rd/lua-seri/lua-seri.cpp
++++ b/3rd/lua-seri/lua-seri.cpp
+@@ -10,6 +10,7 @@
+ 
+ #ifdef __cplusplus
+ #    include <lua.hpp>
++#    include <new>
+ #else
+ #    include <lauxlib.h>
+ #    include <lua.h>
+@@ -97,6 +98,10 @@
+ inline static struct block *
+ blk_alloc(void) {
+ 	struct block *b = (struct block *)malloc(sizeof(struct block));
++#ifdef __cplusplus
++	if (b == NULL)
++		throw std::bad_alloc();
++#endif
+ 	b->next = NULL;
+ 	return b;
+ }
+@@ -152,6 +157,8 @@
+ static void
+ wb_free(struct write_block *wb) {
+ 	struct block *blk = wb->head;
++	if (blk == NULL)
++		return;
+ 	blk = blk->next;	// the first block is on stack
+ 	while (blk) {
+ 		struct block * next = blk->next;
+@@ -163,6 +170,16 @@
+ 	wb->ptr = 0;
+ 	wb->len = 0;
+ }
++
++#ifdef __cplusplus
++/* Lua's C++ error transfer must release the serializer's scratch chain too. */
++struct write_guard {
++	struct write_block *block;
++	~write_guard() {
++		wb_free(block);
++	}
++};
++#endif
+ 
+ static void
+ rball_init(struct read_block * rb, char * buffer, int size) {
+@@ -767,6 +784,10 @@
+ static void *
+ seri(struct block *b, int len) {
+ 	uint8_t * buffer = (uint8_t *)malloc(len + 5);
++#ifdef __cplusplus
++	if (buffer == NULL)
++		throw std::bad_alloc();
++#endif
+     buffer[len + 4] = '\0';
+ 	memcpy(buffer, &len, 4);	// write length
+ 	uint8_t * ptr = buffer + 4;
+@@ -850,6 +871,9 @@
+ 	temp.next = NULL;
+ 	struct write_block wb;
+ 	wb_init(&wb, &temp);
++#ifdef __cplusplus
++	write_guard guard = { &wb };
++#endif
+ 
+ 	pack_from(L,&wb,from);
+ 	assert(wb.head == &temp);
+@@ -871,6 +895,9 @@
+ 	temp.next = NULL;
+ 	struct write_block wb;
+ 	wb_init(&wb, &temp);
++#ifdef __cplusplus
++	write_guard guard = { &wb };
++#endif
+ 
+ 	wb_string(&wb, str, sz);
+ 	assert(wb.head == &temp);

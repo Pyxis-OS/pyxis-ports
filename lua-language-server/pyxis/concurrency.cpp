@@ -229,7 +229,12 @@ struct preflight {
 int pack_protected(lua_State* L)
 {
     int size = 0;
-    void* bytes = seri_pack(L, 0, &size);
+    void* bytes;
+    try {
+        bytes = seri_pack(L, 0, &size);
+    } catch (const std::bad_alloc&) {
+        return luaL_error(L, "LuaLS message serialization memory unavailable");
+    }
     lua_pushlightuserdata(L, bytes);
     lua_pushinteger(L, size);
     return 2;
