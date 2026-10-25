@@ -70,7 +70,11 @@ for source in sorted((args.recipe / "notices").iterdir()):
         copy(source, licenses / "runtime" / source.name)
 for name in ("musl-COPYRIGHT", "musl-TRE-COPYRIGHT", "musl-upstream.md",
              "tlsf.h", "tlsf-upstream.md", "musl-fmaf.c", "npfs/LICENSE",
-             "npfs/LICENSING.md", "fat32/LICENSE", "fat32/LICENSING.md"):
+             "npfs/LICENSING.md", "fat32/LICENSE", "fat32/LICENSING.md",
+             "libsha256/tf_psa/LICENSE",
+             "libsha256/tf_psa/UPSTREAM.md",
+             "libsha256/x86_64/LICENSE.go-bsd",
+             "libsha256/x86_64/UPSTREAM.md"):
     copy(args.sdk / "share/licenses" / name, licenses / "sdk" / name)
 copy(args.sdk / "share/toolchain/LICENSE.TXT", licenses / "sdk/toolchain-LICENSE")
 copy(args.sdk / "share/toolchain/llvm-revision", metadata / "toolchain-revision")

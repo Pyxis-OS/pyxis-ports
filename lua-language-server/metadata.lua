@@ -32,7 +32,11 @@ for index, path in ipairs({
 end
 for index, path in ipairs({ "musl-COPYRIGHT", "musl-TRE-COPYRIGHT",
     "musl-upstream.md", "tlsf.h", "tlsf-upstream.md", "musl-fmaf.c",
-    "npfs/LICENSE", "npfs/LICENSING.md", "fat32/LICENSE", "fat32/LICENSING.md" }) do
+    "npfs/LICENSE", "npfs/LICENSING.md", "fat32/LICENSE", "fat32/LICENSING.md",
+    "libsha256/tf_psa/LICENSE",
+    "libsha256/tf_psa/UPSTREAM.md",
+    "libsha256/x86_64/LICENSE.go-bsd",
+    "libsha256/x86_64/UPSTREAM.md" }) do
   outputs["sdk_notice_" .. index] = app .. "metadata/licenses/sdk/" .. path
 end
 outputs.sdk_manifest = app .. "metadata/sdk-manifest.txt"
