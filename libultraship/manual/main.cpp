@@ -24,6 +24,10 @@
 #include "ship/audio/Audio.h"
 #include "ship/audio/AudioPlayer.h"
 #include "fast/Fast3dWindow.h"
+#include "fast/interpreter.h"
+#include "fast/resource/ResourceType.h"
+#include "fast/resource/factory/TextureFactory.h"
+#include "fast/resource/type/Texture.h"
 #include "libultraship/libultra/types.h"
 #include "libultraship/libultra/gbi.h"
 
@@ -127,6 +131,11 @@ int main(int argc, char** argv) {
         window->SetMouseCapture(false);
         SDL_StartTextInput();
         auto manager = ctx->GetResourceManager();
+        require(manager->GetResourceLoader()->RegisterResourceFactory(
+            std::make_shared<Fast::ResourceFactoryBinaryTextureV0>(), RESOURCE_FORMAT_BINARY,
+            "Texture", static_cast<uint32_t>(Fast::ResourceType::Texture), 0), "texture factory registration failed");
+        auto texture = std::dynamic_pointer_cast<Fast::Texture>(manager->LoadResource("fixture/pixel", true));
+        require(texture && texture->ImageDataSize == 4 && texture->ImageData[1] == 255, "public texture decode failed");
         auto parsed = std::dynamic_pointer_cast<Ship::Json>(manager->LoadResource("fixture/message.json", true));
         require(parsed && parsed->Data.at("value") == 42, "public O2R resource did not decode");
         auto all = manager->LoadResourcesAsync("fixture/bulk.json");
@@ -159,23 +168,32 @@ int main(int argc, char** argv) {
                 audio_failed = true;
             }
         });
+        alignas(2) static const char texture_path[] = "__OTR__fixture/pixel";
         Gfx display_list[] = {
+            gsDPSetTextureImage(G_IM_FMT_RGBA, G_IM_SIZ_32b, 1, texture_path),
             gsDPSetCycleType(G_CYC_FILL),
             gsDPSetFillColor(0x19331933),
             gsDPFillRectangle(0, 0, 319, 239),
             gsSPEndDisplayList(),
         };
+        bool texture_checked = false;
         while (window->IsRunning()) {
             window->HandleEvents();
             if (SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_ESCAPE]) window->Close();
             require(!audio_failed.load(), "SDL audio producer failed");
-            window->DrawAndRunGraphicsCommands(display_list, {});
+            if (window->DrawAndRunGraphicsCommands(display_list, {}) && !texture_checked) {
+                auto interpreter = window->GetInterpreterWeak().lock();
+                require(interpreter && interpreter->mRdp->texture_to_load.raw_tex_metadata.resource == texture &&
+                    interpreter->mRdp->texture_to_load.addr == texture->ImageData, "owned texture dispatch failed");
+                texture_checked = true;
+                fprintf(stderr, "LUS: resource-owned texture dispatch PASS\n");
+            }
             SDL_Delay(8);
         }
         SDL_StopTextInput();
         stop_audio = true;
         audio.join();
-        player.reset(); parsed.reset(); bulk_json.reset(); bulk.reset(); all = {}; manager.reset();
+        player.reset(); texture.reset(); parsed.reset(); bulk_json.reset(); bulk.reset(); all = {}; manager.reset();
         require(ctx->GetConfig()->Save(), "writable config publication failed");
         // Context owns ordered worker/GUI/GL/audio teardown; release extra frontend owners first.
         window.reset(); gui.reset();

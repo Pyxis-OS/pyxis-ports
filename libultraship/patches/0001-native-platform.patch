@@ -26,6 +26,18 @@ diff --git a/include/fast/Fast3dWindow.h b/include/fast/Fast3dWindow.h
      GfxRenderingAPI* mRenderingApi;
      GfxWindowBackend* mWindowManagerApi;
      std::shared_ptr<Interpreter> mInterpreter = nullptr;
+diff --git a/include/fast/interpreter.h b/include/fast/interpreter.h
+--- a/include/fast/interpreter.h
++++ b/include/fast/interpreter.h
+@@ -492,7 +492,7 @@
+     void CalcAndSetViewport(const F3DVp_t* viewport);
+ 
+     void SpReset();
+-    void* SegAddr(uintptr_t w1);
++    void* SegAddr(uintptr_t w1, bool* segmentResolved = nullptr);
+ 
+     static const char* CCMUXtoStr(uint32_t ccmux);
+     static const char* ACMUXtoStr(uint32_t acmux);
 diff --git a/include/ship/Context.h b/include/ship/Context.h
 --- a/include/ship/Context.h
 +++ b/include/ship/Context.h
@@ -807,7 +819,44 @@ diff --git a/src/fast/interpreter.cpp b/src/fast/interpreter.cpp
  #endif
  
  #include <any>
-@@ -3982,7 +3984,12 @@
+@@ -3222,21 +3224,22 @@
+                           (float)(1 << 10) * realSW, (float)(1 << 10) * realSH, false);
+ }
+ 
+-void* Interpreter::SegAddr(uintptr_t w1) {
+-    // Segmented?
++void* Interpreter::SegAddr(uintptr_t w1, bool* segmentResolved) {
++    if (segmentResolved != nullptr) {
++        *segmentResolved = false;
++    }
+     if (w1 & 1) {
+-        uint32_t segNum = (uint32_t)(w1 >> 24);
+-
+-        uint32_t offset = w1 & 0x00FFFFFE;
+-
+-        if (mSegmentPointers[segNum] != 0) {
+-            return (void*)(mSegmentPointers[segNum] + offset);
+-        } else {
+-            return (void*)w1;
+-        }
+-    } else {
+-        return (void*)w1;
+-    }
++        const uintptr_t segNum = w1 >> 24;
++        const uintptr_t offset = w1 & 0x00FFFFFE;
++        if (segNum < MAX_SEGMENT_POINTERS && mSegmentPointers[segNum] != 0 &&
++            mSegmentPointers[segNum] <= UINTPTR_MAX - offset) {
++            if (segmentResolved != nullptr) {
++                *segmentResolved = true;
++            }
++            return reinterpret_cast<void*>(mSegmentPointers[segNum] + offset);
++        }
++    }
++    return reinterpret_cast<void*>(w1);
+ }
+ 
+ #define C0(pos, width) ((cmd->words.w0 >> (pos)) & ((1U << width) - 1))
+@@ -3982,7 +3985,12 @@
      }
  
      // Still in the N64 segmented range, but might be a false positive (a real low pointer).
@@ -821,7 +870,43 @@ diff --git a/src/fast/interpreter.cpp b/src/fast/interpreter.cpp
      // For Windows, check whether the address belongs to a dll.
      HMODULE module = nullptr;
      return GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-@@ -4975,6 +4982,12 @@
+@@ -3997,7 +4005,11 @@
+ bool gfx_set_timg_handler_rdp(F3DGfx** cmd0) {
+     Interpreter* gfx = mInstance.lock().get();
+     F3DGfx* cmd = *cmd0;
+-    uintptr_t i = (uintptr_t)gfx->SegAddr(cmd->words.w1);
++    bool segmentResolved = false;
++    uintptr_t i = (uintptr_t)gfx->SegAddr(cmd->words.w1, &segmentResolved);
++    if (i == 0 || ((cmd->words.w1 & 1) && !segmentResolved)) {
++        return false;
++    }
+ 
+     char* imgData = (char*)i;
+     uint32_t texFlags = 0;
+@@ -4010,9 +4022,9 @@
+     if ((i & 1) != 1) {
+         if (gfx_check_image_signature(imgData) == 1) {
+             std::shared_ptr<Fast::Texture> tex =
+-                std::static_pointer_cast<Fast::Texture>(gfx->ResolveResourceCached(imgData));
+-
+-            if (tex == nullptr) {
++                std::dynamic_pointer_cast<Fast::Texture>(gfx->ResolveResourceCached(imgData));
++
++            if (tex == nullptr || tex->ImageData == nullptr || tex->ImageDataSize == 0) {
+                 (*cmd0)++;
+                 return false;
+             }
+@@ -4028,7 +4040,8 @@
+         }
+     }
+ 
+-    if (!IsValidResolvedAddress(i)) {
++    // Explicit segment and resource ownership also admit real low heap addresses.
++    if (!segmentResolved && !rawTexMetdata.resource && !IsValidResolvedAddress(i)) {
+         return false;
+     }
+ 
+@@ -4975,6 +4988,12 @@
      mWapi = wapi;
      mRapi = rapi;
      mWapi->Init(game_name, rapi->GetName(), start_in_fullscreen, width, height, posX, posY);
@@ -834,7 +919,7 @@ diff --git a/src/fast/interpreter.cpp b/src/fast/interpreter.cpp
      mRapi->Init();
      mRapi->UpdateFramebufferParameters(0, width, height, 1, false, true, true, true);
      mCurDimensions.internal_mul =
-@@ -4997,7 +5010,10 @@
+@@ -4997,7 +5016,10 @@
      if (mTexUploadBuffer == nullptr) {
          // We cap texture max to 8k, because why would you need more?
          int max_tex_size = std::min(8192, mRapi->GetMaxTextureSize());
@@ -846,7 +931,7 @@ diff --git a/src/fast/interpreter.cpp b/src/fast/interpreter.cpp
      }
  
      ucode_handler_index = UcodeHandlers::ucode_f3dex2;
-@@ -5009,10 +5025,19 @@
+@@ -5009,10 +5031,19 @@
  void Interpreter::Destroy() {
      // TODO: should also destroy rapi, and any other resources acquired in fast3d
      free(mTexUploadBuffer);

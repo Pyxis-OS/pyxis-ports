@@ -19,8 +19,9 @@ Supply all selected dependency development prefixes; the parent make rule is
 the complete list. No dependencies are downloaded by CMake. `stage/dev` carries
 `libultraship.a`, matching headers/profile, `libultraship.pc` and
 `LibUltraShip::LibUltraShip`. Consumers must use the supplied target/module:
-its forced profile header is part of the compiled C++ layout. Static image
-membership uses the SDK's `__pyxis_image_start/end` symbols, never a fake loader.
+its forced profile header is part of the compiled C++ layout. Texture dispatch keeps explicit resolved-segment/resource ownership for low
+heap addresses; its remaining image-membership fallback uses the SDK's
+`__pyxis_image_start/end` symbols, never a fake loader.
 
 ## Ownership and paths
 
@@ -43,7 +44,7 @@ No global logger pool is installed. Partial initialization unwinds the same way.
 
 ## Public first check
 
-`stage/bin/lus-demo.pxb` decodes public JSON from a generated deflate O2R, does
+`stage/bin/lus-demo.pxb` decodes public JSON from a generated deflate O2R, decodes an authored one-pixel texture, verifies its retained dispatch owner, does
 an uncached bulk load with one worker, refuses missing resources and read-only
 writes, and checks a real FBO/depth readback. Its UI runs the pinned Fast3D
 interpreter and ImGui together at the real output size, 1:1, MSAA off/interval0.

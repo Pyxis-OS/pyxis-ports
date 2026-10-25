@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import sys
+import struct
 import zipfile
 
 source, output = map(Path, sys.argv[1:])
@@ -12,6 +13,8 @@ entries = {
     "fixture/message.json": b'{"message":"Hello from a public O2R fixture","value":42}\0',
     "fixture/message.json.meta": json.dumps({"format":"Binary", "type":"Json", "version":0}).encode() + b"\0",
 }
+header = bytes([1, 0, 0, 0]) + struct.pack(">IIQ", 0x4F544558, 0, 0)
+entries["fixture/pixel"] = header.ljust(64, b"\0") + struct.pack(">IIII", 1, 1, 1, 4) + bytes([0, 255, 0, 255])
 entries["fixture/bulk.json"] = b'{"value":43}\0'
 entries["fixture/bulk.json.meta"] = entries["fixture/message.json.meta"]
 for shader in (source / "src/fast/shaders/opengl").glob("*.glsl"):
