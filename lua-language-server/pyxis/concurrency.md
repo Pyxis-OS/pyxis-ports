@@ -74,6 +74,19 @@ held Neovim runtime Lua file, 423,854-byte `vimfn.gen.lua`, also opened and
 returned symbols. A fresh ordinary feature/cleanup pass succeeded. These are
 functional checks, not a new instrumented maximum or performance measurement.
 
+Outgoing LSP result tables do not cross a worker channel. Semantic-token,
+symbol and completion handlers in `script/provider/provider.lua` return their
+results in the service VM. `script/proto/proto.lua` runs handlers through
+`await.call` (a same-VM coroutine), then `response` → `send` →
+`script/jsonrpc.lua:encode` produces the framed JSON string. Native
+`stdio_write` in `pyxis/concurrency.cpp` writes that string directly to stdout;
+there is no writer channel. Thus the 50,015 semantic integers above are subject
+to the output byte bound, not individual visits against the channel graph guard.
+Incoming editor messages, including replies to server requests, are decoded in
+`script/brave/work.lua:loadProtoByStdio` and pushed as tables. Those and internal
+worker task/reply graphs remain subject to the graph limits; the 10,000-name
+configuration check above exercised that incoming path.
+
 Stdio requires native PIPE descriptors for stdin/stdout; unsupported bindings
 fail before workers start. Data moves through the public descriptor try APIs;
 borrowed native handles are used only for `wait_many`. An owned stop pipe wakes
