@@ -24,7 +24,7 @@ return {
   license = "(MIT OR Apache-2.0) AND EPL-1.0 AND LicenseRef-CP437",
   dependencies = {
     host = { "python3", "make", "curl", "sha256sum", "tar", "git", "install" },
-    pyxis = { "libc", "libpyxis", "Rust std cross-toolchain" },
+    pyxis = { "libc", "libpyxis" },
   },
   patches = {
     "patches/0001-native-seek-and-locked-terminal.patch",
