@@ -1,13 +1,13 @@
 return {
   source = {
     file = {
-      url = "https://curl.se/ca/cacert-2026-09-25.pem",
-      mirror = "https://repo.internal/repository/raw-curl/ca/cacert-2026-09-25.pem",
-      sha256 = "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505",
+      url = "https://curl.se/ca/cacert-2026-10-20.pem",
+      mirror = "https://repo.internal/repository/raw-curl/ca/cacert-2026-10-20.pem",
+      sha256 = "796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe",
       name = "cacert.pem",
     },
   },
-  version = "2026-09-25",
+  version = "2026-10-20",
   license = "MPL-2.0",
   dependencies = {
     host = { "curl", "sha256sum", "install" },

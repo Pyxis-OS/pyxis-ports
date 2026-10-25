@@ -1,12 +1,12 @@
 Mozilla-derived public CA certificates
 
-This package preserves curl's 2026-09-25 PEM conversion of Mozilla's public
+This package preserves curl's 2026-10-20 PEM conversion of Mozilla's public
 CA certificate data without changes. The complete upstream header and all
 certificate labels remain in cacert.pem. The bundle is governed by the Mozilla
 Public License, Version 2.0; a copy is included as LICENSE.
 
 Upstream PEM and corresponding source information:
-https://curl.se/ca/cacert-2026-09-25.pem
+https://curl.se/ca/cacert-2026-10-20.pem
 https://curl.se/docs/caextract.html
 https://raw.githubusercontent.com/mozilla-firefox/firefox/refs/heads/release/security/nss/lib/ckfw/builtins/certdata.txt
 
