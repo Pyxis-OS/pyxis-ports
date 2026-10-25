@@ -26,13 +26,13 @@ A private measurement build counted admitted work under the existing mutex;
 all six instances completed with no admission waits/rejections or counter
 underflows. Measurement hooks are not shipped.
 
-| Admission | Observed maximum | Selected bound / margin |
+| Admission | Initial measured maximum | Selected bound / margin |
 | --- | ---: | --- |
 | Conservative serialized message | 423,872 B | 8 MiB, 19.8×; also fits a full-text 4 MiB LSP payload plus bounded metadata |
 | Accounted bytes/channel | 1,271,633 B | 32 MiB; a full 3×8 MiB reservation must fit even when empty |
 | Accounted bytes total | 2,302,689 B | 64 MiB; room for two maximum-size reservations and queued work |
 | Accounted items/channel / total | 70 / 70 | 512 / 1024, 7.3× / 14.6× |
-| Graph tables / visited values / depth | 94 / 694 / 8 | 512 / 4096 / 32, at least 4× |
+| Graph tables / visited values / depth | 94 / 694 / 8 | 8192 / 65,536 / 32; traversal guards, not workload-size limits |
 | LSP input / output body | 152,808 / 720,906 B | 4 MiB each; at least 5.8× |
 | LSP header | 26 B | 8 KiB; separate bounded header parsing, including optional headers |
 | Pending Lua tasks per pool | 215 | 1024, 4.8× |
@@ -46,7 +46,12 @@ charge to the actual owned buffer; pop releases it after unpack. The maximum
 whole reservation must fit both empty-channel and total budgets, checked at
 compile time, so an otherwise admissible item cannot wait forever for space
 which can never exist. The graph visited-value bound also bounds raw array
-length; cyclic/shared graphs retain identity.
+length; cyclic/shared graphs retain identity. Graph guards are deliberately
+larger than a multiple of the modest fixture peaks: generated files and large
+configuration arrays can have many small nodes while using little byte budget.
+Visited values include keys and values, not just array entries. These limits
+bound traversal/preflight scratch independently of copied-byte admission; a
+sufficiently dense graph can still reach them below the byte ceiling.
 
 These are tuning choices for the measured profile, not ABI contracts or
 universal project limits. A well-framed JSON message still has to fit the
@@ -58,6 +63,16 @@ five native tasks and up to 1,143,627,776 backed bytes (about 1.07 GiB), includi
 Lua heaps, code and stacks. That is an observed high-water mark, not an exact
 peak, allocator-failure check or leak proof. Large workspaces need corresponding
 memory authority; overflow and genuine allocation failure remain visible.
+
+Review qualification with the wider graph guards also passed a generated
+10,000-entry Lua table (218,945 B), returning 10,001 symbols and 50,015 semantic
+integers, plus a typed hover for the last field. A real client
+`diagnostics.globals` array of 10,000 names applied in full through the reader
+worker: at least 20,001 table/key/value visits before its envelope. This
+exercises structural copying; raw source text alone is one string. The largest
+held Neovim runtime Lua file, 423,854-byte `vimfn.gen.lua`, also opened and
+returned symbols. A fresh ordinary feature/cleanup pass succeeded. These are
+functional checks, not a new instrumented maximum or performance measurement.
 
 Stdio requires native PIPE descriptors for stdin/stdout; unsupported bindings
 fail before workers start. Data moves through the public descriptor try APIs;
