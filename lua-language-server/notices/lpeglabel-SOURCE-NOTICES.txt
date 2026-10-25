@@ -1,0 +1,78 @@
+LPegLabel selected-source notices
+Commit: 912b0b9e8641074408ffc2259e069b188e0c717b
+The accompanying LPegLabel LICENSE contains the full MIT grant.
+
+=== lplcap.c ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lplcap.c
+/*
+** $Id: lplcap.c $
+** Copyright 2007, Lua.org & PUC-Rio  (see 'lpeg.html' for license)
+*/
+
+=== lplcap.h ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lplcap.h
+/*
+** $Id: lplcap.h $
+*/
+
+=== lplcode.c ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lplcode.c
+/*
+** $Id: lplcode.c $
+** Copyright 2007, Lua.org & PUC-Rio  (see 'lpeg.html' for license)
+*/
+
+=== lplcode.h ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lplcode.h
+/*
+** $Id: lplcode.h $
+*/
+
+=== lplprint.c ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lplprint.c
+/*
+** $Id: lplprint.c $
+** Copyright 2007, Lua.org & PUC-Rio  (see 'lpeg.html' for license)
+*/
+
+=== lplprint.h ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lplprint.h
+/*
+** $Id: lplprint.h $
+*/
+
+=== lpltree.c ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lpltree.c
+/*
+** $Id: lpltree.c $
+** Copyright 2013, Lua.org & PUC-Rio  (see 'lpeg.html' for license)
+*/
+
+=== lpltree.h ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lpltree.h
+/*  
+** $Id: lpltree.h $
+*/
+
+=== lpltypes.h ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lpltypes.h
+/*
+** $Id: lpltypes.h $
+** LPeg - PEG pattern matching for Lua
+** Copyright 2007-2019, Lua.org & PUC-Rio  (see 'lpeg.html' for license)
+** written by Roberto Ierusalimschy
+*/
+
+=== lplvm.c ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lplvm.c
+/*
+** $Id: lplvm.c $
+** Copyright 2007, Lua.org & PUC-Rio  (see 'lpeg.html' for license)
+*/
+
+=== lplvm.h ===
+https://github.com/sqmedeiros/lpeglabel/blob/912b0b9e8641074408ffc2259e069b188e0c717b/lplvm.h
+/*
+** $Id: lplvm.h $
+*/
+

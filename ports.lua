@@ -25,6 +25,7 @@ return {
   libzip = "libzip",
   links = "links",
   lua = "lua",
+  ["lua-language-server"] = "lua-language-server",
   lua51 = "lua51",
   mbedtls = "mbedtls",
   mesa = "mesa",

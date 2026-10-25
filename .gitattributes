@@ -1,2 +1,3 @@
 */patches/*.patch -whitespace
 fonts/notices/** -text -whitespace
+lua-language-server/notices/** -whitespace
