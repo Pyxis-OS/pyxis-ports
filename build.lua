@@ -79,7 +79,6 @@ local function main()
     print("Usage: lua build.lua PORT --sdk PATH [--work PATH] [--cross-prefix PREFIX]")
     print("The work directory must not exist; default: build/PORT.")
     print("SDL2 requires --mesa PATH to its staged development prefix; it builds both static profiles.")
-    print("Lua also requires --mbedtls PATH to its configured development prefix.")
     print("Libpng also requires --zlib PATH to its development prefix.")
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
     print("Minesweeper requires --raylib and --sdl2 development prefixes.")
@@ -97,7 +96,7 @@ local function main()
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
     ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--sdl2-osmesa"] = name == "ioquake3" or name == "blurgtext" or name == "imgui",
-    ["--mbedtls"] = name == "lua", ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
+    ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
       name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
@@ -187,12 +186,6 @@ local function main()
     mesa = make_path(capture({ "realpath", "-e", "--", options["--mesa"] }))
     require_file(mesa .. "/include/GL/osmesa.h")
     require_file(mesa .. "/lib/libOSMesa.a")
-  end
-  local mbedtls
-  if name == "lua" then
-    assert(options["--mbedtls"], "Lua needs --mbedtls PATH to the configured development prefix")
-    mbedtls = make_path(capture({ "realpath", "-e", "--", options["--mbedtls"] }))
-    require_file(mbedtls .. "/share/mbedtls.mk")
   end
   local zlib
   if name == "libpng" or name == "devilutionx" or name == "libzip" then
@@ -291,6 +284,9 @@ local function main()
   end
   for _, library in ipairs(metadata.dependencies.pyxis) do
     require_file(sdk .. "/sysroot/usr/lib/" .. library .. ".a")
+    if library == "libsha256" then
+      require_file(sdk .. "/sysroot/usr/include/sha256.h")
+    end
   end
   for _, tool in ipairs(metadata.dependencies.host) do
     run({ "sh", "-c", 'command -v "$1" >/dev/null || { echo "Missing host tool: $1" >&2; exit 1; }', "sh", tool })
@@ -346,7 +342,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, ogg = ogg, opus = opus, spdlog = spdlog, go = go, mesa = mesa, mbedtls = mbedtls, zlib = zlib,
+    metadata = metadata, run = run, ogg = ogg, opus = opus, spdlog = spdlog, go = go, mesa = mesa, zlib = zlib,
     libpng = libpng, fmt = fmt, sdl2 = sdl2, sdl2_osmesa = sdl2_osmesa, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do

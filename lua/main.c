@@ -298,7 +298,6 @@ int main(int argc, char **argv)
   int cleanup_failed;
   lua_pyxis_io_shutdown(state, status == LUA_OK, &cleanup_failed);
   lua_close(state);
-  pyxis_finish();
   if (repl_terminal.input != HANDLE_INVALID) {
     handle_close(repl_terminal.input);
   }

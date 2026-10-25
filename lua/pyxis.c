@@ -24,26 +24,22 @@
 #include <file.h>
 #include <handle.h>
 #include <launcher.h>
-#include <mbedtls/platform.h>
 #include <path.h>
 #include <process.h>
 #include <program.h>
-#include <psa/crypto.h>
-#include <psa/crypto_extra.h>
 #include <pyxis/stdio.h>
 #include <pyxis/environment.h>
 #include <pyxis/working_path.h>
-#include <random.h>
 #include <startup.h>
 #include <environment.h>
 #include <errno.h>
+#include <sha256.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #define GUARD_METATABLE "pyxis.resources"
-#define ENTROPY_WAIT_NS UINT64_C(2000000000)
 #define HASH_CHUNK_SIZE 4096
 
 enum { RESOURCE_LIMIT = 16 };
@@ -62,89 +58,11 @@ struct resources {
   struct pyxis_working_snapshot working;
   struct pyxis_environment_snapshot environment;
   char *name;
-  psa_hash_operation_t hash;
-  bool hashing;
 };
-
-static handle_t entropy_clock, entropy_random;
-static uint64_t entropy_deadline;
-static bool crypto_ready;
-
-/* PSA seeds its configured RNG even for hashing. Borrow only native grants. */
-int mbedtls_platform_get_entropy(psa_driver_get_entropy_flags_t flags,
-    size_t *estimate_bits, unsigned char *output, size_t output_size)
-{
-  *estimate_bits = 0;
-  if (flags != PSA_DRIVER_GET_ENTROPY_FLAGS_NONE) {
-    return PSA_ERROR_NOT_SUPPORTED;
-  }
-  size_t offset = 0;
-  while (offset < output_size) {
-    uint64_t now;
-    if (clock_now(entropy_clock, &now) != CALL_OK || now >= entropy_deadline) {
-      return PSA_ERROR_INSUFFICIENT_ENTROPY;
-    }
-    size_t count = output_size - offset;
-    if (count > RANDOM_MAX_BYTES) {
-      count = RANDOM_MAX_BYTES;
-    }
-    if (random_read(entropy_random, output + offset, count, entropy_deadline) != CALL_OK) {
-      return PSA_ERROR_INSUFFICIENT_ENTROPY;
-    }
-    offset += count;
-  }
-  *estimate_bits = output_size * 8;
-  return PSA_SUCCESS;
-}
-
-void pyxis_finish(void)
-{
-  if (crypto_ready) {
-    mbedtls_psa_crypto_free();
-    crypto_ready = false;
-  }
-  if (entropy_clock != HANDLE_INVALID) {
-    handle_close(entropy_clock);
-    entropy_clock = HANDLE_INVALID;
-  }
-  if (entropy_random != HANDLE_INVALID) {
-    handle_close(entropy_random);
-    entropy_random = HANDLE_INVALID;
-  }
-}
-
-static bool crypto_init(void)
-{
-  if (crypto_ready) {
-    return true;
-  }
-  pyxis_finish();
-  environment_capability(startup_environment_handle(), "clock", &entropy_clock);
-  environment_capability(startup_environment_handle(), "random", &entropy_random);
-  uint64_t now;
-  if (entropy_random == HANDLE_INVALID ||
-      clock_now(entropy_clock, &now) != CALL_OK || now > UINT64_MAX - ENTROPY_WAIT_NS) {
-    return false;
-  }
-  entropy_deadline = now + ENTROPY_WAIT_NS;
-  mbedtls_platform_set_calloc_free(calloc, free);
-  if (psa_crypto_init() != PSA_SUCCESS) {
-    mbedtls_psa_crypto_free();
-    return false;
-  }
-  crypto_ready = true;
-  return true;
-}
 
 static enum call_status release_resources(struct resources *owned)
 {
   enum call_status status = CALL_OK;
-  if (owned->hashing) {
-    if (psa_hash_abort(&owned->hash) != PSA_SUCCESS) {
-      status = CALL_IO;
-    }
-    owned->hashing = false;
-  }
   if (owned->launch) {
     bundle_launch_close(owned->launch);
     owned->launch = NULL;
@@ -790,18 +708,16 @@ static int hash_file(lua_State *state)
 {
   const char *path = check_text(state, 1);
   struct resources *owned = new_resources(state);
-  if (!crypto_init()) {
-    return luaL_error(state, "pyxis.sha256: crypto initialization failed; clock and random grants required");
-  }
   enum call_status status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &owned->object);
   if (status != CALL_OK) {
     return native_error(state, owned, "sha256", status);
   }
-  owned->hashing = true;
-  psa_status_t crypto = psa_hash_setup(&owned->hash, PSA_ALG_SHA_256);
+  struct sha256_context hash;
+  sha256_init(&hash);
+  bool hashed = true;
   unsigned char bytes[HASH_CHUNK_SIZE], digest[32];
   uint64_t offset = 0;
-  while (crypto == PSA_SUCCESS) {
+  while (hashed) {
     size_t count;
     status = file_read(owned->object, offset, bytes, sizeof(bytes), &count);
     if (status != CALL_OK || !count) {
@@ -811,12 +727,11 @@ static int hash_file(lua_State *state)
       status = CALL_LIMIT;
       break;
     }
-    crypto = psa_hash_update(&owned->hash, bytes, count);
+    hashed = sha256_update(&hash, bytes, count);
     offset += count;
   }
-  size_t length = 0;
-  if (status == CALL_OK && crypto == PSA_SUCCESS) {
-    crypto = psa_hash_finish(&owned->hash, digest, sizeof(digest), &length);
+  if (status == CALL_OK && hashed) {
+    hashed = sha256_finish(&hash, digest);
   }
   enum call_status closed = release_resources(owned);
   if (status != CALL_OK) {
@@ -825,8 +740,8 @@ static int hash_file(lua_State *state)
   if (closed != CALL_OK) {
     return native_error(state, owned, "sha256 close", closed);
   }
-  if (crypto != PSA_SUCCESS || length != sizeof(digest)) {
-    return luaL_error(state, "pyxis.sha256: hashing failed (PSA status %d)", (int)crypto);
+  if (!hashed) {
+    return luaL_error(state, "pyxis.sha256: hashing failed or input exceeds the SHA-256 byte limit");
   }
   static const char hex[] = "0123456789abcdef";
   char result[65];

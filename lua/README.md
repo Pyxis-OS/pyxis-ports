@@ -4,12 +4,10 @@ Lua 5.5.1 from the official mirror, pinned to
 `7579fc9d7ed90240487251dfb69168f8e64e9294`. The upstream MIT notice is retained
 in `lua.h` and staged at `share/licenses/lua/lua.h`.
 
-Build against an exported Pyxis SDK and the configured Mbed TLS development
-prefix from this ports checkout:
+Build against an exported Pyxis SDK containing `sha256.h` and `libsha256.a`:
 
 ```sh
-lua build.lua lua --sdk /path/to/pyxis/build/sdk \
-  --mbedtls /path/to/pyxis/build/ports/mbedtls/stage/dev
+lua build.lua lua --sdk /path/to/pyxis/build/sdk
 ```
 
 The recipe also exports `stage/dev/lib/liblua.a` and public headers under
@@ -26,7 +24,8 @@ Pyxis stages these build inputs separately at `build/ports-dev/lua`; they are
 included in the ports bundle but excluded from the boot archive. Link with the
 same SDK used to build the archive. This does not provide `luaL_openlibs`,
 debug or the full math library. The standalone interpreter additionally links
-Mbed TLS PSA for its native SHA-256 helper; liblua itself does not link crypto.
+the SDK's shared SHA-256 library for its native helper; liblua itself does not
+link crypto.
 
 The guest command is `bin/lua.pxb`, with its executable inside `app/bin/`.
 The declaration preserves Lua's ordinary resources and requests optional
@@ -99,8 +98,8 @@ No environment startup chunks or dynamic modules are loaded.
 
 The global/preloaded `pyxis` table provides `run` (dense argv list, launch/wait,
 actual signed exit status), `dir` (array of name/kind entries) and `sha256`
-(streaming lowercase hex digest through PSA). Paths and grants use only the
-consumed SDK; missing authority and native failures raise Lua errors. The
+(streaming lowercase hex digest through the SDK's shared hash library). Paths
+and grants use only the consumed SDK; missing authority and native failures raise Lua errors. The
 module is executable-only, leaving configuration embeddings restricted.
 
 ## HTTP files
@@ -176,7 +175,10 @@ Generic descriptions carry outcomes, without HTTP observation companions.
 Missing provider/private staging authority refuses the operation. No helper
 provisions authority or expands the interpreter bundle's requests. The native
 `pyxis.sha256` helper uses positioned FILE reads, including completed HTTP
-snapshots opened through the caller's declared provider root.
+snapshots opened through the caller's declared provider root. The hash primitive
+requires no clock, random or allocator authority; file access keeps its existing
+grants and owned-handle cleanup. Input beyond SHA-256's 64-bit bit count is
+refused.
 
 ## Owned native jobs
 

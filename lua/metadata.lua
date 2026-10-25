@@ -7,8 +7,7 @@ return {
   license = "MIT",
   dependencies = {
     host = { "make" },
-    pyxis = { "libc", "libpyxis" },
-    ports = { "mbedtls" },
+    pyxis = { "libc", "libpyxis", "libsha256" },
   },
   patches = {
     "patches/0001-upstream-gc-parameter-fix.patch",
