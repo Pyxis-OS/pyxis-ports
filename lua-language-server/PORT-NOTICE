@@ -4,8 +4,9 @@ its cloudwu attribution and the upstream codingnow.com MIT notice. JSON Lua
 provenance is retained. The licence-reference archive for lua-serialize supplies
 only its notice; the compiled serialization source is the exact bee pin.
 
-Original Pyxis native bindings, recipe, configuration and changes use MPL-2.0.
-Their complete source, including patches against the checksum-pinned inputs,
+Upstream-derived patches retain the licences of the files they modify. Original
+Pyxis native bindings, recipe and configuration use MPL-2.0. Their complete
+source, including patches against the checksum-pinned inputs,
 is under metadata/pyxis. Existing native Lua I/O adaptations are reused with
 the same error, transaction-abandonment and finalization rules.
 
@@ -21,3 +22,8 @@ BSD-3-Clause, filesystem MPL-2.0 and LLVM runtime Apache-2.0 WITH LLVM-exception
 with legacy MIT/NCSA sections. Complete notices accompany the executable in
 metadata/licenses; metadata/sdk-manifest.txt and toolchain-revision identify
 the actual SDK input. See runtime/ORIGIN.md for the runtime notice source pin.
+
+Corresponding Pyxis SDK source is available from
+https://git.internal/PyxisOS/pyxis-os and its userspace/fs dependencies at the
+revisions recorded in sdk-manifest.txt. The port sources are available from
+https://git.internal/PyxisOS/pyxis-ports and are included here.

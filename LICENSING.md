@@ -87,6 +87,10 @@ those recipes fetch, adapt or package.
   notices; the recipe stages those and all reached copyright notices with the
   upstream README and COPYING. Its original native profile/recipe/documentation
   remain MPL-2.0; see `wpa-supplicant/PORT-NOTICE`.
+- `lua-language-server/patches/` retain the MIT terms of the LuaLS, bee, Lua and
+  serializer files they modify. Its original native bindings, recipe and profile
+  configuration are MPL-2.0; linked SDK and parser notices are carried with the
+  bundle. See `lua-language-server/PORT-NOTICE`.
 - `caddy/patches/` retain the terms of the upstream files they adapt; new
   platform files use their enclosing project licence. Caddy is Apache-2.0;
   its bundle retains the Go BSD licence and complete notices for each compiled
