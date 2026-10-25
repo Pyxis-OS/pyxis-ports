@@ -8,8 +8,11 @@ is embedded coherently with bee; no host Lua or target Ninja is needed.
 lua build.lua lua-language-server --sdk /path/to/build/sdk
 ```
 
-The staged `bin/lua-language-server.pxb` is a real manual runtime bundle. Public
-package delivery and the Neovim `lua_ls` configuration are the next task. Its
+The staged `bin/lua-language-server.pxb` supplies the public program package
+`lua-language-server`. Its declared command is also `lua-language-server`.
+Install the package and opt in with `vim.lsp.enable('lua_ls')` in Neovim; the
+editor uses its held `nvim_runtime://lua` library, with project settings in
+`.luarc.json` or `.luarc.jsonc`. Its
 stdio mode requires native byte-pipe input/output, as Neovim supplies. `--help`
 and `--version` report the native profile without starting a server.
 

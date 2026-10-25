@@ -2,7 +2,9 @@
   "format": 1,
   "id": "org.pyxis.lua-language-server",
   "entry": "bin/lua-language-server.pxe",
-  "commands": {},
+  "commands": {
+    "lua-language-server": "bin/lua-language-server.pxe"
+  },
   "resource_dirs": {},
   "grants": [
     {
