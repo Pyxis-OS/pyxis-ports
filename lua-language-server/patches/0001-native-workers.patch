@@ -1,0 +1,665 @@
+--- a/script/brave/brave.lua
++++ b/script/brave/brave.lua
+@@ -1,5 +1,11 @@
+ local channel = require 'bee.channel'
+ local epoll   = require 'bee.epoll'
++local thread  = require 'bee.thread'
++
++local function runtimeError(err)
++    if thread.is_stop_error(err) then return err end
++    return log.error(err)
++end
+ 
+ local reqPad
+ local resPad
+@@ -67,7 +73,10 @@
+                         log.error('Brave can not handle this work: ' .. name)
+                         goto CONTINUE
+                     end
+-                    local suc, res = xpcall(ability, log.error, params)
++                    local suc, res = xpcall(ability, runtimeError, params)
++                    if not suc and thread.is_stop_error(res) then
++                        error(res, 0)
++                    end
+                     if suc then
+                         resPad:push(id, res)
+                     else
+--- a/script/brave/work.lua
++++ b/script/brave/work.lua
+@@ -1,72 +1,19 @@
++local elapsed = function () return require('bee.time').monotonic() / 1000 end
+ local brave   = require 'brave.brave'
+ 
+ brave.on('loadProtoByStdio', function ()
+     local jsonrpc = require 'jsonrpc'
+-    while true do
+-        local proto, err = jsonrpc.decode(io.read)
++    local stdio = require 'bee.stdio'
++    while not require('bee.thread').stopping() do
++        local proto, err = jsonrpc.decode(stdio.read_exact)
+         --log.debug('loaded proto', proto.method)
+         if not proto then
+-            brave.push('protoerror', err)
+-            return
++            stdio.abort(err or 'LSP input failed')
+         end
+         brave.push('proto', proto)
+-    end
+-end)
+-
+-brave.on('loadProtoBySocket', function (param)
+-    local jsonrpc = require 'jsonrpc'
+-    local net     = require 'service.net'
+-    local buf = ''
+-
+-    ---@async
+-    local parser = coroutine.create(function ()
+-        while true do
+-            ---@async
+-            local proto, err = jsonrpc.decode(function (len)
+-                while true do
+-                    if #buf >= len then
+-                        local res = buf:sub(1, len)
+-                        buf = buf:sub(len + 1)
+-                        return res
+-                    end
+-                    coroutine.yield()
+-                end
+-            end)
+-            --log.debug('loaded proto', proto.method)
+-            if not proto then
+-                brave.push('protoerror', err)
+-                return
+-            end
+-            brave.push('proto', proto)
++        if proto.method == 'exit' then
++            return -- The client may close its pipe immediately after exit.
+         end
+-    end)
+-
+-    local lsclient = net.connect('tcp', '127.0.0.1', param.port)
+-    local lsmaster = net.connect('unix', param.unixPath)
+-
+-    assert(lsclient)
+-    assert(lsmaster)
+-
+-    function lsclient:on_data(data)
+-        buf = buf .. data
+-        coroutine.resume(parser)
+-    end
+-
+-    function lsclient:on_error(...)
+-        log.error(...)
+-    end
+-
+-    function lsmaster:on_data(data)
+-        lsclient:write(data)
+-        --net.update()
+-    end
+-
+-    function lsmaster:on_error(...)
+-        log.error(...)
+-    end
+-
+-    while true do
+-        net.update(10000)
+     end
+ end)
+ 
+@@ -81,19 +28,6 @@
+ brave.on('loadFile', function (path)
+     local util    = require 'utility'
+     return util.loadFile(path)
+-end)
+-
+-brave.on('removeCaches', function (path)
+-    local fs  = require 'bee.filesystem'
+-    local fsu = require 'fs-utility'
+-    for dir in fs.pairs(fs.path(path)) do
+-        local lockFile = dir / '.lock'
+-        local f = io.open(lockFile:string(), 'wb')
+-        if f then
+-            f:close()
+-            fsu.fileRemove(dir)
+-        end
+-    end
+ end)
+ 
+ ---@class brave.param.compile
+@@ -111,13 +45,13 @@
+ ---@param param brave.param.compile
+ brave.on('compile', function (param)
+     local parser = require 'parser'
+-    local clock = os.clock()
++    local clock = elapsed()
+     local state, err = parser.compile(param.text
+         , param.mode
+         , param.version
+         , param.options
+     )
+-    log.debug('Async compile', param.uri, 'takes:', os.clock() - clock)
++    log.debug('Async compile', param.uri, 'takes:', elapsed() - clock)
+     return {
+         state = state,
+         err   = err,
+--- a/script/jsonrpc.lua
++++ b/script/jsonrpc.lua
+@@ -18,11 +18,16 @@
+ local function readProtoHead(reader)
+     local head = {}
+     local line = ''
++    local bytes = 0
+     while true do
+-        local char = reader(1)
++        local char, err = reader(1)
+         if char == nil then
+             -- 说明管道已经关闭了
+-            return nil, 'Disconnected!'
++            return nil, err or 'Disconnected!'
++        end
++        bytes = bytes + #char
++        if bytes > 8192 then
++            return nil, 'LSP header exceeds 8 KiB budget'
+         end
+         line = line .. char
+         if line == '\r\n' then
+@@ -35,8 +40,15 @@
+         if not k then
+             return nil, 'Proto header error: ' .. line
+         end
+-        if k == 'Content-Length' then
++        k = k:lower()
++        if k == 'content-length' then
++            if head[k] ~= nil or not v:match('^%s*%d+%s*$') then
++                return nil, 'Invalid or repeated LSP Content-Length'
++            end
+             v = tonumber(v)
++            if not math.tointeger(v) or v < 1 or v > 4 * 1024 * 1024 then
++                return nil, 'LSP Content-Length exceeds 4 MiB budget or is invalid'
++            end
+         end
+         head[k] = v
+         line = ''
+@@ -51,13 +63,13 @@
+     if not head then
+         return nil, err
+     end
+-    local len = head['Content-Length']
++    local len = head['content-length']
+     if not len then
+         return nil, 'Proto header error: ' .. inspect(head)
+     end
+-    local content = reader(len)
+-    if not content then
+-        return nil, 'Proto read error'
++    local content, readError = reader(len)
++    if not content or #content ~= len then
++        return nil, readError or 'Truncated LSP body'
+     end
+     ---@type any
+     local null = json.null
+@@ -67,6 +79,9 @@
+     if not suc then
+         return nil, 'Proto parse error: ' .. res
+     end
++    if type(res) ~= 'table' then
++        return nil, 'LSP message must be an object'
++    end
+     return res
+ end
+ 
+--- a/script/proto/proto.lua
++++ b/script/proto/proto.lua
+@@ -1,3 +1,4 @@
++local elapsed = function () return require('bee.time').monotonic() / 1000 end
+ local util       = require 'utility'
+ local await      = require 'await'
+ local pub        = require 'pub'
+@@ -5,9 +6,13 @@
+ local define     = require 'proto.define'
+ local json       = require 'json'
+ local inspect    = require 'inspect'
+-local platform   = require 'bee.platform'
+-local fs         = require 'bee.filesystem'
+-local net        = require 'service.net'
++local stdio      = require 'bee.stdio'
++local thread     = require 'bee.thread'
++
++local function runtimeError(err)
++    if thread.is_stop_error(err) then return err end
++    return log.error(err)
++end
+ local timer      = require 'timer'
+ 
+ local reqCounter = util.counter()
+@@ -51,11 +56,7 @@
+ function m.send(data)
+     local buf = jsonrpc.encode(data)
+     logSend(buf)
+-    if m.mode == 'stdio' then
+-        io.write(buf)
+-    elseif m.mode == 'socket' then
+-        m.client:write(buf)
+-    end
++    stdio.write(buf)
+ end
+ 
+ function m.response(id, res)
+@@ -157,6 +158,7 @@
+ }
+ 
+ m.methodQueue = {}
++m.activeMethods = 0
+ 
+ function m.applyMethod(proto)
+     logRecieve(proto)
+@@ -174,17 +176,26 @@
+         end
+         return
+     end
++    if m.activeMethods >= 1024 then
++        log.error('LuaLS active LSP method budget exceeded')
++        os.exit(1, true)
++    end
++    m.activeMethods = m.activeMethods + 1
+     await.call(function () ---@async
++        local active <close> = function ()
++            m.activeMethods = m.activeMethods - 1
++        end
+         --log.debug('Start method:', method)
+         if proto.id then
+             await.setID('proto:' .. proto.id)
+         end
+-        local clock = os.clock()
++        local clock = elapsed()
+         local ok = false
+         local res
+         -- 任务可能在执行过程中被中断，通过close来捕获
+         local response <close> = function ()
+-            local passed = os.clock() - clock
++            if thread.stopping() then return end
++            local passed = elapsed() - clock
+             if passed > 0.5 then
+                 log.warn(('Method [%s] takes [%.3f]sec. %s'):format(method, passed, inspect(proto, secretOption)))
+             end
+@@ -199,7 +210,8 @@
+                 m.responseErr(proto.id, proto._closeReason or define.ErrorCodes.InternalError, proto._closeMessage or res)
+             end
+         end
+-        ok, res = xpcall(abil, log.error, proto.params, proto.id)
++        ok, res = xpcall(abil, runtimeError, proto.params, proto.id)
++        if not ok and thread.is_stop_error(res) then error(res, 0) end
+         await.delay()
+     end)
+ end
+@@ -221,6 +233,10 @@
+ end
+ 
+ function m.doMethod(proto)
++    if #m.methodQueue >= 1024 then
++        log.error('LuaLS pending LSP method budget exceeded')
++        os.exit(1, true)
++    end
+     m.methodQueue[#m.methodQueue+1] = proto
+     if #m.methodQueue > 1 then
+         return
+@@ -254,55 +270,11 @@
+     waiting.resume(proto.result)
+ end
+ 
+-function m.listen(mode, socketPort)
++function m.listen(mode)
++    assert(mode == 'stdio', 'Pyxis LuaLS supports native pipe stdio only')
+     m.mode = mode
+-    if mode == 'stdio' then
+-        log.info('Listen Mode: stdio')
+-        if platform.os == 'windows' then
+-            local windows = require 'bee.windows'
+-            windows.filemode(io.stdin,  'b')
+-            windows.filemode(io.stdout, 'b')
+-        end
+-        io.stdin:setvbuf  'no'
+-        io.stdout:setvbuf 'no'
+-        pub.task('loadProtoByStdio')
+-    elseif mode == 'socket' then
+-        local unixFolder = LOGPATH .. '/unix'
+-        fs.create_directories(fs.path(unixFolder))
+-        local unixPath = unixFolder .. '/' .. tostring(socketPort)
+-
+-        local server = net.listen('unix', unixPath)
+-
+-        log.info('Listen Mode: socket')
+-        log.info('Listen Port:', socketPort)
+-        log.info('Listen Path:', unixPath)
+-
+-        assert(server)
+-
+-        local dummyClient = {
+-            buf = '',
+-            write = function (self, data)
+-                self.buf = self.buf.. data
+-            end,
+-            update = function () end,
+-        }
+-        m.client = dummyClient
+-
+-        function server:on_accepted(client)
+-            m.client = client
+-            client:write(dummyClient.buf)
+-            return true
+-        end
+-
+-        function server:on_error(...)
+-            log.error(...)
+-        end
+-
+-        pub.task('loadProtoBySocket', {
+-            port = socketPort,
+-            unixPath = unixPath,
+-        })
+-    end
++    log.info('Listen Mode: native pipe stdio')
++    pub.task('loadProtoByStdio')
+ end
+ 
+ return m
+--- a/script/pub/pub.lua
++++ b/script/pub/pub.lua
+@@ -4,6 +4,15 @@
+ local utility    = require 'utility'
+ local await      = require 'await'
+ 
++local function runtimeError(err)
++    if thread.is_stop_error(err) then return err end
++    return log.error(err)
++end
++
++local function checkStop(ok, err)
++    if not ok and thread.is_stop_error(err) then error(err, 0) end
++end
++
+ -- 每个 brave 有独立的 channel 对，避免多线程竞争
+ local selector = selectMod.create()
+ 
+@@ -13,15 +22,11 @@
+ local braveTemplate = [[
+ package.path  = {path:q}
+ package.cpath = {cpath:q}
+-DEVELOP = {DEVELOP}
+-DBGPORT = {DBGPORT}
+-DBGWAIT = {DBGWAIT}
+ 
+ collectgarbage 'generational'
+ 
+ log = require 'brave.log'
+ 
+-xpcall(dofile, log.error, {debugger:q})
+ local brave = require 'brave'
+ brave.register({id}, {taskChName:q}, {replyChName:q})
+ ]]
+@@ -74,10 +79,6 @@
+             thread      = thread.create(braveTemplate % {
+                 path = package.path,
+                 cpath = package.cpath,
+-                DEVELOP = DEVELOP,
+-                DBGPORT = DBGPORT or 11412,
+-                DBGWAIT = DBGWAIT or 'nil',
+-                debugger = (ROOT / 'debugger.lua'):string(),
+                 id = id,
+                 taskChName = taskChName,
+                 replyChName = replyChName,
+@@ -125,6 +126,10 @@
+     local brave = findIdleBrave(braveList)
+     if not brave then
+         -- 所有 brave 都忙，加入队列
++        if #queue >= 1024 then
++            log.error('LuaLS pending task budget exceeded')
++            os.exit(1, true)
++        end
+         queue[#queue + 1] = info
+         m.taskMap[info.id] = info
+         return true
+@@ -170,7 +175,7 @@
+     if not info.removed then
+         info.removed = true
+         if info.callback then
+-            xpcall(info.callback, log.error, result)
++            checkStop(xpcall(info.callback, runtimeError, result))
+         end
+     end
+ end
+@@ -182,7 +187,7 @@
+         log.warn(('Brave pushed unknown report: # %d => %q'):format(brave.id, name))
+         return
+     end
+-    xpcall(abil, log.error, params, brave)
++    checkStop(xpcall(abil, runtimeError, params, brave))
+ end
+ 
+ --- 发布任务
+@@ -233,10 +238,10 @@
+ end
+ 
+ --- 接收反馈
+-function m.recieve(block)
++function m.recieve(block, timeout)
+     if block then
+         -- 使用 select 等待数据
+-        selector:wait(-1)
++        selector:wait(timeout or -1)
+         -- 遍历公共组
+         for _, brave in ipairs(m.publicBraves) do
+             m.reciveFromPad(brave)
+@@ -248,7 +253,7 @@
+             end
+         end
+     else
+-        while true do
++        for _ = 1, 128 do
+             local ok = false
+             -- 遍历公共组
+             for _, brave in ipairs(m.publicBraves) do
+@@ -282,9 +287,9 @@
+     end
+ end
+ 
+-function m.step(block)
++function m.step(block, timeout)
+     m.checkDead()
+-    m.recieve(block)
++    m.recieve(block, timeout)
+ end
+ 
+ return m
+--- a/script/pub/report.lua
++++ b/script/pub/report.lua
+@@ -22,7 +22,7 @@
+ 
+ pub.on('protoerror', function (err)
+     log.warn('Load proto error:', err)
+-    os.exit(0, true)
++    os.exit(1, true)
+ end)
+ 
+ pub.on('wakeup', function () end)
+--- a/script/service/service.lua
++++ b/script/service/service.lua
+@@ -1,3 +1,4 @@
++local elapsed = function () return require('bee.time').monotonic() / 1000 end
+ ---@diagnostic disable: deprecated
+ local pub    = require 'pub'
+ local await  = require 'await'
+@@ -9,9 +10,8 @@
+ local lang   = require 'language'
+ local ws     = require 'workspace'
+ local time   = require 'bee.time'
+-local fw     = require 'filewatch'
+ local furi   = require 'file-uri'
+-local net    = require 'service.net'
++local thread = require 'bee.thread'
+ local client = require 'client'
+ 
+ require 'jsonc'
+@@ -37,9 +37,9 @@
+ 
+ function m.reportMemoryCollect()
+     local totalMemBefore = countMemory()
+-    local clock = os.clock()
++    local clock = elapsed()
+     collectgarbage()
+-    local passed = os.clock() - clock
++    local passed = elapsed() - clock
+     local totalMemAfter, mems  = countMemory()
+ 
+     local lines = {}
+@@ -148,61 +148,22 @@
+ end
+ 
+ function m.eventLoop()
+-    pub.task('timer', 1)
+-    pub.on('wakeup', function ()
+-        m.reportStatus()
+-        fw.update()
+-    end)
+-
+-    local function busy()
+-        if not m.workingClock then
+-            m.workingClock = time.monotonic()
+-            m.reportStatus()
+-        end
+-    end
+-
+-    local function idle()
+-        if m.workingClock then
+-            m.workingClock = nil
+-            m.reportStatus()
+-        end
+-    end
+-
+-    local function doSomething()
++    while not thread.stopping() do
+         timer.update()
+         pub.step(false)
+         if await.step() then
+-            busy()
+-            return true
++            if not m.workingClock then
++                m.workingClock = time.monotonic()
++                m.reportStatus()
++            end
++        else
++            if m.workingClock then
++                m.workingClock = nil
++                m.reportStatus()
++            end
++            local timeout = timer.nextTimeout()
++            pub.step(true, timeout and math.min(timeout, 30000) or -1)
+         end
+-        return false
+-    end
+-
+-    local function sleep()
+-        while true do
+-            idle()
+-            for _ = 1, 10 do
+-                net.update(100)
+-                if doSomething() then
+-                    return
+-                end
+-            end
+-            pub.step(true)
+-        end
+-    end
+-
+-    while true do
+-        net.update()
+-        log.debug('net update')
+-        local clock = time.monotonic()
+-        while time.monotonic() - clock < 100 do
+-            doSomething()
+-        end
+-        if doSomething() then
+-            goto CONTINUE
+-        end
+-        sleep()
+-        ::CONTINUE::
+     end
+ end
+ 
+@@ -248,37 +209,15 @@
+     proto.notify('$/hello', {'world'})
+ end
+ 
+-function m.lockCache()
+-    local fs = require 'bee.filesystem'
+-    local sp = require 'bee.subprocess'
+-    local cacheDir = string.format('%s/cache', LOGPATH)
+-    local myCacheDir = string.format('%s/%d'
+-        , cacheDir
+-        , sp.get_id()
+-    )
+-    fs.create_directories(fs.path(myCacheDir))
+-    local err
+-    m.lockFile, err = io.open(myCacheDir .. '/.lock', 'wb')
+-    if err then
+-        log.error(err)
+-    end
+-end
+-
+ function m.start()
+     util.enableCloseFunction()
+-    await.setErrorHandle(log.error)
++    await.setErrorHandle(function (err)
++        if thread.is_stop_error(err) then error(err, 0) end
++        return log.error(err)
++    end)
+     pub.recruitBraves(4)
+-    if COMPILECORES and COMPILECORES > 0 then
+-        pub.recruitBraves(COMPILECORES, 'compile')
+-    end
+-    if SOCKET then
+-        assert(math.tointeger(SOCKET), '`socket` must be integer')
+-        proto.listen('socket', SOCKET)
+-    else
+-        proto.listen('stdio')
+-    end
++    proto.listen('stdio')
+     m.report()
+-    m.lockCache()
+ 
+     require 'provider'
+ 
+--- a/script/timer.lua
++++ b/script/timer.lua
+@@ -1,5 +1,7 @@
+ local time         = require 'bee.time'
+ local setmetatable = setmetatable
++local pairs = pairs
++local mathCeil = math.ceil
+ local mathMax      = math.max
+ local mathFloor    = math.floor
+ local monotonic    = time.monotonic
+@@ -237,6 +239,23 @@
+     end
+ end
+ 
++-- Relative milliseconds to the next live timer, including time since update.
++-- Native queue waiting uses this deadline; no permanent timer worker polls it.
++function m.nextTimeout()
++    local now = maxFrame + (monotonic() + fwFrame - lastClock)
++    local earliest
++    for frame, queue in pairs(timer) do
++        for _, t in pairs(queue) do
++            if t and not t._removed and t._running and not t._pauseRemaining then
++                if not earliest or frame < earliest then
++                    earliest = frame
++                end
++            end
++        end
++    end
++    return earliest and mathMax(0, mathCeil(earliest - now)) or nil
++end
++
+ function m.timeJump(delta)
+     fwFrame = fwFrame + mathFloor(delta * 1000.0)
+ end
