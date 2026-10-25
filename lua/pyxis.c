@@ -110,7 +110,7 @@ static int close_resources(lua_State *state)
 static struct resources *new_resources(lua_State *state)
 {
   struct resources *owned = lua_newuserdatauv(state, sizeof(*owned), 0);
-  *owned = (struct resources){.hash = PSA_HASH_OPERATION_INIT};
+  *owned = (struct resources){0};
   luaL_setmetatable(state, GUARD_METATABLE);
   /* Keep every native owner reachable across Lua allocation failures. */
   lua_toclose(state, lua_gettop(state));
