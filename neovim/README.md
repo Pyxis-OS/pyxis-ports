@@ -83,6 +83,41 @@ the command again. The editor's own roots take precedence. Header buffers pin
 read-only directory copies through package switches and server exit; a new read
 with conflicting active server roots refuses as ambiguous. Server exit removes
 only its active bindings; wiping a buffer releases its retained view.
+
+Lua editing has a separate opt-in configuration. Install the public
+`lua-language-server` package, then add `vim.lsp.enable('lua_ls')` to
+`home://.config/nvim/init.lua`, or run it with `:lua` in the session.
+It launches the bare package command through the same native stdio mechanism
+as clangd and attaches only to Lua buffers. The nearest `.luarc.json`,
+`.luarc.jsonc` or `.git` selects the root; a file without those markers uses
+its directory. API-library buffers reuse an existing LuaLS session.
+
+The default analysis language is `Lua 5.1`, matching this editor's PUC Lua
+runtime. LuaLS reads the complete `nvim_runtime://lua` library, including the
+real `vim/_meta` signatures, from the editor's held read-only runtime.
+The library is parsed as source data; its meta files are not executed.
+No allowed-global substitute, LuaJIT setting, package lookup or download is
+used. Normal LSP completion, diagnostics and semantic tokens remain available;
+the configuration requests no watched-file registration or formatter.
+
+Project `.luarc.json`/`.luarc.jsonc` settings override these client defaults.
+For example, a project running Pyxis Lua 5.5 can select its actual language
+and omit the Neovim API library:
+
+```json
+{
+  "runtime.version": "Lua 5.5",
+  "workspace.library": []
+}
+```
+
+These analysis settings are independent of LuaLS's embedded Lua 5.5 interpreter.
+Executable LuaLS project configuration and plugins remain unavailable. Restart
+LuaLS after changing project JSON/JSONC settings; closed files and settings
+files are not watched. Ordinary child launch retains the editor's
+exported filesystem roots and cwd with their existing rights; this is not
+workspace confinement. The `nvim_runtime` resource itself stays read-only.
+
 Dynamic Lua modules, dynamic grammar loading and true-colour output
 are excluded. Seven upstream-bundled grammars are statically linked: `c`, `lua`,
 `vim`, `vimdoc`, `query`, `markdown` and `markdown_inline`. Language registration

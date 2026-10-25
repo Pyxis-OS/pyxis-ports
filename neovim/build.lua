@@ -78,6 +78,7 @@ return function(ctx)
   install("644", ctx.recipe .. "/runtime/lua/vim/_pyxis_roots.lua", outputs.root_views)
   install("644", ctx.recipe .. "/runtime/lua/vim/_pyxis_treesitter.lua", outputs.treesitter_default)
   install("644", ctx.recipe .. "/runtime/lsp/clangd.lua", outputs.clangd_config)
+  install("644", ctx.recipe .. "/runtime/lsp/lua_ls.lua", outputs.lua_ls_config)
   install("644", ctx.source .. "/LICENSE.txt", outputs.license)
   install("644", ctx.recipe .. "/PORT-NOTICE.md", outputs.port_notice)
   install("644", ctx.source .. "/src/xdiff/COPYING", outputs.xdiff_license)
@@ -151,9 +152,9 @@ return function(ctx)
     "version=" .. ctx.metadata.version .. "\n",
     "license=" .. ctx.metadata.license .. "\n",
     "patches=" .. table.concat(ctx.metadata.patches, " ") .. "\n",
-    "profile=native terminal client/server, PUC Lua 5.1, synchronous filesystem, 16 colours\n",
+    "profile=native terminal client/server, PUC Lua 5.1, synchronous filesystem, attached native jobs and stdio LSP\n",
     "static_parsers=c lua vim vimdoc query markdown markdown_inline\n",
-    "omitted=workers, jobs, terminal emulation, LSP, watches, sockets, signals, dynamic modules, swap/backup recovery\n"))
+    "omitted=terminal emulation, file watches, TCP, Unix signals, dynamic modules, swap/backup recovery\n"))
   for _, entry in ipairs(ctx.metadata.source.extra) do
     assert(provenance:write(entry.name .. "=" .. entry.archive.url .. "\n",
       entry.name .. "_mirror=" .. entry.archive.mirror .. "\n",

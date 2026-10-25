@@ -89,6 +89,7 @@ return {
     root_views = "bin/nvim.pxb/app/share/nvim/runtime/lua/vim/_pyxis_roots.lua",
     treesitter_default = "bin/nvim.pxb/app/share/nvim/runtime/lua/vim/_pyxis_treesitter.lua",
     clangd_config = "bin/nvim.pxb/app/share/nvim/runtime/lsp/clangd.lua",
+    lua_ls_config = "bin/nvim.pxb/app/share/nvim/runtime/lsp/lua_ls.lua",
     runtime = "bin/nvim.pxb/app/share/nvim/runtime/filetype.lua",
     help_tags = "bin/nvim.pxb/app/share/nvim/runtime/doc/tags",
     license = "bin/nvim.pxb/app/metadata/licenses/neovim/LICENSE.txt",
