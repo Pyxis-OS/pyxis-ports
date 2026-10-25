@@ -50,7 +50,9 @@ No global logger pool is installed. Partial initialization unwinds the same way.
 an uncached bulk load with one worker, refuses missing resources and read-only
 writes, and checks a real FBO/depth readback. Its UI runs the pinned Fast3D
 interpreter and ImGui together at the real output size, 1:1, MSAA off/interval0.
-Keyboard/pointer/resize use SDL; Escape exits. A real SDL queued-audio producer
+Keyboard/pointer/resize use SDL; Escape exits. Keyboard release/reset visits
+every binding, including both stick axes; keyboard defaults do not create SDL
+rumble mappings. A real SDL queued-audio producer
 submits silence (a lifecycle check, not an audibility check), then joins before
 Context teardown. No launcher or network authority is requested. This optional
 package is outside the boot archive and does not qualify the private game.
