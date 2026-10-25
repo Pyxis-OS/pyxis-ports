@@ -46,7 +46,9 @@ def main():
         "CARGO_TARGET_X86_64_UNKNOWN_PYXIS_RUSTFLAGS": "-Cembed-bitcode=no -Clto=off",
         "CARGO_PROFILE_RELEASE_LTO": "false",
         "CARGO_PROFILE_RELEASE_PANIC": "abort",
+        "CARGO_PROFILE_RELEASE_DEBUG": "1",
         "PYXIS_RUST_SDK": str(sdk),
+        "PYXIS_RUST_DEBUG_DIR": str(build / "debug-elf"),
         "CROSS_COMPILE": str(cross),
     })
     version = subprocess.check_output([str(rust / "bin/rustc"), "-Vv"],
@@ -125,7 +127,7 @@ def main():
         "rust_receipt_sha256": digest(receipt_path),
         "sdk_manifest_sha256": digest(sdk / "manifest.txt"),
         "lock_sha256": digest(source / "Cargo.lock"),
-        "profile": "panic=abort; lto=false; embed-bitcode=no; explicit --character-table=ascii",
+        "profile": "panic=abort; lto=false; embed-bitcode=no; debug=1; explicit --character-table=ascii",
         "link_adapter": "supplied Rust prefix; SDK native C link contract",
     }
     output = stage / "share/hexyl/source.json"

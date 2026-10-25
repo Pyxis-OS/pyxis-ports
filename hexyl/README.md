@@ -21,6 +21,9 @@ Every other package version and checksum remains pinned. Locked vendoring uses
 a private Cargo home; the target build is frozen and offline. There is no
 upstream fallback. Release LTO and embedded bitcode are disabled, and panic
 aborts the process. Target linking uses the SDK's ordinary native C contract.
+Line-level debug information is enabled; the canonical adapter also writes an
+ELF and link map under the work directory's `build/debug-elf` for debugger use.
+Those debugger artifacts remain outside the staged package.
 
 The executable stages at `stage/bin/hexyl.pxe`; the parent selects optional
 package publication and installation. Source provenance is in `share/hexyl`.
@@ -33,8 +36,8 @@ packages; its inventory is not a claim that every package is linked or supported
 Use the explicit qualified character profile:
 
 ```sh
-hexyl --character-table=ascii --color=never cwd://example.bin
-hexyl --character-table=ascii --color=auto cwd://example.bin
+hexyl --character-table=ascii --color=never home://example.bin
+hexyl --character-table=ascii --color=auto home://example.bin
 ```
 
 ASCII selects the byte character panel; ordinary borders still use box glyphs.
