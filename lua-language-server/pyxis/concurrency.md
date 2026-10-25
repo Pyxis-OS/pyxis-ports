@@ -52,6 +52,10 @@ releasing channel buffers and wake handles. Worker states close through the
 shared `close_state` helper; main owns final state and instance cleanup. No PID,
 lock-file claim, socketpair, select, epoll, signal or CPU-time emulation is used.
 
-Verified here: target C++17 object compilation against the selected Pyxis SDK
-and pinned Lua 5.5 syntax checking of the patch. Full link and QEMU/native runtime
-qualification are separate work; none is implied by those checks.
+Task 1 qualification includes the full static build, pinned Lua 5.5 syntax
+checks and 4-CPU QEMU native-pipe initialize/documentSymbol/shutdown/exit, with
+stdin left open and instance cleanup observed. Missing required grants refuse
+launch. The parent task record carries exact artifacts and configuration.
+Peak memory, large projects, decoded semantic tokens, API-aware completion and
+native qualification remain later checks; no allocation-failure injection was
+performed.
