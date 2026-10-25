@@ -631,7 +631,7 @@
  
 --- a/script/timer.lua
 +++ b/script/timer.lua
-@@ -1,10 +1,16 @@
+@@ -1,10 +1,18 @@
  local time         = require 'bee.time'
 +local thread       = require 'bee.thread'
  local setmetatable = setmetatable
@@ -642,24 +642,26 @@
  local monotonic    = time.monotonic
  local xpcall       = xpcall
 -local logError     = log.error
++local rawLogError  = log.error
++local raise        = error
 +local logError     = function (err)
 +    if thread.is_stop_error(err) then return err end
-+    return log.error(err)
++    return rawLogError(err)
 +end
  
  _ENV = nil
  
-@@ -49,7 +55,8 @@
+@@ -49,7 +57,8 @@
      end
      self._running = false
      if self._onTimer then
 -        xpcall(self._onTimer, logError, self)
 +        local ok, err = xpcall(self._onTimer, logError, self)
-+        if not ok and thread.is_stop_error(err) then error(err, 0) end
++        if not ok and thread.is_stop_error(err) then raise(err, 0) end
      end
      if self._removed then
          return
-@@ -237,6 +244,23 @@
+@@ -237,6 +246,23 @@
      end
  end
  
