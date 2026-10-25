@@ -1,0 +1,68 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -41,7 +41,7 @@
+ name = "get_size"
+ path = "examples/get_size.rs"
+ 
+-[target."cfg(not(windows))".dependencies.rustix]
++[target."cfg(unix)".dependencies.rustix]
+ version = "0.38.0"
+ features = ["termios"]
+ 
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -35,7 +35,12 @@
+ #[allow(deprecated)]
+ pub use crate::windows::{terminal_size, terminal_size_of, terminal_size_using_handle};
+ 
+-#[cfg(not(any(unix, windows)))]
++#[cfg(target_os = "pyxis")]
++mod pyxis;
++#[cfg(target_os = "pyxis")]
++pub use crate::pyxis::terminal_size;
++
++#[cfg(not(any(unix, windows, target_os = "pyxis")))]
+ pub fn terminal_size() -> Option<(Width, Height)> {
+     None
+ }
+--- /dev/null
++++ b/src/pyxis.rs
+@@ -0,0 +1,38 @@
++use super::{Height, Width};
++
++#[repr(C)]
++struct ConsoleSizeReply {
++    columns: u64,
++    rows: u64,
++    generation: u64,
++}
++
++unsafe extern "C" {
++    fn pyxis_terminal_get_size(descriptor: i32, size: *mut ConsoleSizeReply) -> i32;
++}
++
++/// Queries the supplied stdout, stderr, then stdin; no ambient terminal lookup.
++pub fn terminal_size() -> Option<(Width, Height)> {
++    const STDOUT: i32 = 1;
++    const STDERR: i32 = 2;
++    const STDIN: i32 = 0;
++    for descriptor in [STDOUT, STDERR, STDIN] {
++        let mut size = ConsoleSizeReply {
++            columns: 0,
++            rows: 0,
++            generation: 0,
++        };
++        // The native call writes this fixed-size reply and retains no pointer.
++        if unsafe { pyxis_terminal_get_size(descriptor, &mut size) } != 0 {
++            continue;
++        }
++        if let (Ok(columns), Ok(rows)) =
++            (u16::try_from(size.columns), u16::try_from(size.rows))
++        {
++            if columns > 0 && rows > 0 {
++                return Some((Width(columns), Height(rows)));
++            }
++        }
++    }
++    None
++}

@@ -1,0 +1,47 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -15,7 +15,6 @@
+ [dependencies]
+ anyhow = "1.0"
+ const_format = "0.2"
+-libc = "0.2"
+ owo-colors = "4"
+ supports-color = "3"
+ thiserror = "1.0"
+@@ -34,3 +33,6 @@
+ [profile.release]
+ lto = true
+ codegen-units = 1
++
++[patch.crates-io]
++terminal_size = { path = "../extra/terminal-size" }
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -226,7 +226,6 @@
+  "clap",
+  "clap_complete",
+  "const_format",
+- "libc",
+  "owo-colors",
+  "predicates",
+  "pretty_assertions",
+@@ -435,8 +434,6 @@
+ [[package]]
+ name = "terminal_size"
+ version = "0.4.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4f599bd7ca042cfdf8f4512b277c02ba102247820f9d9d4a9f521f496751a6ef"
+ dependencies = [
+  "rustix",
+  "windows-sys 0.59.0",
+--- a/src/input.rs
++++ b/src/input.rs
+@@ -34,7 +34,7 @@
+         match *self {
+             Input::File(ref mut file) => {
+                 let seek_res = file.seek(pos);
+-                if let Err(Some(libc::ESPIPE)) = seek_res.as_ref().map_err(|err| err.raw_os_error())
++                if matches!(&seek_res, Err(err) if err.kind() == io::ErrorKind::NotSeekable)
+                 {
+                     try_skip(
+                         file,

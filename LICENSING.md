@@ -96,6 +96,10 @@ those recipes fetch, adapt or package.
   its bundle retains the Go BSD licence and complete notices for each compiled
   dependency module, beside its pinned module/checksum inventory. Original
   recipe, manifest and staging helper remain MPL-2.0.
+- `hexyl/patches/` retain Hexyl and terminal_size MIT OR Apache-2.0 terms.
+  Hexyl also embeds CP437 and EPL-1.0 CP1047 table notices. The staged complete
+  crate sources, runtime notices and pinned inventories retain their individual
+  terms; see `hexyl/PORT-NOTICE`. Original recipe/helper/docs remain MPL-2.0.
 - Imported libraries, generated trust/zone data, staged headers, game assets and
   other downloaded inputs retain their individual upstream terms. Consult each
   recipe and staged license directory rather than treating a bundle as all MPL.
