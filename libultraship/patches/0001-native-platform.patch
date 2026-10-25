@@ -1,0 +1,2327 @@
+diff --git a/include/fast/Fast3dGui.h b/include/fast/Fast3dGui.h
+--- a/include/fast/Fast3dGui.h
++++ b/include/fast/Fast3dGui.h
+@@ -163,6 +163,10 @@
+     GuiWindowInitData mImpl;                 ///< Backend-specific window/context handles passed to Init().
+ 
+   private:
++#ifdef __pyxis__
++    bool mNativePlatformInitialized = false;
++    bool mNativeRendererInitialized = false;
++#endif
+     /** @brief Applies any pending resolution or MSAA changes to the render target. */
+     void ApplyResolutionChanges();
+ 
+diff --git a/include/fast/Fast3dWindow.h b/include/fast/Fast3dWindow.h
+--- a/include/fast/Fast3dWindow.h
++++ b/include/fast/Fast3dWindow.h
+@@ -97,6 +97,10 @@
+     static void OnFullscreenChanged(bool isNowFullscreen);
+ 
+   private:
++#ifdef __pyxis__
++    void ShutDownNativeWindow();
++    bool mNativeInterpreterStarted = false;
++#endif
+     GfxRenderingAPI* mRenderingApi;
+     GfxWindowBackend* mWindowManagerApi;
+     std::shared_ptr<Interpreter> mInterpreter = nullptr;
+diff --git a/include/ship/Context.h b/include/ship/Context.h
+--- a/include/ship/Context.h
++++ b/include/ship/Context.h
+@@ -271,6 +271,9 @@
+ 
+   private:
+     static std::unique_ptr<Context> mContext;
++    void Shutdown();
++    bool mShutdown = false;
++    std::shared_ptr<spdlog::logger> mPreviousLogger;
+ 
+     std::shared_ptr<spdlog::logger> mLogger;
+     // We only need the spdlog threadpool on release builds because of the async logger.
+diff --git a/include/ship/audio/SDLAudioPlayer.h b/include/ship/audio/SDLAudioPlayer.h
+--- a/include/ship/audio/SDLAudioPlayer.h
++++ b/include/ship/audio/SDLAudioPlayer.h
+@@ -49,6 +49,7 @@
+     void DoPlay(const uint8_t* buf, size_t len) override;
+ 
+   private:
++    bool mInitialized = false;
+     SDL_AudioDeviceID mDevice = 0; ///< Handle to the opened SDL audio device.
+     int32_t mNumChannels = 2;      ///< Number of output channels (2 for stereo, 6 for 5.1).
+ };
+diff --git a/include/ship/config/Config.h b/include/ship/config/Config.h
+--- a/include/ship/config/Config.h
++++ b/include/ship/config/Config.h
+@@ -167,7 +167,8 @@
+     void Reload();
+ 
+     /** @brief Flushes in-memory values to the config file on disk. */
+-    void Save();
++    // Successful write/close/rename, not a power-loss durability boundary.
++    bool Save();
+ 
+     /**
+      * @brief Returns the full config as a nested JSON object.
+diff --git a/include/ship/config/ConsoleVariable.h b/include/ship/config/ConsoleVariable.h
+--- a/include/ship/config/ConsoleVariable.h
++++ b/include/ship/config/ConsoleVariable.h
+@@ -193,7 +193,9 @@
+   protected:
+     void LoadFromPath(std::string path,
+                       nlohmann::detail::iteration_proxy<nlohmann::detail::iter_impl<nlohmann::json>> items);
++#ifndef __pyxis__
+     void LoadLegacy();
++#endif
+ 
+   private:
+     struct TransparentStringHash {
+diff --git a/include/ship/resource/ResourceManager.h b/include/ship/resource/ResourceManager.h
+--- a/include/ship/resource/ResourceManager.h
++++ b/include/ship/resource/ResourceManager.h
+@@ -106,6 +106,14 @@
+     ~ResourceManager();
+ 
+     /**
++     * @brief Refuses new asynchronous work, drains admitted tasks and joins the workers.
++     * Call from the owner before destroying Context or its other subsystems. Direct Process
++     * callers must already be quiescent. Init and Shutdown are owner lifecycle operations.
++     * @return false when called from this manager's worker, which cannot join itself.
++     */
++    bool Shutdown();
++
++    /**
+      * @brief Returns true once Init() has completed successfully.
+      * @return true if the manager is ready to load resources.
+      */
+@@ -418,13 +426,18 @@
+     std::shared_ptr<IResource> GetCachedResource(std::variant<ResourceLoadError, std::shared_ptr<IResource>> cacheLine);
+ 
+   private:
++    bool IsResourceWorker();
++    std::mutex mShutdownMutex;
++    std::mutex mAdmissionMutex;
++    std::mutex mMutex;
++    bool mAcceptingTasks = false;
++    BS::thread_pool* mWorkerPool = nullptr;
+     std::unordered_map<ResourceIdentifier, std::variant<ResourceLoadError, std::shared_ptr<IResource>>,
+                        ResourceIdentifierHash>
+         mResourceCache;
+     std::shared_ptr<ResourceLoader> mResourceLoader;
+     std::shared_ptr<ArchiveManager> mArchiveManager;
+     std::shared_ptr<BS::thread_pool> mThreadPool;
+-    std::mutex mMutex;
+     bool mAltAssetsEnabled = false;
+     // Private information for which owner and archive are default.
+     uintptr_t mDefaultCacheOwner = 0;
+diff --git a/include/ship/resource/archive/O2rArchive.h b/include/ship/resource/archive/O2rArchive.h
+--- a/include/ship/resource/archive/O2rArchive.h
++++ b/include/ship/resource/archive/O2rArchive.h
+@@ -7,6 +7,7 @@
+ #include <string>
+ #include <mutex>
+ #include <vector>
++#include <condition_variable>
+ 
+ #include "zip.h"
+ 
+@@ -37,22 +38,23 @@
+     ~O2rArchive();
+ 
+     /**
+-     * @brief Opens the ZIP file via libzip, creating the internal handle pool.
++     * @brief Opens an existing ZIP read-only and indexes its entries.
++     * Open and index consumers must be serialized by the owner.
+      * @return true if the file was opened successfully.
+      */
+     bool Open();
+ 
+     /**
+-     * @brief Closes all pooled handles and releases libzip resources.
++     * @brief Refuses new reads, waits for borrowed handles and closes the archive.
+      * @return true on success.
+      */
+     bool Close();
+ 
+     /**
+-     * @brief Writes raw data to a file entry inside the ZIP archive.
++     * @brief Refuses writes to this read-only archive.
+      * @param filename Target path within the archive.
+      * @param data     Raw bytes to write.
+-     * @return true on success.
++     * @return false; no archive contents are changed.
+      */
+     bool WriteFile(const std::string& filename, const std::vector<uint8_t>& data);
+ 
+@@ -77,6 +79,9 @@
+     void ReleaseZipHandle(zip_t* handle);
+     zip_t* mZipArchive;
+     std::mutex mPoolMutex;
++    std::condition_variable mPoolIdle;
++    size_t mActiveReads = 0;
++    bool mClosing = false;
+     std::vector<zip_t*> mZipArchivePool;
+ };
+ } // namespace Ship
+diff --git a/include/ship/window/Window.h b/include/ship/window/Window.h
+--- a/include/ship/window/Window.h
++++ b/include/ship/window/Window.h
+@@ -1,7 +1,6 @@
+ #pragma once
+ 
+ #include <memory>
+-#include <filesystem>
+ #include <string>
+ #include <vector>
+ #include <unordered_set>
+diff --git a/include/ship/window/gui/Gui.h b/include/ship/window/gui/Gui.h
+--- a/include/ship/window/gui/Gui.h
++++ b/include/ship/window/gui/Gui.h
+@@ -10,11 +10,15 @@
+ #include <unordered_map>
+ #include <vector>
+ #include "ship/window/gui/ConsoleWindow.h"
++#ifndef __pyxis__
+ #include "ship/controller/physicaldevice/SDLAddRemoveDeviceEventHandler.h"
++#endif
+ #include "ship/window/gui/IconsFontAwesome4.h"
+ #include "ship/window/gui/GameOverlay.h"
+ #include "ship/window/gui/StatsWindow.h"
++#ifndef __pyxis__
+ #include "ship/window/gui/FileBrowserWindow.h"
++#endif
+ #include "ship/window/gui/GuiWindow.h"
+ #include "ship/window/gui/GuiMenuBar.h"
+ 
+@@ -234,6 +238,9 @@
+     std::map<std::string, std::shared_ptr<GuiWindow>> mGuiWindows; ///< Registered window map (name → window).
+ 
+   private:
++#ifdef __pyxis__
++    ImGuiContext* mNativeImGuiContext = nullptr;
++#endif
+     bool mNeedsConsoleVariableSave;
+     std::string mImGuiIniPath;
+     std::string mImGuiLogPath;
+diff --git a/src/fast/Fast3dGui.cpp b/src/fast/Fast3dGui.cpp
+--- a/src/fast/Fast3dGui.cpp
++++ b/src/fast/Fast3dGui.cpp
+@@ -1,4 +1,7 @@
+ #include "fast/Fast3dGui.h"
++#ifdef __pyxis__
++#include <stdexcept>
++#endif
+ 
+ #include "fast/Fast3dWindow.h"
+ #include "ship/Context.h"
+@@ -51,6 +54,9 @@
+ }
+ 
+ bool Fast3dGui::SupportsViewports() {
++#ifdef __pyxis__
++    return false;
++#endif
+ #ifdef __linux__
+     const char* currentDesktop = std::getenv("XDG_CURRENT_DESKTOP");
+     if (currentDesktop && std::string(currentDesktop) == "gamescope") {
+@@ -92,7 +98,14 @@
+             if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
+                 SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+             }
++#ifdef __pyxis__
++            if (!ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(mImpl.Opengl.Window), mImpl.Opengl.Context)) {
++                throw std::runtime_error(std::string("ImGui SDL2 initialization: ") + SDL_GetError());
++            }
++            mNativePlatformInitialized = true;
++#else
+             ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window*>(mImpl.Opengl.Window), mImpl.Opengl.Context);
++#endif
+             break;
+ #if __APPLE__
+         case WindowBackend::FAST3D_SDL_METAL:
+@@ -117,6 +130,10 @@
+ }
+ 
+ void Fast3dGui::ImGuiWMShutdown() {
++#ifdef __pyxis__
++    if (!mNativePlatformInitialized) return;
++    mNativePlatformInitialized = false;
++#endif
+     switch (mImpl.Backend) {
+ #ifdef ENABLE_OPENGL
+         case WindowBackend::FAST3D_SDL_OPENGL:
+@@ -144,7 +161,15 @@
+     switch (mImpl.Backend) {
+ #ifdef ENABLE_OPENGL
+         case WindowBackend::FAST3D_SDL_OPENGL:
+-#ifdef __APPLE__
++#ifdef __pyxis__
++            if (!ImGui_ImplOpenGL3_Init("#version 120")) {
++                throw std::runtime_error("ImGui static OpenGL3 initialization failed");
++            }
++            mNativeRendererInitialized = true;
++            if (!ImGui_ImplOpenGL3_CreateDeviceObjects()) {
++                throw std::runtime_error("ImGui OpenGL shader/font initialization failed");
++            }
++#elif defined(__APPLE__)
+             ImGui_ImplOpenGL3_Init("#version 410 core");
+ #elif USE_OPENGLES
+             ImGui_ImplOpenGL3_Init("#version 300 es");
+@@ -174,6 +199,10 @@
+ }
+ 
+ void Fast3dGui::ImGuiBackendShutdown() {
++#ifdef __pyxis__
++    if (!mNativeRendererInitialized) return;
++    mNativeRendererInitialized = false;
++#endif
+     switch (mImpl.Backend) {
+ #ifdef ENABLE_OPENGL
+         case WindowBackend::FAST3D_SDL_OPENGL:
+@@ -244,7 +273,11 @@
+         return;
+     }
+ 
++#ifdef __pyxis__
++    ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_Manual, nullptr, 0);
++#else
+     ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_AutoAll, nullptr, 0);
++#endif
+ }
+ 
+ void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
+diff --git a/src/fast/Fast3dWindow.cpp b/src/fast/Fast3dWindow.cpp
+--- a/src/fast/Fast3dWindow.cpp
++++ b/src/fast/Fast3dWindow.cpp
+@@ -16,6 +16,9 @@
+ #include "fast/Fast3dGui.h"
+ 
+ #include <fstream>
++#ifdef __pyxis__
++#include <stdexcept>
++#endif
+ 
+ namespace Fast {
+ 
+@@ -52,12 +55,35 @@
+ 
+ Fast3dWindow::~Fast3dWindow() {
+     SPDLOG_DEBUG("destruct fast3dwindow");
++#ifdef __pyxis__
++    ShutDownNativeWindow();
++#else
+     mInterpreter->Destroy();
++#endif
+     delete mRenderingApi;
+     delete mWindowManagerApi;
+ }
+ 
++#ifdef __pyxis__
++void Fast3dWindow::ShutDownNativeWindow() {
++    // ImGui deletes GL objects: its shutdown precedes context/window teardown.
++    if (auto gui = GetGui()) {
++        gui->ShutDownImGui(this);
++    }
++    if (mNativeInterpreterStarted) {
++        mInterpreter->Destroy();
++        mNativeInterpreterStarted = false;
++    } else if (mWindowManagerApi) {
++        mWindowManagerApi->Destroy();
++    }
++}
++#endif
++
+ void Fast3dWindow::Init() {
++#ifdef __pyxis__
++    if (mNativeInterpreterStarted) throw std::runtime_error("Fast3D window already initialized");
++    try {
++#endif
+     bool gameMode = false;
+ 
+ #ifdef __linux__
+@@ -103,6 +129,9 @@
+     InitWindowManager();
+     mGfxDebugger = std::make_shared<GfxDebugger>();
+     mInterpreter->SetGfxDebugger(mGfxDebugger);
++#ifdef __pyxis__
++    mNativeInterpreterStarted = true;
++#endif
+     mInterpreter->Init(mWindowManagerApi, mRenderingApi, Ship::Context::GetRawInstance()->GetName().c_str(),
+                        isFullscreen, width, height, posX, posY);
+     mWindowManagerApi->SetFullscreenChangedCallback(OnFullscreenChanged);
+@@ -111,6 +140,12 @@
+ 
+     SetTextureFilter((FilteringMode)Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(
+         CVAR_TEXTURE_FILTER, FILTER_THREE_POINT));
++#ifdef __pyxis__
++    } catch (...) {
++        ShutDownNativeWindow();
++        throw;
++    }
++#endif
+ }
+ 
+ int32_t Fast3dWindow::GetTargetFps() {
+@@ -227,6 +262,9 @@
+ }
+ 
+ uint32_t Fast3dWindow::GetWidth() {
++#ifdef __pyxis__
++    if (!mNativeInterpreterStarted) return 0;
++#endif
+     uint32_t width, height;
+     int32_t posX, posY;
+     mWindowManagerApi->GetDimensions(&width, &height, &posX, &posY);
+@@ -234,6 +272,9 @@
+ }
+ 
+ uint32_t Fast3dWindow::GetHeight() {
++#ifdef __pyxis__
++    if (!mNativeInterpreterStarted) return 0;
++#endif
+     uint32_t width, height;
+     int32_t posX, posY;
+     mWindowManagerApi->GetDimensions(&width, &height, &posX, &posY);
+@@ -245,6 +286,9 @@
+ }
+ 
+ int32_t Fast3dWindow::GetPosX() {
++#ifdef __pyxis__
++    if (!mNativeInterpreterStarted) return 0;
++#endif
+     uint32_t width, height;
+     int32_t posX, posY;
+     mWindowManagerApi->GetDimensions(&width, &height, &posX, &posY);
+@@ -252,6 +296,9 @@
+ }
+ 
+ int32_t Fast3dWindow::GetPosY() {
++#ifdef __pyxis__
++    if (!mNativeInterpreterStarted) return 0;
++#endif
+     uint32_t width, height;
+     int32_t posX, posY;
+     mWindowManagerApi->GetDimensions(&width, &height, &posX, &posY);
+@@ -299,7 +346,7 @@
+ }
+ 
+ bool Fast3dWindow::SupportsWindowedFullscreen() {
+-#ifdef __APPLE__
++#if defined(__APPLE__) || defined(__pyxis__)
+     return false;
+ #endif
+ 
+@@ -329,10 +376,16 @@
+ }
+ 
+ bool Fast3dWindow::IsFullscreen() {
++#ifdef __pyxis__
++    if (!mNativeInterpreterStarted) return false;
++#endif
+     return mWindowManagerApi->IsFullscreen();
+ }
+ 
+ bool Fast3dWindow::IsRunning() {
++#ifdef __pyxis__
++    if (!mNativeInterpreterStarted) return false;
++#endif
+     return mWindowManagerApi->IsRunning();
+ }
+ 
+diff --git a/src/fast/backends/gfx_opengl.cpp b/src/fast/backends/gfx_opengl.cpp
+--- a/src/fast/backends/gfx_opengl.cpp
++++ b/src/fast/backends/gfx_opengl.cpp
+@@ -1,3 +1,4 @@
++#include <stdexcept>
+ #include "ship/window/Window.h"
+ #ifdef ENABLE_OPENGL
+ 
+@@ -320,7 +321,7 @@
+ 
+     if (res == nullptr) {
+         SPDLOG_ERROR("Failed to load default fragment shader, missing f3d.o2r?");
+-        abort();
++        throw std::runtime_error("Fast3D shader setup failed; see renderer diagnostic");
+     }
+ 
+     auto shader = static_cast<std::string*>(res->GetRawPointer());
+@@ -386,7 +387,7 @@
+ 
+     if (res == nullptr) {
+         SPDLOG_ERROR("Failed to load default vertex shader, missing f3d.o2r?");
+-        abort();
++        throw std::runtime_error("Fast3D shader setup failed; see renderer diagnostic");
+     }
+ 
+     auto shader = static_cast<std::string*>(res->GetRawPointer());
+@@ -423,7 +424,7 @@
+         // fprintf(stderr, "Vertex shader compilation failed\n");
+         glGetShaderInfoLog(vertex_shader, max_length, &max_length, &error_log[0]);
+         // fprintf(stderr, "%s\n", &error_log[0]);
+-        abort();
++        throw std::runtime_error("Fast3D shader setup failed; see renderer diagnostic");
+     }
+ 
+     GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+@@ -437,7 +438,7 @@
+         fprintf(stderr, "Fragment shader compilation failed\n");
+         glGetShaderInfoLog(fragment_shader, max_length, &max_length, &error_log[0]);
+         fprintf(stderr, "%s\n", &error_log[0]);
+-        abort();
++        throw std::runtime_error("Fast3D shader setup failed; see renderer diagnostic");
+     }
+ 
+     GLuint shader_program = glCreateProgram();
+@@ -708,7 +709,7 @@
+ }
+ 
+ void GfxRenderingAPIOGL::Init() {
+-#if !defined(__linux__) && !defined(__OpenBSD__)
++#if !defined(__linux__) && !defined(__OpenBSD__) && !defined(__pyxis__)
+     glewInit();
+ #endif
+ 
+diff --git a/src/fast/backends/gfx_sdl2.cpp b/src/fast/backends/gfx_sdl2.cpp
+--- a/src/fast/backends/gfx_sdl2.cpp
++++ b/src/fast/backends/gfx_sdl2.cpp
+@@ -1,6 +1,9 @@
+ #if defined(ENABLE_OPENGL) || defined(__APPLE__)
+ 
+ #include <stdio.h>
++#ifdef __pyxis__
++#include <stdexcept>
++#endif
+ 
+ #include "fast/Fast3dWindow.h"
+ 
+@@ -13,7 +16,9 @@
+ #include "ship/Context.h"
+ #include "ship/config/ConsoleVariable.h"
+ #include "ship/controller/controldeck/ControlDeck.h"
++#ifndef __pyxis__
+ #include "ship/window/FileDropMgr.h"
++#endif
+ #include "fast/backends/gfx_sdl.h"
+ 
+ #ifdef __OpenBSD__
+@@ -30,6 +35,10 @@
+ #include <SDL.h>
+ #include "fast/backends/gfx_metal.h"
+ #include "ship/utils/macUtils.h"
++#elif defined(__pyxis__)
++#include <SDL2/SDL.h>
++#define GL_GLEXT_PROTOTYPES 1
++#include <SDL2/SDL_opengl.h>
+ #else
+ #include <SDL2/SDL.h>
+ #define GL_GLEXT_PROTOTYPES 1
+@@ -215,6 +224,13 @@
+ }
+ 
+ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
++#ifdef __pyxis__
++    // The native window covers its output; its logical GL canvas is independent.
++    mFullScreen = true;
++    if (!on) SDL_SetError("Pyxis does not provide a windowed output mode");
++    if (call_callback && mOnFullscreenChanged) mOnFullscreenChanged(true);
++    return;
++#endif
+     if (mFullScreen == on) {
+         return;
+     }
+@@ -319,6 +335,22 @@
+ 
+ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bool startFullScreen, uint32_t width,
+                                 uint32_t height, int32_t posX, int32_t posY) {
++#ifdef __pyxis__
++    bool nativeVideoInitialized = false;
++    mWnd = nullptr;
++    mCtx = nullptr;
++    mRenderer = nullptr;
++    mFullScreen = true;
++    mVsyncEnabled = false;
++    mIsRunning = true;
++    mOnFullscreenChanged = nullptr;
++    mOnKeyDown = nullptr;
++    mOnKeyUp = nullptr;
++    mOnAllKeysUp = nullptr;
++    mOnMouseButtonDown = nullptr;
++    mOnMouseButtonUp = nullptr;
++    try {
++#endif
+     mWindowWidth = width;
+     mWindowHeight = height;
+ 
+@@ -327,9 +359,22 @@
+     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+ #endif
+ 
++#ifdef __pyxis__
++    if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
++        throw std::runtime_error(std::string("SDL video initialization: ") + SDL_GetError());
++    }
++    nativeVideoInitialized = true;
++    SDL_DisplayMode output;
++    if (SDL_GetCurrentDisplayMode(0, &output) != 0 || output.w <= 0 || output.h <= 0) {
++        throw std::runtime_error(std::string("native display size: ") + SDL_GetError());
++    }
++    mWindowWidth = output.w;
++    mWindowHeight = output.h;
++    SDL_EventState(SDL_DROPFILE, SDL_DISABLE);
++#else
+     SDL_Init(SDL_INIT_VIDEO);
+-
+     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
++#endif
+ 
+ #if defined(__APPLE__)
+     bool use_opengl = strcmp(gfxApiName, "OpenGL") == 0;
+@@ -338,9 +383,26 @@
+ #endif
+ 
+     if (use_opengl) {
++#ifdef __pyxis__
++        const auto attribute = [](SDL_GLattr key, int value) {
++            if (SDL_GL_SetAttribute(key, value) != 0) {
++                throw std::runtime_error(std::string("SDL GL attribute: ") + SDL_GetError());
++            }
++        };
++        attribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
++        attribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
++        attribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
++        attribute(SDL_GL_CONTEXT_FLAGS, 0);
++        attribute(SDL_GL_DEPTH_SIZE, 24);
++        attribute(SDL_GL_STENCIL_SIZE, 8);
++        attribute(SDL_GL_DOUBLEBUFFER, 1);
++        attribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
++        attribute(SDL_GL_MULTISAMPLESAMPLES, 0);
++#else
+         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
++#endif
+     } else {
+         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
+     }
+@@ -386,6 +448,9 @@
+     }
+ 
+     mWnd = SDL_CreateWindow(title, posX, posY, mWindowWidth, mWindowHeight, flags);
++#ifdef __pyxis__
++    if (!mWnd) throw std::runtime_error(std::string("SDL window creation: ") + SDL_GetError());
++#endif
+ #ifdef _WIN32
+     // Get Windows window handle and use it to subclass the window procedure.
+     // Needed to circumvent SDLs DPI scaling problems under windows (original does only scale *sometimes*).
+@@ -413,8 +478,21 @@
+ 
+         mCtx = SDL_GL_CreateContext(mWnd);
+ 
++#ifdef __pyxis__
++        if (!mCtx || SDL_GL_MakeCurrent(mWnd, mCtx) != 0 || SDL_GL_SetSwapInterval(0) != 0) {
++            throw std::runtime_error(std::string("SDL GL context initialization: ") + SDL_GetError());
++        }
++        int major = 0, minor = 0, profile = 0;
++        if (SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major) != 0 ||
++            SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor) != 0 ||
++            SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &profile) != 0 ||
++            major < 3 || (major == 3 && minor < 3) || profile != SDL_GL_CONTEXT_PROFILE_COMPATIBILITY) {
++            throw std::runtime_error("SDL did not provide desktop OpenGL 3.3 compatibility");
++        }
++#else
+         SDL_GL_MakeCurrent(mWnd, mCtx);
+         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
++#endif
+ 
+         window_impl.Opengl = { mWnd, mCtx };
+         window_impl.Backend = WindowBackend::FAST3D_SDL_OPENGL;
+@@ -453,6 +531,19 @@
+         mSdlToLusTable[scancode_rmapping_nonextended[i][0]] = mSdlToLusTable[scancode_rmapping_nonextended[i][1]];
+         mSdlToLusTable[scancode_rmapping_nonextended[i][1]] += 0x100;
+     }
++#ifdef __pyxis__
++    } catch (...) {
++        // Gui initialization may have completed only one of its backends.
++        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->ShutDownImGui(nullptr);
++        if (mCtx) SDL_GL_DeleteContext(mCtx);
++        if (mWnd) SDL_DestroyWindow(mWnd);
++        mCtx = nullptr;
++        mWnd = nullptr;
++        mIsRunning = false;
++        if (nativeVideoInitialized) SDL_QuitSubSystem(SDL_INIT_VIDEO);
++        throw;
++    }
++#endif
+ }
+ 
+ void GfxWindowBackendSDL2::SetFullscreenChangedCallback(void (*onFullscreenChanged)(bool is_now_fullscreen)) {
+@@ -495,6 +586,10 @@
+ }
+ 
+ void GfxWindowBackendSDL2::SetMouseCapture(bool capture) {
++#ifdef __pyxis__
++    // Native relative lock owns clipping; no desktop SDL mouse rectangle exists.
++    SDL_SetRelativeMouseMode(static_cast<SDL_bool>(capture));
++#else
+     SDL_SetRelativeMouseMode(static_cast<SDL_bool>(capture));
+     // TODO: Manually setting a clipping rect here because
+     // https://wiki.libsdl.org/SDL2/SDL_HINT_MOUSE_RELATIVE_MODE_CENTER isn't working as epxected.
+@@ -506,6 +601,7 @@
+         mCursorClip = { (w / 2) - 1, (h / 2) - 1, 2, 2 };
+     }
+     SDL_SetWindowMouseRect(mWnd, capture ? &mCursorClip : NULL);
++#endif
+ }
+ 
+ bool GfxWindowBackendSDL2::IsMouseCaptured() {
+@@ -537,7 +633,9 @@
+     mWindowWidth = width;
+     mWindowHeight = height;
+     if (mWnd) {
++#ifndef __pyxis__
+         SDL_SetWindowPosition(mWnd, posX, posY);
++#endif
+         SDL_SetWindowSize(mWnd, mWindowWidth, mWindowHeight);
+     }
+ }
+@@ -638,6 +736,14 @@
+ #endif
+         case SDL_WINDOWEVENT:
+             switch (event.window.event) {
++#ifdef __pyxis__
++                case SDL_WINDOWEVENT_FOCUS_LOST:
++                    if (event.window.windowID == SDL_GetWindowID(mWnd)) {
++                        if (mOnAllKeysUp) mOnAllKeysUp();
++                        mMouseWheelX = mMouseWheelY = 0.0f;
++                    }
++                    break;
++#endif
+                 case SDL_WINDOWEVENT_SIZE_CHANGED:
+ #ifdef __APPLE__
+                     SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
+@@ -654,9 +760,11 @@
+                     break;
+             }
+             break;
++#ifndef __pyxis__
+         case SDL_DROPFILE:
+             Ship::Context::GetRawInstance()->GetFileDropMgr()->SetDroppedFile(event.drop.file);
+             break;
++#endif
+         case SDL_QUIT:
+             Close();
+             break;
+@@ -664,6 +772,22 @@
+ }
+ 
+ void GfxWindowBackendSDL2::HandleEvents() {
++#ifdef __pyxis__
++    SDL_DisplayMode output;
++    if (SDL_GetCurrentDisplayMode(0, &output) != 0 || output.w <= 0 || output.h <= 0) {
++        throw std::runtime_error(std::string("native display size: ") + SDL_GetError());
++    }
++    if (mWindowWidth != output.w || mWindowHeight != output.h) {
++        SDL_SetWindowSize(mWnd, output.w, output.h);
++        int width = 0, height = 0;
++        SDL_GL_GetDrawableSize(mWnd, &width, &height);
++        if (width != output.w || height != output.h) {
++            throw std::runtime_error(std::string("native drawable resize: ") + SDL_GetError());
++        }
++        mWindowWidth = output.w;
++        mWindowHeight = output.h;
++    }
++#endif
+     SDL_Event event;
+     SDL_PumpEvents();
+     while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_CONTROLLERDEVICEADDED - 1) > 0) {
+@@ -709,7 +833,9 @@
+     left -= mBsdTick * 10;
+ #endif
+     if (left > 0) {
+-#ifndef _WIN32
++#ifdef __pyxis__
++        SDL_Delay(static_cast<Uint32>((left + 9999) / 10000));
++#elif !defined(_WIN32)
+         const timespec spec = { 0, left * 100 };
+         nanosleep(&spec, nullptr);
+ #else
+@@ -738,6 +864,7 @@
+ }
+ 
+ void GfxWindowBackendSDL2::SwapBuffersBegin() {
++#ifndef __pyxis__
+     bool nextVsyncEnabled = Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_VSYNC_ENABLED, 1);
+ 
+     if (mVsyncEnabled != nextVsyncEnabled) {
+@@ -745,6 +872,7 @@
+         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
+         SDL_RenderSetVSync(mRenderer, mVsyncEnabled ? 1 : 0);
+     }
++#endif
+ 
+     SyncFramerateWithTime();
+     SDL_GL_SwapWindow(mWnd);
+@@ -762,6 +890,9 @@
+ }
+ 
+ void GfxWindowBackendSDL2::SetTargetFps(int fps) {
++#ifdef __pyxis__
++    if (fps <= 0) throw std::invalid_argument("SDL target frame rate must be positive");
++#endif
+     mTargetFps = fps;
+ }
+ 
+@@ -782,11 +913,22 @@
+ }
+ 
+ void GfxWindowBackendSDL2::Destroy() {
++#ifdef __pyxis__
++    if (!mWnd) return;
++    if (mCtx) SDL_GL_DeleteContext(mCtx);
++    SDL_DestroyWindow(mWnd);
++    mCtx = nullptr;
++    mWnd = nullptr;
++    mIsRunning = false;
++    // Audio has a separate owner and may still be alive.
++    SDL_QuitSubSystem(SDL_INIT_VIDEO);
++#else
+     // TODO: destroy _any_ resources used by SDL
+     SDL_GL_DeleteContext(mCtx);
+     SDL_DestroyWindow(mWnd);
+     SDL_DestroyRenderer(mRenderer);
+     SDL_Quit();
++#endif
+ }
+ 
+ bool GfxWindowBackendSDL2::IsFullscreen() {
+diff --git a/src/fast/interpreter.cpp b/src/fast/interpreter.cpp
+--- a/src/fast/interpreter.cpp
++++ b/src/fast/interpreter.cpp
+@@ -8,7 +8,9 @@
+ #include <assert.h>
+ #include <stdio.h>
+ #ifndef _WIN32
++#ifndef __pyxis__
+ #include <dlfcn.h>
++#endif
+ #endif
+ 
+ #include <any>
+@@ -3982,7 +3984,12 @@
+     }
+ 
+     // Still in the N64 segmented range, but might be a false positive (a real low pointer).
+-#ifdef _WIN32
++#ifdef __pyxis__
++    extern const char __pyxis_image_start[] asm("__pyxis_image_start");
++    extern const char __pyxis_image_end[] asm("__pyxis_image_end");
++    return addr >= reinterpret_cast<uintptr_t>(__pyxis_image_start) &&
++           addr < reinterpret_cast<uintptr_t>(__pyxis_image_end);
++#elif defined(_WIN32)
+     // For Windows, check whether the address belongs to a dll.
+     HMODULE module = nullptr;
+     return GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+@@ -4975,6 +4982,12 @@
+     mWapi = wapi;
+     mRapi = rapi;
+     mWapi->Init(game_name, rapi->GetName(), start_in_fullscreen, width, height, posX, posY);
++#ifdef __pyxis__
++    int32_t nativeX = 0, nativeY = 0;
++    mWapi->GetDimensions(&width, &height, &nativeX, &nativeY);
++    posX = nativeX;
++    posY = nativeY;
++#endif
+     mRapi->Init();
+     mRapi->UpdateFramebufferParameters(0, width, height, 1, false, true, true, true);
+     mCurDimensions.internal_mul =
+@@ -4997,7 +5010,10 @@
+     if (mTexUploadBuffer == nullptr) {
+         // We cap texture max to 8k, because why would you need more?
+         int max_tex_size = std::min(8192, mRapi->GetMaxTextureSize());
+-        mTexUploadBuffer = (uint8_t*)malloc(max_tex_size * max_tex_size * 4);
++        mTexUploadBuffer = (uint8_t*)malloc(static_cast<size_t>(max_tex_size) * max_tex_size * 4);
++        if (mTexUploadBuffer == nullptr) {
++            throw std::bad_alloc();
++        }
+     }
+ 
+     ucode_handler_index = UcodeHandlers::ucode_f3dex2;
+@@ -5009,10 +5025,19 @@
+ void Interpreter::Destroy() {
+     // TODO: should also destroy rapi, and any other resources acquired in fast3d
+     free(mTexUploadBuffer);
+-    mWapi->Destroy();
+-
+-    // Texture cache and loaded textures store references to Resources which need to be unreferenced.
+-    TextureCacheClear();
++    mTexUploadBuffer = nullptr;
++    if (mWapi) {
++        mWapi->Destroy();
++        mWapi = nullptr;
++        mRapi = nullptr;
++    }
++
++    // Destruction must not allocate cache buckets or reusable texture ids.
++    mTextureCache.map.clear();
++    mTextureCache.lru.clear();
++    mTextureCache.free_texture_ids.clear();
++    mResolvedResourceCache.clear();
++    std::fill(std::begin(mRenderingState.mTextures), std::end(mRenderingState.mTextures), nullptr);
+     mRdp->texture_to_load.raw_tex_metadata.resource = nullptr;
+     mRdp->loaded_texture[0].raw_tex_metadata.resource = nullptr;
+     mRdp->loaded_texture[1].raw_tex_metadata.resource = nullptr;
+diff --git a/src/fast/resource/type/DisplayList.cpp b/src/fast/resource/type/DisplayList.cpp
+--- a/src/fast/resource/type/DisplayList.cpp
++++ b/src/fast/resource/type/DisplayList.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ #include "fast/resource/type/DisplayList.h"
+ #include <memory>
+ 
+diff --git a/src/ship/Context.cpp b/src/ship/Context.cpp
+--- a/src/ship/Context.cpp
++++ b/src/ship/Context.cpp
+@@ -2,6 +2,9 @@
+ #include "ship/controller/controldevice/controller/mapping/keyboard/KeyboardScancodes.h"
+ #include <cstring>
+ #include <iostream>
++#include <cstdio>
++#include <stdexcept>
++#include "ship/NativePaths.h"
+ #include <SDL2/SDL.h>
+ #include <spdlog/sinks/rotating_file_sink.h>
+ #include <spdlog/sinks/stdout_color_sinks.h>
+@@ -37,14 +40,31 @@
+ }
+ 
+ void Context::DestroyInstance() {
+-    mContext = nullptr;
++    if (mContext) {
++        mContext->Shutdown();
++        mContext.reset();
++    }
+ }
+ 
+ Context::~Context() {
+-    SPDLOG_TRACE("destruct context");
++    Shutdown();
++}
++
++void Context::Shutdown() {
++    if (mShutdown) {
++        return;
++    }
++    mShutdown = true;
++    if (mResourceManager && !mResourceManager->Shutdown()) {
++        std::terminate();
++    }
+     // A context is built in stages, so an early exit can destroy one before every Init* has run.
+     if (mWindow != nullptr) {
+-        mWindow->SaveWindowToConfig();
++        try {
++            mWindow->SaveWindowToConfig();
++        } catch (const std::exception& error) {
++            fprintf(stderr, "LUS window shutdown: %s\n", error.what());
++        }
+     }
+     // Explicitly destructing everything so that logging is done last.
+     mAudio = nullptr;
+@@ -63,16 +83,24 @@
+     mKeystore = nullptr;
+ #endif
+     if (mConfig != nullptr) {
+-        mConfig->Save();
++        try {
++            mConfig->Save();
++        } catch (const std::exception& error) {
++            fprintf(stderr, "LUS config shutdown: %s\n", error.what());
++        }
+     }
+     mConfig = nullptr;
+     if (mLogger != nullptr) {
+         mLogger->flush();
+     }
++    if (mPreviousLogger) {
++        spdlog::set_default_logger(mPreviousLogger);
++    }
+     mLogger = nullptr;
+ #ifndef _DEBUG
+     mLogThreadPool = nullptr;
+ #endif
++    mPreviousLogger.reset();
+ }
+ 
+ Context* Context::CreateInstance(const std::string& name, const std::string& shortName,
+@@ -86,6 +114,7 @@
+             return mContext.get();
+         } else {
+             SPDLOG_ERROR("Failed to initialize");
++            DestroyInstance();
+             return nullptr;
+         };
+     }
+@@ -114,6 +143,7 @@
+ bool Context::Init(const std::vector<std::string>& archivePaths, const std::unordered_set<uint32_t>& validHashes,
+                    uint32_t reservedThreadCount, AudioSettings audioSettings, std::shared_ptr<Window> window,
+                    std::shared_ptr<ControlDeck> controlDeck) {
++    try {
+     return InitLogging() && InitConfiguration() && InitConsoleVariables() &&
+            InitResourceManager(archivePaths, validHashes, reservedThreadCount) && InitControlDeck(controlDeck) &&
+            InitCrashHandler() && InitConsole() && InitWindow(window) && InitAudio(audioSettings) &&
+@@ -122,6 +152,11 @@
+ #else
+            InitEventSystem() && InitFileDropMgr();
+ #endif
++    } catch (const std::exception& error) {
++        fprintf(stderr, "LUS initialization failed: %s\n", error.what());
++        return false;
++    }
++
+ }
+ 
+ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
+@@ -132,7 +167,7 @@
+ 
+     try {
+         // Setup Logging
+-        spdlog::init_thread_pool(8192, 1);
++        mPreviousLogger = spdlog::default_logger();
+         std::vector<spdlog::sink_ptr> sinks;
+ 
+ #if (!defined(_WIN32)) || defined(_DEBUG)
+@@ -172,7 +207,8 @@
+         sinks.push_back(systemConsoleSink);
+ #endif
+ 
+-        auto logPath = GetPathRelativeToAppDirectory(("logs/" + GetName() + ".log"));
++        Native::MakeDirectory(GetPathRelativeToAppDirectory("logs"));
++        auto logPath = GetPathRelativeToAppDirectory(("logs/" + GetShortName() + ".log"));
+         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 10, 10);
+         sinks.push_back(fileSink);
+ #ifdef _DEBUG
+@@ -278,6 +314,7 @@
+         return false;
+     }
+ 
++#ifndef __pyxis__
+     // Bring up the SDL game-controller subsystem here rather than in osContInit, so controllers work
+     // in pre-game UI (e.g. navigating extraction prompts). osContInit still runs ControlDeck::Init(),
+     // which needs the game's controllerBits.
+@@ -293,21 +330,13 @@
+         SPDLOG_WARN("Failed to initialize SDL game controllers ({})", SDL_GetError());
+     }
+ 
++#endif
++
+     return true;
+ }
+ 
+ bool Context::InitCrashHandler() {
+-    if (GetCrashHandler() != nullptr) {
+-        return true;
+-    }
+-
+-    mCrashHandler = std::make_shared<CrashHandler>();
+-
+-    if (GetCrashHandler() == nullptr) {
+-        SPDLOG_ERROR("Failed to initialize crash handler");
+-        return false;
+-    }
+-
++    // Native process fault observation owns reporting; no child crash helper.
+     return true;
+ }
+ 
+@@ -481,122 +510,25 @@
+ }
+ 
+ std::string Context::GetAppBundlePath() {
+-#if defined(__ANDROID__)
+-    const char* externaldir = SDL_AndroidGetExternalStoragePath();
+-    if (externaldir != NULL) {
+-        return externaldir;
+-    }
+-#endif
+-
+-#ifdef __IOS__
+-    const char* home = getenv("HOME");
+-    return std::string(home) + "/Documents";
+-#endif
+-
+-#ifdef NON_PORTABLE
+-    return CMAKE_INSTALL_PREFIX;
+-#else
+-#ifdef __APPLE__
+-    FolderManager folderManager;
+-    return folderManager.getMainBundlePath();
+-#endif
+-
+-#ifdef __linux__
+-    std::string progpath(PATH_MAX, '\0');
+-    int len = readlink("/proc/self/exe", &progpath[0], progpath.size() - 1);
+-    if (len != -1) {
+-        progpath.resize(len);
+-
+-        // Find the last '/' and remove everything after it
+-        long unsigned int lastSlash = progpath.find_last_of("/");
+-        if (lastSlash != std::string::npos) {
+-            progpath.erase(lastSlash);
+-        }
+-
+-        return progpath;
+-    }
+-#endif
+-
+-#ifdef _WIN32
+-    std::wstring progpath(MAX_PATH, '\0');
+-
+-    int len = GetModuleFileNameW(NULL, &progpath[0], progpath.size());
+-    if (len != 0 && len < progpath.size()) {
+-        progpath.resize(len);
+-
+-        // Find the last '\' and remove everything after it
+-        long unsigned int lastSlash = progpath.find_last_of('\\');
+-        if (lastSlash != std::string::npos) {
+-            progpath.erase(lastSlash);
+-        }
+-
+-        // Convert wstring to string
+-        len = WideCharToMultiByte(CP_UTF8, 0, progpath.data(), (int)progpath.size(), nullptr, 0, nullptr, nullptr);
+-        std::string newProgpath(len, 0);
+-        WideCharToMultiByte(CP_UTF8, 0, progpath.data(), (int)progpath.size(), &newProgpath[0], len, nullptr, nullptr);
+-
+-        return newProgpath;
+-    }
+-#endif
+-
+-    return ".";
+-#endif
++    return "app://";
+ }
+ 
+ std::string Context::GetAppDirectoryPath(const std::string& appName) {
+-#if defined(__ANDROID__)
+-    const char* externaldir = SDL_AndroidGetExternalStoragePath();
+-    if (externaldir != NULL) {
+-        return externaldir;
+-    }
+-#endif
+-
+-#ifdef __IOS__
+-    const char* home = getenv("HOME");
+-    return std::string(home) + "/Documents";
+-#endif
+-
+-#if defined(__APPLE__)
+-    FolderManager foldermanager;
+-    if (char* fpath = std::getenv("SHIP_HOME")) {
+-        const char* appBundleID = strrchr(fpath, '/');
+-        if (appBundleID != nullptr) {
+-            foldermanager.CreateAppSupportDirectory(appBundleID + 1);
+-        }
+-        if (fpath[0] == '~') {
+-            const char* home = getenv("HOME") ? getenv("HOME") : getpwuid(getuid())->pw_dir;
+-            return std::string(home) + std::string(fpath).substr(1);
+-        }
+-        return std::string(fpath);
+-    }
+-#endif
+-
+-#if defined(__linux__)
+-    char* fpath = std::getenv("SHIP_HOME");
+-    if (fpath != NULL) {
+-        return std::string(fpath);
+-    }
+-#endif
+-
+-#ifdef NON_PORTABLE
+-    const std::string& effectiveAppName = appName.empty() ? GetRawInstance()->mShortName : appName;
+-    char* prefpath = SDL_GetPrefPath(NULL, effectiveAppName.c_str());
+-    if (prefpath != NULL) {
+-        std::string ret(prefpath);
+-        SDL_free(prefpath);
+-        return ret;
+-    }
+-#endif
+-
+-    return ".";
++    const auto name = appName.empty() ? GetRawInstance()->GetShortName() : appName;
++    if (name.empty() || name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_") != std::string::npos) {
++        throw std::invalid_argument("LUS application name is not a native directory component");
++    }
++    auto path = std::string("home://") + name;
++    Native::MakeDirectory(path);
++    return path;
+ }
+ 
+ std::string Context::GetPathRelativeToAppBundle(const std::string& path) {
+-    return GetAppBundlePath() + "/" + path;
++    return Native::Join(GetAppBundlePath(), path);
+ }
+ 
+ std::string Context::GetPathRelativeToAppDirectory(const std::string& path, const std::string& appName) {
+-    return GetAppDirectoryPath(appName) + "/" + path;
++    return Native::Join(GetAppDirectoryPath(appName), path);
+ }
+ 
+ std::string Context::LocateFileAcrossAppDirs(const std::string& path, const std::string& appName) {
+@@ -604,16 +536,16 @@
+ 
+     // app configuration dir
+     fpath = GetPathRelativeToAppDirectory(path, appName);
+-    if (std::filesystem::exists(fpath)) {
++    if (Native::IsFile(fpath)) {
+         return fpath;
+     }
+     // app install dir
+     fpath = GetPathRelativeToAppBundle(path);
+-    if (std::filesystem::exists(fpath)) {
++    if (Native::IsFile(fpath)) {
+         return fpath;
+     }
+     // current dir
+-    return "./" + std::string(path);
++    return fpath;
+ }
+ 
+ } // namespace Ship
+diff --git a/src/ship/audio/Audio.cpp b/src/ship/audio/Audio.cpp
+--- a/src/ship/audio/Audio.cpp
++++ b/src/ship/audio/Audio.cpp
+@@ -1,4 +1,5 @@
+ #include "ship/audio/Audio.h"
++#include <stdexcept>
+ 
+ #ifdef __APPLE__
+ #include "ship/audio/CoreAudioAudioPlayer.h"
+@@ -35,9 +36,7 @@
+     }
+ 
+     if (mAudioPlayer && !mAudioPlayer->Init()) {
+-        // Failed to initialize system audio player.
+-        // Fallback to Null if the native system player does not work.
+-        SetCurrentAudioBackend(AudioBackend::NUL);
++        throw std::runtime_error("requested LUS audio backend failed to initialize");
+     }
+ }
+ 
+diff --git a/src/ship/audio/SDLAudioPlayer.cpp b/src/ship/audio/SDLAudioPlayer.cpp
+--- a/src/ship/audio/SDLAudioPlayer.cpp
++++ b/src/ship/audio/SDLAudioPlayer.cpp
+@@ -1,12 +1,15 @@
+ #include "ship/audio/SDLAudioPlayer.h"
+ #include <spdlog/spdlog.h>
++#include <stdexcept>
+ 
+ namespace Ship {
+ 
+ SDLAudioPlayer::~SDLAudioPlayer() {
+     SPDLOG_TRACE("destruct SDL audio player");
+     DoClose();
+-    SDL_QuitSubSystem(SDL_INIT_AUDIO);
++    if (mInitialized) {
++        SDL_QuitSubSystem(SDL_INIT_AUDIO);
++    }
+ }
+ 
+ void SDLAudioPlayer::DoClose() {
+@@ -21,10 +24,12 @@
+ }
+ 
+ bool SDLAudioPlayer::DoInit() {
+-    if (SDL_Init(SDL_INIT_AUDIO) != 0) {
++    if (!mInitialized && SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+         SPDLOG_ERROR("SDL init error: {}", SDL_GetError());
+         return false;
+     }
++
++    mInitialized = true;
+ 
+     // Always open with the correct number of output channels
+     mNumChannels = this->GetNumOutputChannels();
+@@ -50,13 +55,20 @@
+ }
+ 
+ int SDLAudioPlayer::Buffered() {
++    if (mDevice == 0 || SDL_GetAudioDeviceStatus(mDevice) == SDL_AUDIO_STOPPED) {
++        throw std::runtime_error("LUS SDL audio device stopped or disconnected");
++    }
+     return SDL_GetQueuedAudioSize(mDevice) / (sizeof(int16_t) * mNumChannels);
+ }
+ 
+ void SDLAudioPlayer::DoPlay(const uint8_t* buf, size_t len) {
+     if (Buffered() < 6000) {
+-        // Don't fill the audio buffer too much in case this happens
+-        SDL_QueueAudio(mDevice, buf, len);
++        if (len > UINT32_MAX) {
++            throw std::runtime_error("LUS audio queue length exceeds SDL's bound");
++        }
++        if (SDL_QueueAudio(mDevice, buf, static_cast<Uint32>(len)) != 0) {
++            throw std::runtime_error(std::string("LUS audio queue failed: ") + SDL_GetError());
++        }
+     }
+ }
+ } // namespace Ship
+diff --git a/src/ship/config/Config.cpp b/src/ship/config/Config.cpp
+--- a/src/ship/config/Config.cpp
++++ b/src/ship/config/Config.cpp
+@@ -1,15 +1,18 @@
+ #include "ship/config/Config.h"
+ 
+-#include <fstream>
+ #include <string>
+-#include <filesystem>
++#include "ship/NativePaths.h"
++#include <cerrno>
++#include <cstdio>
++#include <cstring>
++#include <memory>
++#include <system_error>
+ #include <unordered_map>
+ #include <any>
+ #include <spdlog/spdlog.h>
+ #include "ship/utils/StringHelper.h"
+ #include "ship/Context.h"
+ 
+-namespace fs = std::filesystem;
+ 
+ namespace Ship {
+ Config::Config(std::string path) : mPath(std::move(path)), mIsNewInstance(false) {
+@@ -194,49 +197,62 @@
+ }
+ 
+ void Config::Reload() {
+-    if (mPath == "None" || !fs::exists(mPath) || !fs::is_regular_file(mPath)) {
++    if (mPath == "None" || !Native::IsFile(mPath)) {
+         mIsNewInstance = true;
+         mFlattenedJson = nlohmann::json::object();
+         return;
+     }
+-    std::ifstream ifs(mPath);
++    std::unique_ptr<FILE, decltype(&fclose)> file(fopen(mPath.c_str(), "rb"), fclose);
++    if (!file) {
++        throw std::system_error(errno, std::generic_category(), "cannot read config " + mPath);
++    }
++    std::string contents;
++    char buffer[4096];
++    while (const auto count = fread(buffer, 1, sizeof(buffer), file.get())) {
++        contents.append(buffer, count);
++    }
++    if (ferror(file.get())) {
++        throw std::system_error(errno, std::generic_category(), "config read failed " + mPath);
++    }
+ 
+     mNestedJson = nlohmann::json::object();
+     mFlattenedJson = nlohmann::json::object();
+     try {
+-        mNestedJson = nlohmann::json::parse(ifs);
++        mNestedJson = nlohmann::json::parse(contents);
+         mFlattenedJson = mNestedJson.flatten();
+     } catch (const nlohmann::json::exception& e) {
+         SPDLOG_ERROR("Failed to parse config file {}: {}", mPath, e.what());
+-    } catch (const std::exception& e) { SPDLOG_ERROR("Unexpected error loading config file {}: {}", mPath, e.what()); }
+-}
+-
+-void Config::Save() {
++        throw;
++    } catch (const std::exception& e) { SPDLOG_ERROR("Unexpected error loading config file {}: {}", mPath, e.what()); throw; }
++}
++
++bool Config::Save() {
+     mNestedJson = mFlattenedJson.unflatten();
+-    const fs::path configPath(mPath);
+-    const fs::path tempPath = configPath.parent_path() / (configPath.filename().string() + ".tmp");
+-    std::error_code ec;
+-    {
+-        std::ofstream file(tempPath, std::ios::binary | std::ios::trunc);
+-        if (!file.is_open()) {
+-            SPDLOG_ERROR("Could not open \"{}\" to save config", tempPath.string());
+-            return;
+-        }
+-        file << mNestedJson.dump(4);
+-        file.flush();
+-        if (!file.good()) {
+-            SPDLOG_ERROR("Could not write \"{}\"; keeping the existing config", tempPath.string());
+-            file.close();
+-            fs::remove(tempPath, ec);
+-            return;
+-        }
+-    }
+-    fs::rename(tempPath, configPath, ec);
+-    if (ec) {
+-        SPDLOG_ERROR("Could not replace config \"{}\": {}", mPath, ec.message());
+-        std::error_code removeEc;
+-        fs::remove(tempPath, removeEc);
+-    }
++    const std::string tempPath = mPath + ".tmp";
++    const std::string contents = mNestedJson.dump(4);
++    FILE* file = fopen(tempPath.c_str(), "wb");
++    if (file == nullptr) {
++        SPDLOG_ERROR("Could not open config temporary {}: {}", tempPath, strerror(errno));
++        return false;
++    }
++    bool ok = fwrite(contents.data(), 1, contents.size(), file) == contents.size();
++    if (fflush(file) != 0) {
++        ok = false;
++    }
++    if (fclose(file) != 0) {
++        ok = false;
++    }
++    if (!ok) {
++        SPDLOG_ERROR("Could not write config {}; keeping existing file", mPath);
++        remove(tempPath.c_str());
++        return false;
++    }
++    if (rename(tempPath.c_str(), mPath.c_str()) != 0) {
++        SPDLOG_ERROR("Could not replace config {}: {}", mPath, strerror(errno));
++        remove(tempPath.c_str());
++        return false;
++    }
++    return true;
+ }
+ 
+ template <typename T> std::vector<T> Config::GetArray(const std::string& key) {
+diff --git a/src/ship/config/ConsoleVariable.cpp b/src/ship/config/ConsoleVariable.cpp
+--- a/src/ship/config/ConsoleVariable.cpp
++++ b/src/ship/config/ConsoleVariable.cpp
+@@ -1,7 +1,7 @@
+ #include "ship/config/ConsoleVariable.h"
++#include "ship/utils/StringHelper.h"
+ 
+ #include <functional>
+-#include "ship/utils/filesystemtools/DiskFile.h"
+ #include "ship/utils/Utils.h"
+ #include "ship/config/Config.h"
+ #include "ship/Context.h"
+@@ -285,7 +285,9 @@
+ 
+     LoadFromPath("", conf->GetNestedJson()["CVars"].items());
+ 
++#ifndef __pyxis__
+     LoadLegacy();
++#endif
+ }
+ 
+ void ConsoleVariable::LoadFromPath(
+@@ -336,6 +338,7 @@
+         }
+     }
+ }
++#ifndef __pyxis__
+ void ConsoleVariable::LoadLegacy() {
+     auto conf = Context::GetPathRelativeToAppDirectory("cvars.cfg");
+     if (DiskFile::Exists(conf)) {
+@@ -380,4 +383,5 @@
+         fs::remove(conf);
+     }
+ }
++#endif
+ } // namespace Ship
+diff --git a/src/ship/controller/controldeck/ControlDeck.cpp b/src/ship/controller/controldeck/ControlDeck.cpp
+--- a/src/ship/controller/controldeck/ControlDeck.cpp
++++ b/src/ship/controller/controldeck/ControlDeck.cpp
+@@ -36,7 +36,9 @@
+     if (!mPorts[0]->GetConnectedController()->HasConfig()) {
+         mPorts[0]->GetConnectedController()->AddDefaultMappings(PhysicalDeviceType::Keyboard);
+         mPorts[0]->GetConnectedController()->AddDefaultMappings(PhysicalDeviceType::Mouse);
++#ifndef __pyxis__
+         mPorts[0]->GetConnectedController()->AddDefaultMappings(PhysicalDeviceType::SDLGamepad);
++#endif
+     }
+ }
+ 
+diff --git a/src/ship/resource/ResourceManager.cpp b/src/ship/resource/ResourceManager.cpp
+--- a/src/ship/resource/ResourceManager.cpp
++++ b/src/ship/resource/ResourceManager.cpp
+@@ -4,12 +4,20 @@
+ #include "ship/resource/archive/Archive.h"
+ #include <algorithm>
+ #include <thread>
++#include <exception>
++#include <cstring>
+ #include "ship/utils/StringHelper.h"
+ #include "ship/utils/Utils.h"
+-#include "ship/config/ConsoleVariable.h"
+-#include "ship/Context.h"
+ 
+ namespace Ship {
++
++namespace {
++template <typename T> std::shared_future<T> RefusedLoad() {
++    std::promise<T> promise;
++    promise.set_value(nullptr);
++    return promise.get_future().share();
++}
++} // namespace
+ 
+ ResourceFilter::ResourceFilter(const std::list<std::string>& includeMasks, const std::list<std::string>& excludeMasks,
+                                const uintptr_t owner, const std::shared_ptr<Archive> parent)
+@@ -52,29 +60,82 @@
+ 
+ void ResourceManager::Init(const std::vector<std::string>& archivePaths,
+                            const std::unordered_set<uint32_t>& validHashes, int32_t reservedThreadCount) {
++    const std::lock_guard<std::mutex> lifecycleLock(mShutdownMutex);
++    if (mArchiveManager != nullptr) {
++        SPDLOG_ERROR("ResourceManager has already been initialized");
++        return;
++    }
+     mResourceLoader = std::make_shared<ResourceLoader>();
+     mArchiveManager = std::make_shared<ArchiveManager>();
+     GetArchiveManager()->Init(archivePaths, validHashes);
+ 
+-    // the extra `- 1` is because we reserve an extra thread for spdlog
+-    size_t threadCount = std::max(1, (int32_t)(std::thread::hardware_concurrency() - reservedThreadCount - 1));
+-    mThreadPool = std::make_shared<BS::thread_pool>(threadCount);
+-
+-    if (!IsLoaded()) {
+-        // Nothing ever unpauses the thread pool since nothing will ever try to load the archive again.
+-        mThreadPool->pause();
+-    }
++    if (!mArchiveManager->IsLoaded()) {
++        return;
++    }
++
++    // Reserve the requested threads and one logger without unsigned underflow.
++    const int64_t available = static_cast<int64_t>(std::thread::hardware_concurrency());
++    const int64_t reserved = std::max<int64_t>(0, reservedThreadCount) + 1;
++    const size_t threadCount = static_cast<size_t>(std::max<int64_t>(1, available - reserved));
++    auto pool = std::make_shared<BS::thread_pool>(threadCount);
++    const std::lock_guard<std::mutex> admissionLock(mAdmissionMutex);
++    mThreadPool = std::move(pool);
++    mWorkerPool = mThreadPool.get();
++    mAcceptingTasks = true;
+ }
+ 
+ ResourceManager::~ResourceManager() {
++    if (!Shutdown()) {
++        std::terminate();
++    }
+     SPDLOG_INFO("destruct ResourceManager");
+ }
+ 
++bool ResourceManager::IsResourceWorker() {
++    const std::lock_guard<std::mutex> lock(mAdmissionMutex);
++    return mWorkerPool != nullptr && BS::this_thread::get_pool() == mWorkerPool;
++}
++
++bool ResourceManager::Shutdown() {
++    // Check before the lifecycle lock: an owner may already be waiting for this worker.
++    if (IsResourceWorker()) {
++        SPDLOG_ERROR("ResourceManager cannot shut down from its own worker");
++        return false;
++    }
++    const std::lock_guard<std::mutex> lifecycleLock(mShutdownMutex);
++    std::shared_ptr<BS::thread_pool> pool;
++    {
++        const std::lock_guard<std::mutex> lock(mAdmissionMutex);
++        mAcceptingTasks = false;
++        pool = std::move(mThreadPool);
++    }
++    if (pool != nullptr) {
++        pool->wait();
++        pool.reset();
++    }
++    {
++        const std::lock_guard<std::mutex> lock(mAdmissionMutex);
++        mWorkerPool = nullptr;
++    }
++
++    // Resource destructors may call back into the manager; keep the cache/mutex alive.
++    decltype(mResourceCache) retired;
++    {
++        const std::lock_guard<std::mutex> lock(mMutex);
++        retired.swap(mResourceCache);
++    }
++    return true;
++}
++
+ bool ResourceManager::IsLoaded() {
+-    return mArchiveManager != nullptr && mArchiveManager->IsLoaded();
++    const std::lock_guard<std::mutex> lock(mAdmissionMutex);
++    return mAcceptingTasks;
+ }
+ 
+ std::shared_ptr<File> ResourceManager::LoadFileProcess(const std::string& filePath) {
++    if (mArchiveManager == nullptr) {
++        return nullptr;
++    }
+     auto file = mArchiveManager->LoadFile(filePath);
+     if (file != nullptr) {
+         SPDLOG_TRACE("Loaded File {} on ResourceManager", filePath);
+@@ -100,6 +161,9 @@
+ 
+ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const ResourceIdentifier& identifier, bool loadExact,
+                                                                 std::shared_ptr<ResourceInitData> initData) {
++    if (mArchiveManager == nullptr) {
++        return nullptr;
++    }
+     // Check for and remove the OTR signature
+     if (OtrSignatureCheck(identifier.Path.c_str())) {
+         const auto newFilePath = identifier.Path.substr(7);
+@@ -155,31 +219,42 @@
+     auto file = LoadFileProcess(identifier.Path);
+     if (file == nullptr && !mArchiveManager->HasFile(identifier.Path + ".meta")) {
+         SPDLOG_TRACE("Failed to load resource file at path {}", identifier.Path);
+-        mResourceCache[identifier] = ResourceLoadError::NotFound;
++        std::variant<ResourceLoadError, std::shared_ptr<IResource>> retired = nullptr;
++        {
++            const std::lock_guard<std::mutex> lock(mMutex);
++            auto [it, inserted] = mResourceCache.try_emplace(identifier, ResourceLoadError::NotFound);
++            if (!inserted) {
++                auto cached = GetCachedResource(it->second);
++                if (cached != nullptr) {
++                    return cached;
++                }
++                retired = std::move(it->second);
++                it->second = ResourceLoadError::NotFound;
++            }
++        }
+         return nullptr;
+     }
+ 
+     // Transform the raw data into a resource
+     auto resource = GetResourceLoader()->LoadResource(identifier.Path, file, initData);
+ 
+-    // Another thread could have loaded the resource while we were processing, so we want to check before setting to
+-    // the cache.
+-    cachedResource = GetCachedResource(identifier, true);
+-
++    std::variant<ResourceLoadError, std::shared_ptr<IResource>> retired = nullptr;
++    std::shared_ptr<IResource> discarded;
+     {
+         const std::lock_guard<std::mutex> lock(mMutex);
+-
+-        if (cachedResource != nullptr) {
+-            // If another thread has already loaded this resource, discard the work we already did and return from
+-            // cache.
+-            resource = cachedResource;
+-        }
+-
+-        // Set the cache to the loaded resource
+-        if (resource != nullptr) {
+-            mResourceCache[identifier] = resource;
++        auto [it, inserted] = mResourceCache.try_emplace(identifier, ResourceLoadError::NotFound);
++        auto existing = GetCachedResource(it->second);
++        if (existing != nullptr) {
++            // Keep a concurrently published resource and destruct the duplicate outside the mutex.
++            discarded = std::move(resource);
++            resource = std::move(existing);
+         } else {
+-            mResourceCache[identifier] = ResourceLoadError::NotFound;
++            retired = std::move(it->second);
++            if (resource != nullptr) {
++                it->second = resource;
++            } else {
++                it->second = ResourceLoadError::NotFound;
++            }
+         }
+     }
+ 
+@@ -203,7 +278,12 @@
+     // Check for and remove the OTR signature
+     if (OtrSignatureCheck(identifier.Path.c_str())) {
+         auto newFilePath = identifier.Path.substr(7);
+-        return LoadResourceAsync({ newFilePath, identifier.Owner, identifier.Parent }, loadExact, priority);
++        return LoadResourceAsync({ newFilePath, identifier.Owner, identifier.Parent }, loadExact, priority, initData);
++    }
++
++    const std::lock_guard<std::mutex> admissionLock(mAdmissionMutex);
++    if (!mAcceptingTasks) {
++        return RefusedLoad<std::shared_ptr<IResource>>();
+     }
+ 
+     // Check the cache before queueing the job.
+@@ -229,6 +309,9 @@
+ 
+ std::shared_ptr<IResource> ResourceManager::LoadResource(const ResourceIdentifier& identifier, bool loadExact,
+                                                          std::shared_ptr<ResourceInitData> initData) {
++    if (IsResourceWorker()) {
++        return LoadResourceProcess(identifier, loadExact, initData);
++    }
+     auto resource = LoadResourceAsync(identifier, loadExact, BS::pr::highest, initData).get();
+     if (resource == nullptr) {
+         SPDLOG_TRACE("Failed to load resource file at path {}", identifier.Path);
+@@ -243,6 +326,9 @@
+ 
+ std::shared_ptr<IResource> ResourceManager::LoadResource(uint64_t crc, bool loadExact,
+                                                          std::shared_ptr<ResourceInitData> initData) {
++    if (GetArchiveManager() == nullptr) {
++        return nullptr;
++    }
+     const std::string* hashStr = GetArchiveManager()->HashToString(crc);
+     if (hashStr == nullptr || hashStr->length() == 0) {
+         SPDLOG_TRACE("ResourceLoad: Unknown crc {}\n", crc);
+@@ -317,6 +403,9 @@
+ 
+ std::shared_ptr<std::vector<std::shared_ptr<IResource>>>
+ ResourceManager::LoadResourcesProcess(const ResourceFilter& filter) {
++    if (mArchiveManager == nullptr) {
++        return nullptr;
++    }
+     auto loadedList = std::make_shared<std::vector<std::shared_ptr<IResource>>>();
+     auto fileList = GetArchiveManager()->ListFiles(filter.IncludeMasks, filter.ExcludeMasks);
+     loadedList->reserve(fileList->size());
+@@ -332,6 +421,10 @@
+ 
+ std::shared_future<std::shared_ptr<std::vector<std::shared_ptr<IResource>>>>
+ ResourceManager::LoadResourcesAsync(const ResourceFilter& filter, BS::priority_t priority) {
++    const std::lock_guard<std::mutex> admissionLock(mAdmissionMutex);
++    if (!mAcceptingTasks) {
++        return RefusedLoad<std::shared_ptr<std::vector<std::shared_ptr<IResource>>>>();
++    }
+     return mThreadPool->submit_task(
+         [this, filter]() -> std::shared_ptr<std::vector<std::shared_ptr<IResource>>> {
+             return LoadResourcesProcess(filter);
+@@ -349,11 +442,19 @@
+ }
+ 
+ std::shared_ptr<std::vector<std::shared_ptr<IResource>>> ResourceManager::LoadResources(const ResourceFilter& filter) {
++    if (IsResourceWorker()) {
++        return LoadResourcesProcess(filter);
++    }
+     return LoadResourcesAsync(filter, BS::pr::highest).get();
+ }
+ 
+ void ResourceManager::DirtyResources(const ResourceFilter& filter) {
+-    mThreadPool->submit_task([this, filter]() -> void {
++    const std::lock_guard<std::mutex> admissionLock(mAdmissionMutex);
++    if (!mAcceptingTasks) {
++        SPDLOG_ERROR("Cannot dirty resources: ResourceManager is not accepting work");
++        return;
++    }
++    (void)mThreadPool->submit_task([this, filter]() -> void {
+         auto list = GetArchiveManager()->ListFiles(filter.IncludeMasks, filter.ExcludeMasks);
+ 
+         for (const auto& key : *list.get()) {
+@@ -377,7 +478,12 @@
+ }
+ 
+ void ResourceManager::UnloadResourcesAsync(const ResourceFilter& filter, BS::priority_t priority) {
+-    mThreadPool->submit_task([this, filter]() -> void { UnloadResourcesProcess(filter); }, priority);
++    const std::lock_guard<std::mutex> admissionLock(mAdmissionMutex);
++    if (!mAcceptingTasks) {
++        SPDLOG_ERROR("Cannot unload resources asynchronously: ResourceManager is not accepting work");
++        return;
++    }
++    (void)mThreadPool->submit_task([this, filter]() -> void { UnloadResourcesProcess(filter); }, priority);
+ }
+ 
+ void ResourceManager::UnloadResources(const std::string& searchMask) {
+@@ -389,6 +495,9 @@
+ }
+ 
+ void ResourceManager::UnloadResourcesProcess(const ResourceFilter& filter) {
++    if (mArchiveManager == nullptr) {
++        return;
++    }
+     auto list = GetArchiveManager()->ListFiles(filter.IncludeMasks, filter.ExcludeMasks);
+ 
+     for (const auto& key : *list.get()) {
+@@ -416,10 +525,14 @@
+     // the mutex.
+     std::variant<ResourceLoadError, std::shared_ptr<IResource>> value = nullptr;
+     size_t ret = 0;
+-    // We can only erase the resource if we have any resources for that owner.
+-    if (mResourceCache.contains(identifier)) {
++    {
+         const std::lock_guard<std::mutex> lock(mMutex);
+-        mResourceCache.erase(identifier);
++        auto it = mResourceCache.find(identifier);
++        if (it != mResourceCache.end()) {
++            value = std::move(it->second);
++            mResourceCache.erase(it);
++            ret = 1;
++        }
+     }
+ 
+     return ret;
+@@ -430,8 +543,18 @@
+ }
+ 
+ void ResourceManager::CacheExternalResource(const std::string& filePath, std::shared_ptr<IResource> resource) {
+-    const std::lock_guard<std::mutex> lock(mMutex);
+-    mResourceCache[{ filePath, mDefaultCacheOwner, mDefaultCacheArchive }] = resource;
++    std::variant<ResourceLoadError, std::shared_ptr<IResource>> retired = nullptr;
++    {
++        const std::lock_guard<std::mutex> admissionLock(mAdmissionMutex);
++        if (!mAcceptingTasks) {
++            SPDLOG_ERROR("Cannot cache resource: ResourceManager is not accepting work");
++            return;
++        }
++        const std::lock_guard<std::mutex> lock(mMutex);
++        auto& cached = mResourceCache[{ filePath, mDefaultCacheOwner, mDefaultCacheArchive }];
++        retired = std::move(cached);
++        cached = std::move(resource);
++    }
+ }
+ 
+ bool ResourceManager::WriteResource(const ResourceIdentifier& identifier, const std::vector<uint8_t>& data,
+diff --git a/src/ship/resource/archive/ArchiveManager.cpp b/src/ship/resource/archive/ArchiveManager.cpp
+--- a/src/ship/resource/archive/ArchiveManager.cpp
++++ b/src/ship/resource/archive/ArchiveManager.cpp
+@@ -1,6 +1,6 @@
+ #include "ship/resource/archive/ArchiveManager.h"
+ 
+-#include <filesystem>
++#include "ship/NativePaths.h"
+ #include "spdlog/spdlog.h"
+ 
+ #include "ship/resource/archive/Archive.h"
+@@ -8,7 +8,6 @@
+ #include "ship/resource/archive/OtrArchive.h"
+ #endif
+ #include "ship/resource/archive/O2rArchive.h"
+-#include "ship/resource/archive/FolderArchive.h"
+ #include "ship/utils/StringHelper.h"
+ #include "ship/utils/glob.h"
+ #include "ship/utils/StrHash64.h"
+@@ -48,12 +47,12 @@
+ }
+ 
+ std::shared_ptr<File> ArchiveManager::LoadFile(uint64_t hash) {
+-    auto archive = mFileToArchive[hash];
+-    if (archive == nullptr) {
+-        return nullptr;
+-    }
+-
+-    return archive->LoadFile(hash);
++    const auto it = mFileToArchive.find(hash);
++    if (it == mFileToArchive.end() || it->second == nullptr) {
++        return nullptr;
++    }
++
++    return it->second->LoadFile(hash);
+ }
+ 
+ bool ArchiveManager::HasFile(const std::string& filePath) {
+@@ -65,7 +64,8 @@
+ }
+ 
+ std::shared_ptr<Archive> ArchiveManager::GetArchiveFromFile(const std::string& filePath) {
+-    return mFileToArchive[CRC64(filePath.c_str())];
++    const auto it = mFileToArchive.find(CRC64(filePath.c_str()));
++    return it == mFileToArchive.end() ? nullptr : it->second;
+ }
+ 
+ int32_t ArchiveManager::GetFilePriority(const std::string& filePath) {
+@@ -214,41 +214,21 @@
+     std::vector<std::string> fileList = {};
+ 
+     for (const auto& archivePath : archivePaths) {
+-        if (archivePath.length() > 0) {
+-            if (std::filesystem::is_directory(archivePath)) {
+-                bool hasAssetFiles = false;
+-                for (const auto& p : std::filesystem::directory_iterator(archivePath)) {
+-                    if (StringHelper::IEquals(p.path().extension().string(), ".otr") ||
+-                        StringHelper::IEquals(p.path().extension().string(), ".zip") ||
+-                        StringHelper::IEquals(p.path().extension().string(), ".mpq") ||
+-                        StringHelper::IEquals(p.path().extension().string(), ".o2r")) {
+-                        fileList.push_back(std::filesystem::absolute(p).string());
+-                        hasAssetFiles = true;
+-                    }
+-                }
+-
+-                if (!hasAssetFiles) {
+-                    fileList.push_back(std::filesystem::absolute(archivePath).string());
+-                }
+-            } else if (std::filesystem::is_regular_file(archivePath)) {
+-                fileList.push_back(std::filesystem::absolute(archivePath).string());
+-            } else {
+-                SPDLOG_WARN("The archive at path {} does not exist", std::filesystem::absolute(archivePath).string());
+-            }
+-        } else {
+-            SPDLOG_WARN("No archive path supplied");
+-        }
++        if (archivePath.empty() || !Native::IsFile(archivePath)) {
++            SPDLOG_ERROR("Archive file is unavailable: {}", archivePath);
++            continue;
++        }
++        fileList.push_back(archivePath);
+     }
+ 
+     return fileList;
+ }
+ 
+ std::shared_ptr<Archive> ArchiveManager::AddArchive(const std::string& archivePath) {
+-    const std::filesystem::path path = archivePath;
+-    const std::string extension = path.extension().string();
++    const std::string extension = Native::Extension(archivePath);
+     std::shared_ptr<Archive> archive = nullptr;
+ 
+-    SPDLOG_INFO("Reading archive: {}", path.string());
++    SPDLOG_INFO("Reading archive: {}", archivePath);
+ 
+     if (StringHelper::IEquals(extension, ".o2r") || StringHelper::IEquals(extension, ".zip")) {
+         archive = dynamic_pointer_cast<Archive>(std::make_shared<O2rArchive>(archivePath));
+@@ -256,8 +236,7 @@
+     } else if (StringHelper::IEquals(extension, ".otr") || StringHelper::IEquals(extension, ".mpq")) {
+         archive = dynamic_pointer_cast<Archive>(std::make_shared<OtrArchive>(archivePath));
+ #endif
+-    } else if (StringHelper::IEquals(extension, "")) {
+-        archive = dynamic_pointer_cast<Archive>(std::make_shared<FolderArchive>(archivePath));
++
+     } else {
+         // Not recognized file extension, trying with o2r
+         SPDLOG_WARN("File extension \"{}\" not recognized, trying to create an o2r archive.", extension);
+diff --git a/src/ship/resource/archive/O2rArchive.cpp b/src/ship/resource/archive/O2rArchive.cpp
+--- a/src/ship/resource/archive/O2rArchive.cpp
++++ b/src/ship/resource/archive/O2rArchive.cpp
+@@ -1,9 +1,12 @@
+ #include "ship/resource/archive/O2rArchive.h"
+ 
+-#include "ship/Context.h"
+-#include "ship/window/Window.h"
+ #include "spdlog/spdlog.h"
+ #include <unordered_map>
++#include <algorithm>
++#include <limits>
++#include <memory>
++#include <new>
++#include <cstring>
+ 
+ namespace Ship {
+ O2rArchive::O2rArchive(const std::string& archivePath) : Archive(archivePath) {
+@@ -17,12 +20,20 @@
+ 
+ zip_t* O2rArchive::GetZipHandle() {
+     std::lock_guard<std::mutex> lock(mPoolMutex);
++    if (mClosing || mZipArchive == nullptr) {
++        return nullptr;
++    }
+     if (!mZipArchivePool.empty()) {
+         zip_t* handle = mZipArchivePool.back();
+         mZipArchivePool.pop_back();
++        ++mActiveReads;
+         return handle;
+     }
+-    return zip_open(GetPath().c_str(), ZIP_RDONLY, nullptr);
++    auto handle = zip_open(GetPath().c_str(), ZIP_RDONLY, nullptr);
++    if (handle != nullptr) {
++        ++mActiveReads;
++    }
++    return handle;
+ }
+ 
+ void O2rArchive::ReleaseZipHandle(zip_t* handle) {
+@@ -31,17 +42,33 @@
+     }
+ 
+     std::lock_guard<std::mutex> lock(mPoolMutex);
+-    mZipArchivePool.push_back(handle);
++    try {
++        mZipArchivePool.push_back(handle);
++    } catch (const std::bad_alloc&) {
++        zip_discard(handle);
++    }
++    --mActiveReads;
++    mPoolIdle.notify_all();
+ }
+ 
+ std::shared_ptr<File> O2rArchive::LoadFile(uint64_t hash) {
+-    const std::string& filePath =
+-        *Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->HashToString(hash);
++    std::string filePath;
++    {
++        const std::lock_guard<std::mutex> lock(mPoolMutex);
++        const auto files = ListFiles();
++        const auto it = files->find(hash);
++        if (it == files->end()) {
++            return nullptr;
++        }
++        filePath = it->second;
++    }
+     return LoadFile(filePath);
+ }
+ 
+ std::shared_ptr<File> O2rArchive::LoadFile(const std::string& filePath) {
+-    zip_t* zipArchive = GetZipHandle();
++    const auto returnHandle = [this](zip_t* handle) { ReleaseZipHandle(handle); };
++    const std::unique_ptr<zip_t, decltype(returnHandle)> handle(GetZipHandle(), returnHandle);
++    zip_t* zipArchive = handle.get();
+     if (zipArchive == nullptr) {
+         SPDLOG_TRACE("Failed to open file {} from zip archive {}. Archive not open.", filePath, GetPath());
+         return nullptr;
+@@ -50,7 +77,6 @@
+     auto zipEntryIndex = zip_name_locate(zipArchive, filePath.c_str(), 0);
+     if (zipEntryIndex < 0) {
+         SPDLOG_TRACE("Failed to find file {} in zip archive  {}.", filePath, GetPath());
+-        ReleaseZipHandle(zipArchive);
+         return nullptr;
+     }
+ 
+@@ -58,36 +84,48 @@
+     zip_stat_init(&zipEntryStat);
+     if (zip_stat_index(zipArchive, zipEntryIndex, 0, &zipEntryStat) != 0) {
+         SPDLOG_TRACE("Failed to get entry information for file {} in zip archive  {}.", filePath, GetPath());
+-        ReleaseZipHandle(zipArchive);
+-        return nullptr;
+-    }
+-
+-    // Filesize 0, no logging needed
+-    if (zipEntryStat.size == 0) {
+-        SPDLOG_TRACE("Failed to load file {}; filesize 0", filePath, GetPath());
+-        ReleaseZipHandle(zipArchive);
+-        return nullptr;
+-    }
+-
+-    struct zip_file* zipEntryFile = zip_fopen_index(zipArchive, zipEntryIndex, 0);
++        return nullptr;
++    }
++
++    if (!(zipEntryStat.valid & ZIP_STAT_SIZE) || zipEntryStat.size == 0 ||
++        zipEntryStat.size > std::numeric_limits<size_t>::max() ||
++        zipEntryStat.size > std::vector<char>().max_size()) {
++        SPDLOG_TRACE("Invalid size for file {} in zip archive {}", filePath, GetPath());
++        return nullptr;
++    }
++
++    std::unique_ptr<zip_file_t, decltype(&zip_fclose)> entry(zip_fopen_index(zipArchive, zipEntryIndex, 0), zip_fclose);
++    auto zipEntryFile = entry.get();
+     if (!zipEntryFile) {
+         SPDLOG_TRACE("Failed to open file {} in zip archive  {}.", filePath, GetPath());
+-        ReleaseZipHandle(zipArchive);
+         return nullptr;
+     }
+ 
+     auto fileToLoad = std::make_shared<File>();
+     fileToLoad->Buffer = std::make_shared<std::vector<char>>(zipEntryStat.size);
+ 
+-    if (zip_fread(zipEntryFile, fileToLoad->Buffer->data(), zipEntryStat.size) < 0) {
+-        SPDLOG_TRACE("Error reading file {} in zip archive  {}.", filePath, GetPath());
+-    }
+-
+-    if (zip_fclose(zipEntryFile) != 0) {
+-        SPDLOG_TRACE("Error closing file {} in zip archive  {}.", filePath, GetPath());
+-    }
+-
+-    ReleaseZipHandle(zipArchive);
++    size_t read = 0;
++    const size_t size = static_cast<size_t>(zipEntryStat.size);
++    while (read < size) {
++        const auto remaining = std::min<zip_uint64_t>(size - read, std::numeric_limits<zip_int64_t>::max());
++        const auto count = zip_fread(zipEntryFile, fileToLoad->Buffer->data() + read, remaining);
++        if (count <= 0 || static_cast<zip_uint64_t>(count) > remaining) {
++            SPDLOG_TRACE("Incomplete read of file {} in zip archive {}", filePath, GetPath());
++            return nullptr;
++        }
++        read += static_cast<size_t>(count);
++    }
++
++    // Reaching the expected size alone does not establish EOF or CRC success.
++    char extra;
++    if (zip_fread(zipEntryFile, &extra, 1) != 0) {
++        SPDLOG_TRACE("Invalid end of file {} in zip archive {}", filePath, GetPath());
++        return nullptr;
++    }
++    if (zip_fclose(entry.release()) != 0) {
++        SPDLOG_TRACE("Error closing file {} in zip archive {}", filePath, GetPath());
++        return nullptr;
++    }
+ 
+     fileToLoad->IsLoaded = true;
+ 
+@@ -95,15 +133,33 @@
+ }
+ 
+ bool O2rArchive::Open() {
+-    mZipArchive = zip_open(GetPath().c_str(), ZIP_CREATE, nullptr);
+-    if (mZipArchive == nullptr) {
++    const std::lock_guard<std::mutex> lock(mPoolMutex);
++    if (mClosing) {
++        return false;
++    }
++    if (mZipArchive != nullptr) {
++        return true;
++    }
++    std::unique_ptr<zip_t, decltype(&zip_discard)> archive(zip_open(GetPath().c_str(), ZIP_RDONLY, nullptr), zip_discard);
++    if (archive == nullptr) {
+         SPDLOG_ERROR("Failed to load zip file \"{}\"", GetPath());
+         return false;
+     }
+ 
+-    auto zipNumEntries = zip_get_num_entries(mZipArchive, 0);
+-    for (auto i = 0; i < zipNumEntries; i++) {
+-        auto zipEntryName = zip_get_name(mZipArchive, i, 0);
++    auto zipNumEntries = zip_get_num_entries(archive.get(), 0);
++    if (zipNumEntries < 0) {
++        SPDLOG_ERROR("Failed to list zip file \"{}\"", GetPath());
++        return false;
++    }
++    auto files = ListFiles();
++    files->clear();
++    for (zip_int64_t i = 0; i < zipNumEntries; i++) {
++        auto zipEntryName = zip_get_name(archive.get(), i, 0);
++        if (zipEntryName == nullptr || zipEntryName[0] == '\0') {
++            SPDLOG_ERROR("Invalid entry name in zip file \"{}\"", GetPath());
++            files->clear();
++            return false;
++        }
+ 
+         // It is possible for directories to have entries in a zip
+         // file, we don't want those indexed as files in the archive
+@@ -114,83 +170,41 @@
+         IndexFile(zipEntryName);
+     }
+ 
++    mZipArchive = archive.release();
+     return true;
+ }
+ 
+ bool O2rArchive::Close() {
++    std::unique_lock<std::mutex> lock(mPoolMutex);
++    mClosing = true;
++    mPoolIdle.wait(lock, [this] { return mActiveReads == 0; });
+     bool success = true;
+ 
+     if (mZipArchive != nullptr) {
+         if (zip_close(mZipArchive) == -1) {
+             SPDLOG_ERROR("Failed to close zip file \"{}\"", GetPath());
++            zip_discard(mZipArchive);
+             success = false;
+         }
+         mZipArchive = nullptr;
+     }
+ 
+-    std::lock_guard<std::mutex> lock(mPoolMutex);
+     for (auto* handle : mZipArchivePool) {
+         if (zip_close(handle) == -1) {
+             SPDLOG_ERROR("Failed to close pooled zip file \"{}\"", GetPath());
++            zip_discard(handle);
+             success = false;
+         }
+     }
+     mZipArchivePool.clear();
++    mClosing = false;
+ 
+     return success;
+ }
+ 
+ bool O2rArchive::WriteFile(const std::string& filePath, const std::vector<uint8_t>& data) {
+-    if (!mZipArchive) {
+-        SPDLOG_ERROR("Cannot write to zip: Archive is not open.");
+-        return false;
+-    }
+-
+-    // Create a new zip source from the data buffer
+-    zip_source_t* source = zip_source_buffer(mZipArchive, data.data(), data.size(), 0);
+-    if (!source) {
+-        SPDLOG_ERROR("Failed to create zip source for file \"{}\"", filePath);
+-        return false;
+-    }
+-
+-    // Add or replace the file in the zip archive
+-    if (zip_file_add(mZipArchive, filePath.c_str(), source, ZIP_FL_ENC_UTF_8 | ZIP_FL_OVERWRITE) < 0) {
+-        SPDLOG_ERROR("Failed to add file \"{}\" to ZIP", filePath);
+-        zip_source_free(source);
+-        return false;
+-    }
+-
+-    // Save changes to disk
+-    if (zip_close(mZipArchive) < 0) {
+-        zip_error_t* error = zip_get_error(mZipArchive);
+-        SPDLOG_ERROR("Failed to save changes to zip archive: {} ({})", zip_error_strerror(error),
+-                     zip_error_code_zip(error));
+-        zip_discard(mZipArchive); // Close zip and discard changes
+-        return false;
+-    }
+-
+-    // Clear the pool as the file on disk has likely changed
+-    {
+-        std::lock_guard<std::mutex> lock(mPoolMutex);
+-        for (auto* handle : mZipArchivePool) {
+-            zip_close(handle);
+-        }
+-        mZipArchivePool.clear();
+-    }
+-
+-    SPDLOG_INFO("Successfully wrote file: {}", filePath);
+-
+-    // Reopen the zip file so that it may continued to be used by libultraship
+-    mZipArchive = zip_open(GetPath().c_str(), ZIP_CREATE, nullptr);
+-    if (mZipArchive == nullptr) {
+-        SPDLOG_ERROR("Failed to reopen zip file after writing.");
+-        return false;
+-    }
+-
+-    IndexFile(filePath);
+-
+-    // Success
+-    return true;
++    SPDLOG_ERROR("Cannot write file {}: ZIP archive {} is read-only", filePath, GetPath());
++    return false;
+ }
+ 
+ } // namespace Ship
+diff --git a/src/ship/utils/StringHelper.cpp b/src/ship/utils/StringHelper.cpp
+--- a/src/ship/utils/StringHelper.cpp
++++ b/src/ship/utils/StringHelper.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ #include "ship/utils/StringHelper.h"
+ 
+ #if (_MSC_VER)
+diff --git a/src/ship/window/Window.cpp b/src/ship/window/Window.cpp
+--- a/src/ship/window/Window.cpp
++++ b/src/ship/window/Window.cpp
+@@ -54,6 +54,13 @@
+ }
+ 
+ void Window::SaveWindowToConfig() {
++#ifdef __pyxis__
++    if (GetWidth() == 0 || GetHeight() == 0) return;
++#endif
++#ifdef __pyxis__
++    // A refused/partial initialization has no window geometry to persist.
++    if (GetWidth() == 0 || GetHeight() == 0) return;
++#endif
+     // This accepts conf in because it can be run in the destruction of LUS.
+     mConfig->SetBool("Window.Fullscreen.Enabled", IsFullscreen());
+     if (IsFullscreen()) {
+diff --git a/src/ship/window/gui/Gui.cpp b/src/ship/window/gui/Gui.cpp
+--- a/src/ship/window/gui/Gui.cpp
++++ b/src/ship/window/gui/Gui.cpp
+@@ -6,6 +6,9 @@
+ #include <utility>
+ #include <string>
+ #include <vector>
++#ifdef __pyxis__
++#include <stdexcept>
++#endif
+ 
+ #include "ship/config/Config.h"
+ #include "ship/Context.h"
+@@ -32,10 +35,12 @@
+         AddGuiWindow(std::make_shared<StatsWindow>(CVAR_STATS_WINDOW_OPEN, "Stats"));
+     }
+ 
++#ifndef __pyxis__
+     if (GetGuiWindow("SDLAddRemoveDeviceEventHandler") == nullptr) {
+         AddGuiWindow(std::make_shared<SDLAddRemoveDeviceEventHandler>("gOpenWindows.SDLAddRemoveDeviceEventHandler",
+                                                                       "SDLAddRemoveDeviceEventHandler"));
+     }
++#endif
+ 
+     if (GetGuiWindow("Console") == nullptr) {
+         AddGuiWindow(std::make_shared<ConsoleWindow>(CVAR_CONSOLE_WINDOW_OPEN, "Console", ImVec2(520, 600),
+@@ -46,9 +51,11 @@
+     // would call SyncVisibilityConsoleVariable() -> GetWindow()->GetGui() before the Gui is attached
+     // to the Window, which crashes. Constructed already visible so Draw() runs every frame; it renders
+     // nothing until a pick is queued.
++#ifndef __pyxis__
+     if (GetGuiWindow("FileBrowser") == nullptr) {
+         AddGuiWindow(std::make_shared<FileBrowserWindow>("", true, "FileBrowser"));
+     }
++#endif
+ }
+ 
+ Gui::Gui() : Gui(std::vector<std::shared_ptr<GuiWindow>>()) {
+@@ -59,7 +66,14 @@
+ }
+ 
+ void Gui::Init() {
++#ifdef __pyxis__
++    if (mNativeImGuiContext) throw std::runtime_error("ImGui context already initialized");
++#endif
+     ImGuiContext* ctx = ImGui::CreateContext();
++#ifdef __pyxis__
++    if (!ctx) throw std::runtime_error("ImGui context allocation failed");
++    mNativeImGuiContext = ctx;
++#endif
+     ImGui::SetCurrentContext(ctx);
+     mImGuiIo = &ImGui::GetIO();
+     mImGuiIo->ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_NoMouseCursorChange;
+@@ -94,16 +108,23 @@
+         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+     }
+ 
++#ifdef __pyxis__
++    mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
++    mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
++#else
+     if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
+         GetMenuOrMenubarVisible()) {
+         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+     } else {
+         mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+     }
++#endif
+ 
+     GetGuiWindow("Stats")->Init();
+     GetGuiWindow("Console")->Init();
++#ifndef __pyxis__
+     GetGuiWindow("FileBrowser")->Init();
++#endif
+     GetGameOverlay()->Init();
+ 
+     Context::GetRawInstance()->GetResourceManager()->GetResourceLoader()->RegisterResourceFactory(
+@@ -118,9 +139,22 @@
+ }
+ 
+ void Gui::ShutDownImGui(Ship::Window* window) {
++#ifdef __pyxis__
++    if (!mNativeImGuiContext) return;
++    ImGuiContext* previous = ImGui::GetCurrentContext();
++    ImGuiContext* owned = mNativeImGuiContext;
++    ImGui::SetCurrentContext(owned);
++    ImGuiBackendShutdown();
++    ImGuiWMShutdown();
++    mNativeImGuiContext = nullptr;
++    mImGuiIo = nullptr;
++    ImGui::DestroyContext(owned);
++    if (previous != owned) ImGui::SetCurrentContext(previous);
++#else
+     ImGuiWMShutdown();
+     ImGuiBackendShutdown();
+     ImGui::DestroyContext();
++#endif
+ }
+ 
+ void Gui::ImGuiWMShutdown() {
+@@ -145,10 +179,12 @@
+ }
+ 
+ void Gui::UnblockGamepadNavigation() {
++#ifndef __pyxis__
+     if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
+         GetMenuOrMenubarVisible()) {
+         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+     }
++#endif
+ }
+ 
+ ImGuiID Gui::GetMainGameWindowID() {
+@@ -174,6 +210,9 @@
+ }
+ 
+ void Gui::UpdateGamepadNavigation() {
++#ifdef __pyxis__
++    mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
++#else
+     const bool navWanted = Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
+                            (GetMenuOrMenubarVisible() ||
+                             ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
+@@ -182,6 +221,7 @@
+     } else {
+         mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+     }
++#endif
+ }
+ 
+ void Gui::DrawMenu() {
+@@ -236,12 +276,16 @@
+             GetMenuBar()->ToggleVisibility();
+         }
+         Ship::Context::GetRawInstance()->GetWindow()->GetMouseStateManager()->UpdateMouseCapture();
++#ifdef __pyxis__
++        UpdateGamepadNavigation();
++#else
+         if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
+             GetMenuOrMenubarVisible()) {
+             mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+         } else {
+             mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+         }
++#endif
+     }
+ 
+     // Mac interprets this as cmd+r when io.ConfigMacOSXBehavior is on (on by default)

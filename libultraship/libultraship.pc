@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: libultraship
+Description: Native single-window SDL2/OpenGL3 engine and read-only O2R resources
+Version: 0.git.da6daf1a50a5
+Requires: imgui-sdl2-opengl3 libzip nlohmann_json tinyxml2 spdlog thread-pool stb dr_libs prism monocypher vorbisfile opusfile
+Libs: -lultraship
+Cflags: -include libultraship/pyxis_profile.h

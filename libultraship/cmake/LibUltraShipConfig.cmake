@@ -1,0 +1,36 @@
+include(CMakeFindDependencyMacro)
+find_dependency(ImGuiSDL2OpenGL3 CONFIG)
+find_dependency(libzip CONFIG)
+find_dependency(nlohmann_json CONFIG)
+find_dependency(tinyxml2 CONFIG)
+find_dependency(spdlog CONFIG)
+get_filename_component(_lus_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+function(_lus_archive target name header)
+  if(NOT TARGET LibUltraShip::${target})
+    find_library(_lus_library_${target} NAMES ${name} REQUIRED)
+    find_path(_lus_include_${target} NAMES ${header} REQUIRED)
+    add_library(LibUltraShip::${target} STATIC IMPORTED)
+    set_target_properties(LibUltraShip::${target} PROPERTIES
+      IMPORTED_LOCATION "${_lus_library_${target}}"
+      INTERFACE_INCLUDE_DIRECTORIES "${_lus_include_${target}}")
+  endif()
+endfunction()
+_lus_archive(prism prism prism/processor.h)
+_lus_archive(monocypher monocypher monocypher.h)
+_lus_archive(ogg ogg ogg/ogg.h)
+_lus_archive(vorbis vorbis vorbis/codec.h)
+_lus_archive(vorbisfile vorbisfile vorbis/vorbisfile.h)
+_lus_archive(opus opus opus/opus.h)
+_lus_archive(opusfile opusfile opus/opusfile.h)
+find_path(_lus_thread_pool BS_thread_pool.hpp REQUIRED)
+find_path(_lus_dr_libs dr_wav.h REQUIRED)
+if(NOT TARGET LibUltraShip::LibUltraShip)
+  add_library(LibUltraShip::LibUltraShip STATIC IMPORTED)
+  set_target_properties(LibUltraShip::LibUltraShip PROPERTIES
+    IMPORTED_LOCATION "${_lus_prefix}/lib/libultraship.a"
+    INTERFACE_INCLUDE_DIRECTORIES "${_lus_prefix}/include;${_lus_thread_pool};${_lus_dr_libs}"
+    INTERFACE_COMPILE_OPTIONS "-include;libultraship/pyxis_profile.h"
+    INTERFACE_LINK_LIBRARIES "ImGui::SDL2OpenGL3;libzip::zip;nlohmann_json::nlohmann_json;tinyxml2::tinyxml2;spdlog::spdlog;LibUltraShip::prism;LibUltraShip::monocypher;LibUltraShip::vorbisfile;LibUltraShip::vorbis;LibUltraShip::opusfile;LibUltraShip::opus;LibUltraShip::ogg")
+endif()
+set(LibUltraShip_FOUND TRUE)
+unset(_lus_prefix)

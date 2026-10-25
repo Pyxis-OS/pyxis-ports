@@ -1,0 +1,11 @@
+libultraship da6daf1a50a5e46d6641408d52227e31e85e46df (MIT), including the
+Fast3D component notices and unmodified Font Awesome4.7.0 font (SIL OFL1.1).
+Native Pyxis adaptations use the ports repository's MPL2.0 terms; preserve
+covered source and this notice alongside the upstream permission notices.
+
+Selected profile: C++20/C11, F3DEX_GBI_2, 32-bit controller buttons, matching
+ImGui void* texture IDs and thread-pool priority/pause configuration. Static
+SDL2-osmesa/GL3.3compat; no Unix impersonation, dynamic loader, MPQ, scripting,
+file browser, legacy config converter or physical gamepad discovery. Standard
+filesystem helpers are outside this native profile; native URI paths use real
+libc operations. No game source, ROM, game data or asset extraction is included.

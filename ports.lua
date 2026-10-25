@@ -21,6 +21,7 @@ return {
   libogg = "libogg",
   libpng = "libpng",
   libuv = "libuv",
+  libultraship = "libultraship",
   libvorbis = "libvorbis",
   libzip = "libzip",
   links = "links",

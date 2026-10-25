@@ -86,6 +86,7 @@ local function main()
     print("Lua 5.1 also requires --libuv PATH to its development prefix.")
     print("Opusfile requires --ogg and --opus PATH to their development prefixes.")
     print("Caddy requires --go PATH to the pinned native Go cross-toolchain.")
+    print("LibUltraShip requires --dependencies with semicolon-separated development prefixes.")
     print("ImGui requires --sdl2, --sdl2-osmesa and --mesa development prefixes.")
     print("Hexcurse also requires --ncursesw PATH to its development prefix.")
     print("Neovim also requires --lua51, --libuv, --utf8proc and --tree-sitter development prefixes.")
@@ -94,6 +95,7 @@ local function main()
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
+    ["--dependencies"] = name == "libultraship",
     ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--sdl2-osmesa"] = name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
@@ -291,6 +293,15 @@ local function main()
   for _, tool in ipairs(metadata.dependencies.host) do
     run({ "sh", "-c", 'command -v "$1" >/dev/null || { echo "Missing host tool: $1" >&2; exit 1; }', "sh", tool })
   end
+  local prefixes
+  if name == "libultraship" then
+    assert(options["--dependencies"], "libultraship needs --dependencies PREFIX;PREFIX;...")
+    prefixes = {}
+    for prefix in options["--dependencies"]:gmatch("[^;]+") do
+      prefixes[#prefixes + 1] = make_path(capture({ "realpath", "-e", "--", prefix }))
+    end
+    assert(#prefixes > 0, "libultraship needs explicit dependency prefixes")
+  end
   local cross = options["--cross-prefix"] or os.getenv("CROSS_COMPILE") or "x86_64-unknown-pyxis-"
   make_path(cross)
   if not go then
@@ -342,7 +353,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, ogg = ogg, opus = opus, spdlog = spdlog, go = go, mesa = mesa, zlib = zlib,
+    metadata = metadata, run = run, prefixes = prefixes, ogg = ogg, opus = opus, spdlog = spdlog, go = go, mesa = mesa, zlib = zlib,
     libpng = libpng, fmt = fmt, sdl2 = sdl2, sdl2_osmesa = sdl2_osmesa, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
