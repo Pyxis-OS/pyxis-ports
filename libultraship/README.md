@@ -32,8 +32,13 @@ writes, legacy text-CVar conversion and arbitrary host path discovery are not
 in this profile. Native stdio/stat/mkdir implement paths; libc++ filesystem and
 fstream are not enabled. Defaults are `app://` resources and
 `home://<shortName>/` state/logs, with ordinary home authority, not isolation.
-JSON configuration publication checks write/close/rename errors; it is not a
-power-loss durability boundary. Malformed JSON is reported and preserved.
+Native JSON configuration publication requires file sync, checked close,
+replacement and parent-directory sync. Errors after replacement starts may
+already have published; no rollback is claimed. `ConsoleVariable::Save` returns
+the result; the void C bridge contains exceptions. Owner-thread-only sticky
+`Config` failure/uncertainty state survives Context destruction for application
+feedback and exit status; saving does not silently retry. Malformed JSON is
+reported and preserved.
 
 The application owner stops and joins its audio producer before changing the
 backend/channels or destroying Context. Fixed stereo is the qualified profile.
