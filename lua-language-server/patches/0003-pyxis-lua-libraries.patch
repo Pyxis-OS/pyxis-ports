@@ -1,4 +1,3 @@
-diff --git a/3rd/lua-patch/bee_assert.c b/3rd/lua-patch/bee_assert.c
 --- a/3rd/lua-patch/bee_assert.c
 +++ b/3rd/lua-patch/bee_assert.c
 @@ -9,7 +9,7 @@
@@ -10,7 +9,6 @@ diff --git a/3rd/lua-patch/bee_assert.c b/3rd/lua-patch/bee_assert.c
      fprintf(stderr, "(%s:%d) %s\n", file, line, message);
      fflush(stderr);
      if (!lua_checkstack(L, LUA_MINSTACK)) {
-diff --git a/3rd/lua55/lauxlib.c b/3rd/lua55/lauxlib.c
 --- a/3rd/lua55/lauxlib.c
 +++ b/3rd/lua55/lauxlib.c
 @@ -736,7 +736,7 @@
@@ -52,7 +50,6 @@ diff --git a/3rd/lua55/lauxlib.c b/3rd/lua55/lauxlib.c
    }
    if (c != EOF)
      lf.buff[lf.n++] = cast_char(c);  /* 'c' is the first character */
-diff --git a/3rd/lua55/lbaselib.c b/3rd/lua55/lbaselib.c
 --- a/3rd/lua55/lbaselib.c
 +++ b/3rd/lua55/lbaselib.c
 @@ -348,7 +348,7 @@
@@ -73,7 +70,6 @@ diff --git a/3rd/lua55/lbaselib.c b/3rd/lua55/lbaselib.c
    lua_settop(L, 1);
    if (l_unlikely(luaL_loadfile(L, fname) != LUA_OK))
      return lua_error(L);
-diff --git a/3rd/lua55/liolib.c b/3rd/lua55/liolib.c
 --- a/3rd/lua55/liolib.c
 +++ b/3rd/lua55/liolib.c
 @@ -12,8 +12,8 @@
@@ -272,27 +268,7 @@ diff --git a/3rd/lua55/liolib.c b/3rd/lua55/liolib.c
    return (p->f == NULL) ? luaL_fileresult(L, 0, filename) : 1;
  }
  
-@@ -719,19 +734,6 @@
- }
- 
- 
--static int f_setvbuf (lua_State *L) {
--  static const int mode[] = {_IONBF, _IOFBF, _IOLBF};
--  static const char *const modenames[] = {"no", "full", "line", NULL};
--  FILE *f = tofile(L);
--  int op = luaL_checkoption(L, 2, NULL, modenames);
--  lua_Integer sz = luaL_optinteger(L, 3, LUAL_BUFFERSIZE);
--  int res;
--  errno = 0;
--  res = setvbuf(f, NULL, mode[op], (size_t)sz);
--  return luaL_fileresult(L, res == 0, NULL);
--}
--
--
- static int aux_flush (lua_State *L, FILE *f) {
-   errno = 0;
-   return luaL_fileresult(L, fflush(f) == 0, NULL);
-@@ -758,7 +760,6 @@
+@@ -758,7 +773,6 @@
    {"lines", io_lines},
    {"open", io_open},
    {"output", io_output},
@@ -300,15 +276,7 @@ diff --git a/3rd/lua55/liolib.c b/3rd/lua55/liolib.c
    {"read", io_read},
    {"tmpfile", io_tmpfile},
    {"type", io_type},
-@@ -777,7 +778,6 @@
-   {"flush", f_flush},
-   {"seek", f_seek},
-   {"close", f_close},
--  {"setvbuf", f_setvbuf},
-   {NULL, NULL}
- };
- 
-@@ -788,7 +788,7 @@
+@@ -788,7 +802,7 @@
  static const luaL_Reg metameth[] = {
    {"__index", NULL},  /* placeholder */
    {"__gc", f_gc},
@@ -317,7 +285,7 @@ diff --git a/3rd/lua55/liolib.c b/3rd/lua55/liolib.c
    {"__tostring", f_tostring},
    {NULL, NULL}
  };
-@@ -830,6 +830,15 @@
+@@ -830,6 +844,15 @@
  
  
  LUAMOD_API int luaopen_io (lua_State *L) {
@@ -333,7 +301,6 @@ diff --git a/3rd/lua55/liolib.c b/3rd/lua55/liolib.c
    luaL_newlib(L, iolib);  /* new module */
    createmeta(L);
    /* create (and set) default files */
-diff --git a/3rd/lua55/llex.c b/3rd/lua55/llex.c
 --- a/3rd/lua55/llex.c
 +++ b/3rd/lua55/llex.c
 @@ -10,7 +10,6 @@
@@ -344,7 +311,6 @@ diff --git a/3rd/lua55/llex.c b/3rd/lua55/llex.c
  #include <string.h>
  
  #include "lua.h"
-diff --git a/3rd/lua55/loadlib.c b/3rd/lua55/loadlib.c
 --- a/3rd/lua55/loadlib.c
 +++ b/3rd/lua55/loadlib.c
 @@ -1,11 +1,7 @@
@@ -867,7 +833,6 @@ diff --git a/3rd/lua55/loadlib.c b/3rd/lua55/loadlib.c
    /* store config information */
    lua_pushliteral(L, LUA_DIRSEP "\n" LUA_PATH_SEP "\n" LUA_PATH_MARK "\n"
                       LUA_EXEC_DIR "\n" LUA_IGMARK "\n");
-diff --git a/3rd/lua55/lobject.c b/3rd/lua55/lobject.c
 --- a/3rd/lua55/lobject.c
 +++ b/3rd/lua55/lobject.c
 @@ -11,7 +11,6 @@
@@ -878,7 +843,6 @@ diff --git a/3rd/lua55/lobject.c b/3rd/lua55/lobject.c
  #include <math.h>
  #include <stdarg.h>
  #include <stdio.h>
-diff --git a/3rd/lua55/loslib.c b/3rd/lua55/loslib.c
 --- a/3rd/lua55/loslib.c
 +++ b/3rd/lua55/loslib.c
 @@ -11,7 +11,6 @@
@@ -1029,7 +993,6 @@ diff --git a/3rd/lua55/loslib.c b/3rd/lua55/loslib.c
    {"time",      os_time},
    {"tmpname",   os_tmpname},
    {NULL, NULL}
-diff --git a/3rd/lua55/lstrlib.c b/3rd/lua55/lstrlib.c
 --- a/3rd/lua55/lstrlib.c
 +++ b/3rd/lua55/lstrlib.c
 @@ -13,7 +13,6 @@
@@ -1040,7 +1003,6 @@ diff --git a/3rd/lua55/lstrlib.c b/3rd/lua55/lstrlib.c
  #include <math.h>
  #include <stddef.h>
  #include <stdio.h>
-diff --git a/3rd/lua55/lualib.h b/3rd/lua55/lualib.h
 --- a/3rd/lua55/lualib.h
 +++ b/3rd/lua55/lualib.h
 @@ -34,6 +34,9 @@
