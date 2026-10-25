@@ -85,6 +85,7 @@ def main():
     for name in ("LICENSE-MIT", "LICENSE-APACHE"):
         install(source / name, notices / name)
     install(recipe / "PORT-NOTICE", notices / "PORT-NOTICE")
+    install(recipe / "notices/EPL-1.0", notices / "EPL-1.0")
     install(source / "src/colors.rs", notices / "embedded-tables.rs")
     install(source / "Cargo.lock", notices / "Cargo.lock")
     install(recipe / "upstream-Cargo.lock", notices / "upstream-Cargo.lock")

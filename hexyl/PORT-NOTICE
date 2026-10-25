@@ -3,7 +3,10 @@ LICENSE-APACHE are staged unchanged. The embedded CP437 table has its own
 permissive Delan Azabani notice; the embedded CP1047 table retains IBM's
 EPL-1.0 notice. Complete table notices are retained in embedded-tables.rs and
 the full source archive. These notices are not replaced by the top-level
-project licence label.
+project licence label. The complete EPL-1.0 text is retained unchanged in
+EPL-1.0. Its installed source was /usr/share/licenses/spdx/EPL-1.0.txt,
+provided by the Arch licenses package version 20240728-1. SHA-256:
+f3d8dc494be2e7ea9cd31ac2fb902e35dce7ff8181b9b30d05861b47c339cb25.
 
 terminal_size 0.4.0 is MIT OR Apache-2.0. Other Cargo crates retain their
 individual terms; dependencies.json identifies the pinned releases and crate

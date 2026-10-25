@@ -27,7 +27,7 @@ Those debugger artifacts remain outside the staged package.
 
 The executable stages at `stage/bin/hexyl.pxe`; the parent selects optional
 package publication and installation. Source provenance is in `share/hexyl`.
-`share/licenses/hexyl` retains the upstream licenses, embedded table notices,
+`share/licenses/hexyl` retains the upstream licenses, complete EPL-1.0 text, embedded table notices,
 original and patched locks, ordered patches, complete vendored source/notices,
 dependency inventory, Rust notices/receipt and SDK notices/manifest. The source
 archive includes the locked closure, including build-only and unused platform

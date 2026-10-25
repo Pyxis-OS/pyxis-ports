@@ -34,6 +34,7 @@ return {
     executable = "bin/hexyl.pxe",
     license = "share/licenses/hexyl/LICENSE-MIT",
     apache_license = "share/licenses/hexyl/LICENSE-APACHE",
+    epl_license = "share/licenses/hexyl/EPL-1.0",
     notice = "share/licenses/hexyl/PORT-NOTICE",
     provenance = "share/hexyl/source.json",
     sources = "share/licenses/hexyl/sources.tar.xz",
