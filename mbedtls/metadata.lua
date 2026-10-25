@@ -16,9 +16,11 @@ return {
   license = "Apache-2.0",
   dependencies = {
     host = { "make", "cmake", "curl", "sha256sum", "tar", "bzip2" },
-    pyxis = { "libc" },
+    pyxis = { "libc", "libsha256" },
   },
-  patches = {},
+  patches = {
+    "patches/0001-use-shared-sha256-compression.patch",
+  },
   outputs = {
     dev_pyxis_license = "dev/share/licenses/mbedtls/MPL-2.0",
     dev_licensing = "dev/share/licenses/mbedtls/LICENSING.md",

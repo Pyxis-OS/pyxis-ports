@@ -10,5 +10,8 @@ Built from the official mbedtls-4.1.1.tar.bz2 release archive, SHA-256:
 
 Both upstream projects offer Apache-2.0 OR GPL-2.0-or-later. This package
 selects Apache-2.0. Complete upstream LICENSE files accompany this notice.
-Upstream sources are unchanged. Pyxis supplies external client configuration,
-build packaging and native hooks in its separately versioned userland library.
+Patch 0001 replaces SHA-224/SHA-256 compression with the SDK libsha256 block
+primitive, retaining the upstream framing and its Apache-2.0 terms. It removes
+the local compression code and CPU dispatch. Pyxis also supplies external client
+configuration, build packaging and native hooks in its separately versioned
+userland library. The SDK carries libsha256's source and licensing provenance.

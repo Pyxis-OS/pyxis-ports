@@ -4,6 +4,7 @@ Mbed TLS 4.1.1 with its bundled TF-PSA-Crypto 1.1.1, built from the official
 release archive. The archive contains dependencies and generated sources;
 `GEN_FILES=OFF` avoids generation and Python is optional. Use CMake 3.20.2 or
 newer, Make, curl, sha256sum, tar and bzip2 with the Pyxis SDK and toolchain.
+The SDK must export `sha256.h` and `libsha256.a`.
 
 ```sh
 lua build.lua mbedtls --sdk /path/to/pyxis/build/sdk
@@ -12,7 +13,8 @@ lua build.lua mbedtls --sdk /path/to/pyxis/build/sdk
 The development export contains `libmbedtls.a`, `libmbedx509.a`,
 `libtfpsacrypto.a`, public headers and the two Pyxis configuration headers.
 Include `share/mbedtls.mk` and use its `MBEDTLS_CPPFLAGS` for every translation
-unit consuming the headers, and `MBEDTLS_LIBRARIES` when linking. All consumers
+unit consuming the headers, and `MBEDTLS_LIBRARIES` when linking. The make
+fragment expects the SDK's `share/pyxis.mk` to be included first. All consumers
 must use the same configuration as the archives. The SDK remains independent
 of TLS. Target sources use upstream C99 with the SDK's freestanding headers and
 machine flags; no host C library is linked.
@@ -45,5 +47,10 @@ belong to the native adapter; this recipe alone cannot perform a handshake.
 
 The guest install includes both complete upstream licenses and package
 provenance under `share/licenses`. Static archives and headers are development
-inputs, excluded from guest installation. Upstream C sources are unchanged;
-there are no patches.
+inputs, excluded from guest installation. Patch 0001 replaces TF-PSA-Crypto's
+SHA-224/SHA-256 compression code and CPU dispatch with the SDK's shared
+`sha256_compress` primitive. The upstream context, initialization, padding,
+length accounting, truncation and zeroization remain in TF-PSA-Crypto. PSA
+buffer ownership, TLS and signature policy are unchanged. Link metadata adds
+the SDK archive after the crypto archive; the SDK does not depend on this port.
+The staged provenance lists the patch and the complete upstream licenses.
