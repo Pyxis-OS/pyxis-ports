@@ -85,5 +85,7 @@ checks and 4-CPU QEMU native-pipe initialize/documentSymbol/shutdown/exit, with
 stdin left open and instance cleanup observed. Missing required grants refuse
 launch. The parent task record carries exact artifacts and configuration.
 Task 3 also exercises decoded semantic tokens, typed API completion, diagnostics
-and metadata navigation in QEMU. Native editor qualification remains pending;
-no allocation-failure injection or heap-leak proof was performed.
+and metadata navigation in QEMU. Chronium's attended vela HWP PXE editor check
+passed hover, typed completion, semantic highlighting and diagnostics. Normal
+editor exit removed its state leaf, verified separately over Remote. Native
+allocation-failure/forced-stop cases and a heap-leak proof remain unqualified.
