@@ -158,7 +158,7 @@ index f252197..bd58643 100644
              warnStepTime(passed, resume)
          end
 diff --git a/script/client.lua b/script/client.lua
-index 71ff529..8f9d55b 100644
+index 71ff529..ad1ebcc 100644
 --- a/script/client.lua
 +++ b/script/client.lua
 @@ -1,4 +1,3 @@
@@ -532,7 +532,7 @@ index 71ff529..8f9d55b 100644
 -    end
 -    return table.concat(message, '\n')
 +function m.watchFiles(_path)
-+    return nil, 'filesystem watching is unavailable in the Pyxis profile'
++    error('filesystem watching is unavailable in the Pyxis LuaLS profile')
  end
  
  ---@param changes config.change[]
@@ -1270,10 +1270,10 @@ index e2535c4..e3a841e 100644
  
  --- 注册事件
 diff --git a/script/filewatch.lua b/script/filewatch.lua
-index fb975da..c1083fd 100644
+index fb975da..3a6db8c 100644
 --- a/script/filewatch.lua
 +++ b/script/filewatch.lua
-@@ -1,129 +1,11 @@
+@@ -1,129 +1 @@
 -local fw    = require 'bee.filewatch'
 -local fs    = require 'bee.filesystem'
 -local sys   = require 'bee.sys'
@@ -1305,8 +1305,7 @@ index fb975da..c1083fd 100644
 -end
 -
 ----@class filewatch
-+-- Editor notifications drive open-buffer changes. No native watcher is registered.
- local m = {}
+-local m = {}
 -
 -m._eventList = {}
 -m._watchings = {}
@@ -1353,9 +1352,7 @@ index fb975da..c1083fd 100644
 ----@param callback async fun(ev: string, path: string)
 -function m.event(callback)
 -    m._eventList[#m._eventList+1] = callback
-+function m.watch(_path, _recursive, _filter)
-+    return nil, 'filesystem watching is unavailable in the Pyxis profile'
- end
+-end
 -
 -function m._callEvent(ev, path)
 -    for _, callback in ipairs(m._eventList) do
@@ -1363,11 +1360,9 @@ index fb975da..c1083fd 100644
 -            callback(ev, path)
 -        end)
 -    end
-+function m.event(_callback)
-+    -- No watcher events can be produced in this profile.
- end
+-end
 -
- function m.update()
+-function m.update()
 -    local collect
 -    for _, watching in pairs(m._watchings) do
 -        local watch = watching.watch
@@ -1405,9 +1400,10 @@ index fb975da..c1083fd 100644
 -        end
 -    end
 -
- end
+-end
 -
- return m
+-return m
++error('filesystem watching is unavailable in the Pyxis LuaLS profile')
 diff --git a/script/glob/gitignore.lua b/script/glob/gitignore.lua
 index 7362e41..a7c973d 100644
 --- a/script/glob/gitignore.lua
@@ -2048,8 +2044,20 @@ index 28f902e..2228d43 100644
 -require 'plugins.ffi'
 \ No newline at end of file
 +error('LuaLS executable plugins are unavailable in the Pyxis profile')
+diff --git a/script/provider/capability.lua b/script/provider/capability.lua
+index b33f17f..a8042fe 100644
+--- a/script/provider/capability.lua
++++ b/script/provider/capability.lua
+@@ -3,7 +3,6 @@ local client     = require 'client'
+ local completion = require 'provider.completion'
+ 
+ require 'provider.semantic-tokens'
+-require 'provider.formatting'
+ require 'provider.inlay-hint'
+ require 'provider.code-lens'
+ 
 diff --git a/script/provider/diagnostic.lua b/script/provider/diagnostic.lua
-index 9ca5d9b..b60e0a3 100644
+index 9ca5d9b..f35f78f 100644
 --- a/script/provider/diagnostic.lua
 +++ b/script/provider/diagnostic.lua
 @@ -1,3 +1,4 @@
@@ -2057,7 +2065,15 @@ index 9ca5d9b..b60e0a3 100644
  local await     = require 'await'
  local proto     = require 'proto.proto'
  local define    = require 'proto.define'
-@@ -464,51 +465,12 @@ function m.refresh(uri)
+@@ -16,7 +17,6 @@ local time      = require 'bee.time'
+ local ltable    = require 'linked-table'
+ local furi      = require 'file-uri'
+ local json      = require 'json'
+-local fw        = require 'filewatch'
+ local vm        = require 'vm.vm'
+ 
+ ---@class diagnosticProvider
+@@ -464,51 +464,12 @@ function m.refresh(uri)
  end
  
  ---@async
@@ -2112,7 +2128,7 @@ index 9ca5d9b..b60e0a3 100644
  end
  
  local function clearMemory(finished)
-@@ -537,7 +499,7 @@ function m.awaitDiagnosticsScope(suri, callback)
+@@ -537,7 +498,7 @@ function m.awaitDiagnosticsScope(suri, callback)
          m.scopeDiagCount = m.scopeDiagCount - 1
          clearMemory(finished)
      end)
@@ -2121,7 +2137,7 @@ index 9ca5d9b..b60e0a3 100644
      local bar <close> = progress.create(suri, lang.script.WORKSPACE_DIAGNOSTIC, 1)
      local cancelled
      bar:onCancel(function ()
-@@ -574,7 +536,7 @@ function m.awaitDiagnosticsScope(suri, callback)
+@@ -574,7 +535,7 @@ function m.awaitDiagnosticsScope(suri, callback)
          end
      end
      bar:remove()
@@ -2130,6 +2146,127 @@ index 9ca5d9b..b60e0a3 100644
      finished = true
  end
  
+@@ -715,13 +676,5 @@ config.watch(function (uri, key, value, oldValue)
+     end
+ end)
+ 
+-fw.event(function (_ev, path)
+-    if util.stringEndWith(path, '.editorconfig') then
+-        for _, scp in ipairs(ws.folders) do
+-            m.diagnosticsScope(scp.uri)
+-            m.refreshClient()
+-        end
+-    end
+-end)
+ 
+ return m
+diff --git a/script/provider/formatting.lua b/script/provider/formatting.lua
+index f8b4ef2..dae9d5f 100644
+--- a/script/provider/formatting.lua
++++ b/script/provider/formatting.lua
+@@ -1,101 +1 @@
+-local suc, codeFormat = pcall(require, 'code_format')
+-if not suc then
+-    return
+-end
+-
+-local ws          = require 'workspace'
+-local furi        = require 'file-uri'
+-local fs          = require 'bee.filesystem'
+-local fw          = require 'filewatch'
+-local util        = require 'utility'
+-local config      = require 'config'
+-
+-local loadedUris = {}
+-
+-local updateType = {
+-    Created = 1,
+-    Changed = 2,
+-    Deleted = 3,
+-}
+-
+-fw.event(function(_ev, path)
+-    if util.stringEndWith(path, '.editorconfig') then
+-        for uri, fsPath in pairs(loadedUris) do
+-            loadedUris[uri] = nil
+-            if fsPath ~= true then
+-                local status, err = codeFormat.update_config(updateType.Deleted, uri, fsPath:string())
+-                if not status and err then
+-                    log.error(err)
+-                end
+-            end
+-        end
+-    end
+-end)
+-
+-
+-local m = {}
+-
+-m.loadedDefaultConfig = false
+-
+----@param uri uri
+-function m.updateConfig(uri)
+-    if not m.loadedDefaultConfig then
+-        m.loadedDefaultConfig = true
+-        codeFormat.set_default_config(config.get(uri, 'Lua.format.defaultConfig'))
+-        m.updateNonStandardSymbols(config.get(nil, 'Lua.runtime.nonstandardSymbol'))
+-    end
+-
+-    local currentUri = uri
+-    while true do
+-        currentUri = currentUri:match('^(.+)/[^/]*$')
+-        if not currentUri or loadedUris[currentUri] then
+-            return
+-        end
+-        loadedUris[currentUri] = true
+-
+-        local currentPath        = furi.decode(currentUri)
+-        local editorConfigFSPath = fs.path(currentPath) / '.editorconfig'
+-        if fs.exists(editorConfigFSPath) then
+-            loadedUris[currentUri] = editorConfigFSPath
+-            local status, err = codeFormat.update_config(updateType.Created, currentUri, editorConfigFSPath:string())
+-            if not status and err then
+-                log.error(err)
+-            end
+-        end
+-
+-        if not ws.rootUri then
+-            return
+-        end
+-
+-        for _, scp in ipairs(ws.folders) do
+-            if scp.uri == currentUri then
+-                return
+-            end
+-        end
+-    end
+-end
+-
+----@param symbols? string[]
+-function m.updateNonStandardSymbols(symbols)
+-    if symbols == nil then
+-        return
+-    end
+-
+-    for _, symbol in ipairs(symbols) do
+-        if symbol == "//" then
+-            codeFormat.set_clike_comments_symbol()
+-        end
+-    end
+-
+-    codeFormat.set_nonstandard_symbol()
+-end
+-
+-config.watch(function(_uri, key, value)
+-    if  key == "Lua.format.defaultConfig" then
+-        codeFormat.set_default_config(value)
+-    elseif key == "Lua.runtime.nonstandardSymbol" then
+-        m.updateNonStandardSymbols(value)
+-    end
+-end)
+-
+-return m
++error('formatting is unavailable in the Pyxis LuaLS profile')
 diff --git a/script/provider/provider.lua b/script/provider/provider.lua
 index 7f0e63f..2696093 100644
 --- a/script/provider/provider.lua
@@ -2626,7 +2763,7 @@ index 06184e4..607de8a 100644
          end
      end
 diff --git a/script/workspace/workspace.lua b/script/workspace/workspace.lua
-index 9420ef9..0d82ebd 100644
+index 9420ef9..3491df8 100644
 --- a/script/workspace/workspace.lua
 +++ b/script/workspace/workspace.lua
 @@ -8,7 +8,6 @@ local platform   = require 'bee.platform'
@@ -2707,3 +2844,44 @@ index 9420ef9..0d82ebd 100644
  end
  
  ---@param scp scope
+@@ -625,40 +604,5 @@ config.watch(function (uri, key, value, oldValue)
+     end
+ end)
+ 
+-fw.event(function (ev, path) ---@async
+-    local uri  = furi.encode(path)
+-
+-    if     ev == 'create' then
+-        log.debug('FileChangeType.Created', uri)
+-        m.awaitLoadFile(uri)
+-    elseif ev == 'delete' then
+-        log.debug('FileChangeType.Deleted', uri)
+-        files.remove(uri)
+-        m.removeFile(uri)
+-        local childs = files.getChildFiles(uri)
+-        for _, curi in ipairs(childs) do
+-            log.debug('FileChangeType.Deleted.Child', curi)
+-            files.remove(curi)
+-            m.removeFile(uri)
+-        end
+-    elseif ev == 'change' then
+-        if m.isValidLuaUri(uri) then
+-            -- 如果文件处于关闭状态，则立即更新；否则等待didChange协议来更新
+-            if not files.isOpen(uri) then
+-                files.setText(uri, pub.awaitTask('loadFile', furi.decode(uri)), false)
+-            end
+-        end
+-    end
+-
+-    local filename = fs.path(path):filename():string()
+-    -- 排除类文件发生更改需要重新扫描
+-    if filename == '.gitignore'
+-    or filename == '.gitmodules' then
+-        local scp = scope.getScope(uri)
+-        if scp.type ~= 'fallback' then
+-            m.reload(scp)
+-        end
+-    end
+-end)
+ 
+ return m
