@@ -34,17 +34,22 @@ extern "C" {
 
 namespace pyxis_luals {
 namespace {
-// Program-private provisional budgets, to be qualified on public fixtures.
-constexpr size_t message_bytes = 16 * 1024 * 1024;
-constexpr size_t channel_bytes = 64 * 1024 * 1024;
-constexpr size_t channel_items = 256;
-constexpr size_t total_bytes = 256 * 1024 * 1024;
-constexpr size_t total_items = 4096;
-constexpr size_t table_limit = 65536;
-constexpr size_t value_limit = 1024 * 1024;
+// Program-private budgets, sized from the public task 3 workload.
+// Queue admission does not bound the Lua heaps; see concurrency.md.
+constexpr size_t message_bytes = 8 * 1024 * 1024;
+constexpr size_t channel_bytes = 32 * 1024 * 1024;
+constexpr size_t channel_items = 512;
+constexpr size_t total_bytes = 64 * 1024 * 1024;
+constexpr size_t total_items = 1024;
+constexpr size_t table_limit = 512;
+constexpr size_t value_limit = 4096;
 constexpr size_t frame_bytes = 4 * 1024 * 1024;
 constexpr size_t worker_limit = 8;
 constexpr size_t channel_limit = 32;
+constexpr unsigned depth_limit = 32;
+constexpr size_t bootstrap_bytes = 4 * 1024;
+static_assert(message_bytes <= channel_bytes / 3 && message_bytes <= total_bytes / 3,
+    "A whole serialization reservation must fit an empty channel/runtime");
 constexpr int read_event = 1;
 const char* stop_error = "LuaLS native runtime stopped";
 char stop_sentinel;
@@ -169,7 +174,7 @@ struct preflight {
     bool add(size_t count)
     {
         if (count > message_bytes - bytes) {
-            error = "LuaLS serialized message exceeds 16 MiB admission budget";
+            error = "LuaLS serialized message exceeds admission budget";
             return false;
         }
         bytes += count;
@@ -177,7 +182,7 @@ struct preflight {
     }
     bool value(lua_State* L, int index, unsigned depth)
     {
-        if (++values > value_limit || depth > 128) {
+        if (++values > value_limit || depth > depth_limit) {
             error = "LuaLS serialized message exceeds value/depth budget";
             return false;
         }
@@ -645,8 +650,8 @@ int thread_create(lua_State* L)
 {
     size_t length = 0;
     const char* source = luaL_checklstring(L, 1, &length);
-    if (length > 64 * 1024 || lua_gettop(L) != 1) {
-        return luaL_error(L, "LuaLS private workers accept a source of at most 64 KiB and no arguments");
+    if (length > bootstrap_bytes || lua_gettop(L) != 1) {
+        return luaL_error(L, "LuaLS private workers require bounded source and no arguments");
     }
     worker_ref created;
     std::string error;

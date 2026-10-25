@@ -257,7 +257,7 @@
          end
          return
      end
-+    if m.activeMethods >= 1024 then
++    if m.activeMethods >= 512 then
 +        log.error('LuaLS active LSP method budget exceeded')
 +        os.exit(1, true)
 +    end
@@ -296,7 +296,7 @@
  end
  
  function m.doMethod(proto)
-+    if #m.methodQueue >= 1024 then
++    if #m.methodQueue >= 512 then
 +        log.error('LuaLS pending LSP method budget exceeded')
 +        os.exit(1, true)
 +    end

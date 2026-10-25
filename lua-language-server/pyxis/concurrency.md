@@ -18,18 +18,46 @@ bee patch checks C++ serializer allocations and releases scratch blocks on both
 allocation exceptions and Lua's C++ error transfer. Allocation failure returns
 through the protected pack call, releasing the admission before service stop.
 
-Provisional implementation limits, pending public-fixture qualification:
+Task 3 sized these program-private limits from three public LuaLS source
+workloads (248 files, 1,665,517 bytes, plus the held Neovim library) and three
+functional client instances. The source workload includes 147,425-byte
+`parser/compile.lua`, decoded semantic tokens and a 64-request symbol burst.
+A private measurement build counted admitted work under the existing mutex;
+all six instances completed with no admission waits/rejections or counter
+underflows. Measurement hooks are not shipped.
 
-- 8 workers, 32 named channels, 256 items/channel and 4096 admitted items total;
-- 16 MiB conservative encoded message bound, 64 MiB/channel and 256 MiB total
-  byte admission, including in-flight serialization;
-- serialization reserves three times its conservative encoded size before
-  copying, covering lua-seri blocks and flattening; publication reduces the
-  charge to the actual owned buffer size, and pop releases it after unpack;
-- at most 65,536 distinct tables, 1,048,576 visited values and depth 128 per
-  preflight graph; worker bootstrap source at most 64 KiB, with no arguments;
-- 8 KiB LSP header, 4 MiB body/output content; pending Lua tasks, queued LSP
-  methods and active method coroutines each have a 1024-item limit.
+| Admission | Observed maximum | Selected bound / margin |
+| --- | ---: | --- |
+| Conservative serialized message | 423,872 B | 8 MiB, 19.8×; also fits a full-text 4 MiB LSP payload plus bounded metadata |
+| Accounted bytes/channel | 1,271,633 B | 32 MiB; a full 3×8 MiB reservation must fit even when empty |
+| Accounted bytes total | 2,302,689 B | 64 MiB; room for two maximum-size reservations and queued work |
+| Accounted items/channel / total | 70 / 70 | 512 / 1024, 7.3× / 14.6× |
+| Graph tables / visited values / depth | 94 / 694 / 8 | 512 / 4096 / 32, at least 4× |
+| LSP input / output body | 152,808 / 720,906 B | 4 MiB each; at least 5.8× |
+| LSP header | 26 B | 8 KiB; separate bounded header parsing, including optional headers |
+| Pending Lua tasks per pool | 215 | 1024, 4.8× |
+| Queued / active LSP methods | 70 / 79 | 512 / 512, at least 6.5× |
+| Workers / named channels | 4 / 8 | 8 / 32; ordinary profile still starts four workers |
+| Worker bootstrap | 260 B | 4 KiB, 15.8×; no arguments |
+
+Serialization reserves three times its conservative encoded size before
+copying, covering lua-seri blocks and flattening. Publication reduces the
+charge to the actual owned buffer; pop releases it after unpack. The maximum
+whole reservation must fit both empty-channel and total budgets, checked at
+compile time, so an otherwise admissible item cannot wait forever for space
+which can never exist. The graph visited-value bound also bounds raw array
+length; cyclic/shared graphs retain identity.
+
+These are tuning choices for the measured profile, not ABI contracts or
+universal project limits. A well-framed JSON message still has to fit the
+independent graph limits; the framing bound alone does not promise admission.
+Global byte admission intentionally backpressures a third simultaneous maximum
+reservation rather than provisioning four such copies. **Queue admission is not a whole-process memory
+budget.** Four read-only debugger checkpoints on a separate corpus run observed
+five native tasks and up to 1,143,627,776 backed bytes (about 1.07 GiB), including
+Lua heaps, code and stacks. That is an observed high-water mark, not an exact
+peak, allocator-failure check or leak proof. Large workspaces need corresponding
+memory authority; overflow and genuine allocation failure remain visible.
 
 Stdio requires native PIPE descriptors for stdin/stdout; unsupported bindings
 fail before workers start. Data moves through the public descriptor try APIs;
@@ -56,6 +84,6 @@ Task 1 qualification includes the full static build, pinned Lua 5.5 syntax
 checks and 4-CPU QEMU native-pipe initialize/documentSymbol/shutdown/exit, with
 stdin left open and instance cleanup observed. Missing required grants refuse
 launch. The parent task record carries exact artifacts and configuration.
-Peak memory, large projects, decoded semantic tokens, API-aware completion and
-native qualification remain later checks; no allocation-failure injection was
-performed.
+Task 3 also exercises decoded semantic tokens, typed API completion, diagnostics
+and metadata navigation in QEMU. Native editor qualification remains pending;
+no allocation-failure injection or heap-leak proof was performed.
