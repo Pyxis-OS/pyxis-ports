@@ -19,7 +19,9 @@ Supply all selected dependency development prefixes; the parent make rule is
 the complete list. No dependencies are downloaded by CMake. `stage/dev` carries
 `libultraship.a`, matching headers/profile, `libultraship.pc` and
 `LibUltraShip::LibUltraShip`. Consumers must use the supplied target/module:
-its forced profile header is part of the compiled C++ layout. Texture dispatch keeps explicit resolved-segment/resource ownership for low
+its forced profile header is part of the compiled C++ layout. Public GUI texture
+headers carry the required stb include directory. Fonts added after renderer
+initialization rebuild the GL atlas before the next ImGui frame. Texture dispatch keeps explicit resolved-segment/resource ownership for low
 heap addresses; its remaining image-membership fallback uses the SDK's
 `__pyxis_image_start/end` symbols, never a fake loader.
 

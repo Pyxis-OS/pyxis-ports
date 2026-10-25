@@ -24,11 +24,12 @@ _lus_archive(opus opus opus/opus.h)
 _lus_archive(opusfile opusfile opus/opusfile.h)
 find_path(_lus_thread_pool BS_thread_pool.hpp REQUIRED)
 find_path(_lus_dr_libs dr_wav.h REQUIRED)
+find_path(_lus_stb stb_image.h REQUIRED)
 if(NOT TARGET LibUltraShip::LibUltraShip)
   add_library(LibUltraShip::LibUltraShip STATIC IMPORTED)
   set_target_properties(LibUltraShip::LibUltraShip PROPERTIES
     IMPORTED_LOCATION "${_lus_prefix}/lib/libultraship.a"
-    INTERFACE_INCLUDE_DIRECTORIES "${_lus_prefix}/include;${_lus_thread_pool};${_lus_dr_libs}"
+    INTERFACE_INCLUDE_DIRECTORIES "${_lus_prefix}/include;${_lus_thread_pool};${_lus_dr_libs};${_lus_stb}"
     INTERFACE_COMPILE_OPTIONS "-include;libultraship/pyxis_profile.h"
     INTERFACE_LINK_LIBRARIES "ImGui::SDL2OpenGL3;libzip::zip;nlohmann_json::nlohmann_json;tinyxml2::tinyxml2;spdlog::spdlog;LibUltraShip::prism;LibUltraShip::monocypher;LibUltraShip::vorbisfile;LibUltraShip::vorbis;LibUltraShip::opusfile;LibUltraShip::opus;LibUltraShip::ogg")
 endif()

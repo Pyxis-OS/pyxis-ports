@@ -47,7 +47,7 @@ list(FILTER _sources EXCLUDE REGEX "(/FolderArchive\\.cpp|/FileBrowserWindow\\.c
 set_property(TARGET libultraship PROPERTY SOURCES "${_sources}")
 target_sources(libultraship PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Paths.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/Stb.c")
 target_include_directories(libultraship PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}/include" "${THREAD_POOL_INCLUDE}" "${DR_LIBS_INCLUDE}" "${IMGUI_BACKENDS_INCLUDE}")
+  "${CMAKE_CURRENT_SOURCE_DIR}/include" "${THREAD_POOL_INCLUDE}" "${DR_LIBS_INCLUDE}" "${STB_INCLUDE}" "${IMGUI_BACKENDS_INCLUDE}")
 target_compile_options(libultraship PRIVATE -ffunction-sections -fdata-sections)
 target_compile_definitions(libultraship PUBLIC CONTROLLERBUTTONS_T=uint32_t
   BS_THREAD_POOL_ENABLE_PRIORITY BS_THREAD_POOL_ENABLE_PAUSE)

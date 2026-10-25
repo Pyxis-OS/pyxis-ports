@@ -14,7 +14,7 @@ return {
     host = { "make", "cmake", "python3", "curl", "sha256sum", "tar", "install" },
     pyxis = { "libc", "libpyxis", "libc++", "libc++abi", "libunwind" },
   },
-  patches = { "patches/0001-native-platform.patch" },
+  patches = { "patches/0001-native-platform.patch", "patches/0002-font-atlas-refresh.patch" },
   outputs = {
     library = "dev/lib/libultraship.a",
     header = "dev/include/ship/Context.h",

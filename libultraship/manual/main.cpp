@@ -21,6 +21,7 @@
 #include "ship/resource/archive/ArchiveManager.h"
 #include "ship/resource/archive/Archive.h"
 #include "ship/resource/type/Json.h"
+#include "ship/window/gui/resource/GuiTexture.h"
 #include "ship/audio/Audio.h"
 #include "ship/audio/AudioPlayer.h"
 #include "fast/Fast3dWindow.h"
@@ -127,6 +128,8 @@ int main(int argc, char** argv) {
         const auto cpus = std::thread::hardware_concurrency();
         const auto reserved = cpus > 2 ? cpus - 2 : 0;
         require(ctx->Init({archive}, {}, reserved, {}, window, std::make_shared<FixtureControls>()), "LUS initialization refused");
+        // Exercise application fonts added after the renderer has initialized.
+        ImGui::GetIO().Fonts->AddFontDefault();
         window->GetMouseStateManager()->SetAutoCaptureMouse(false);
         window->SetMouseCapture(false);
         SDL_StartTextInput();
