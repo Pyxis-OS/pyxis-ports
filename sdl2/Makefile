@@ -13,7 +13,7 @@ UPSTREAM_SOURCES := $(wildcard $(S)/src/*.c) \
   $(wildcard $(S)/src/file/*.c) \
   $(wildcard $(S)/src/haptic/*.c) $(S)/src/haptic/dummy/SDL_syshaptic.c \
   $(wildcard $(S)/src/hidapi/*.c) \
-  $(wildcard $(S)/src/joystick/*.c) $(S)/src/joystick/dummy/SDL_sysjoystick.c \
+  $(wildcard $(S)/src/joystick/*.c) \
   $(wildcard $(S)/src/libm/*.c) \
   $(S)/src/loadso/dummy/SDL_sysloadso.c \
   $(wildcard $(S)/src/locale/*.c) $(S)/src/locale/dummy/SDL_syslocale.c \

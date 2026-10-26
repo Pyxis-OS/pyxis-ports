@@ -18,13 +18,14 @@
 #include <wait.h>
 
 #include "SDL_pyxisvideo.h"
+#include "SDL_pyxisjoystick.h"
 #include "events/SDL_keyboard_c.h"
 #include "events/SDL_mouse_c.h"
 
 #define ASCII_FIRST_PRINTABLE ' '
 #define ASCII_LAST_PRINTABLE '~'
 #define NANOSECONDS_PER_MILLISECOND UINT64_C(1000000)
-#define INPUT_WAIT_CAPACITY 4
+#define INPUT_WAIT_CAPACITY 5
 #define INPUT_WAIT_ABSENT SIZE_MAX
 #define WAKEUP_DRAIN_BYTES 64
 #define POINTER_BUTTON_COUNT 32
@@ -386,6 +387,12 @@ static void input_interests(struct input_wait *wait)
   }
   if (wakeup_reader != HANDLE_INVALID) {
     wait->wakeup = add_interest(wait, wakeup_reader, WAIT_READABLE);
+  }
+  /* Append last: joystick init/quit must not move cached video wait indices.
+   * The normal SDL joystick pump drains the session after this hook wakes. */
+  handle_t gamepad = PYXIS_GamepadWaitHandle();
+  if (gamepad != HANDLE_INVALID) {
+    add_interest(wait, gamepad, WAIT_READABLE);
   }
 }
 

@@ -21,6 +21,7 @@ return {
     "patches/0008-register-the-pyxis-audio-driver.patch",
     "patches/0009-pyxis-logical-gl-window.patch",
     "patches/0010-pyxis-current-gl-attributes.patch",
+    "patches/0011-register-the-pyxis-joystick-driver.patch",
   },
   outputs = {
     dev_source_makefile = "dev/share/sources/sdl2/Makefile",
@@ -28,6 +29,8 @@ return {
     dev_source_pyxis_sdl_pyxisaudio_c = "dev/share/sources/sdl2/pyxis/SDL_pyxisaudio.c",
     dev_source_pyxis_sdl_pyxisclipboard_c = "dev/share/sources/sdl2/pyxis/SDL_pyxisclipboard.c",
     dev_source_pyxis_sdl_pyxisevents_c = "dev/share/sources/sdl2/pyxis/SDL_pyxisevents.c",
+    dev_source_pyxis_sdl_pyxisjoystick_c = "dev/share/sources/sdl2/pyxis/SDL_pyxisjoystick.c",
+    dev_source_pyxis_sdl_pyxisjoystick_h = "dev/share/sources/sdl2/pyxis/SDL_pyxisjoystick.h",
     dev_source_pyxis_sdl_pyxismouse_c = "dev/share/sources/sdl2/pyxis/SDL_pyxismouse.c",
     dev_source_pyxis_sdl_pyxisopengl_c = "dev/share/sources/sdl2/pyxis/SDL_pyxisopengl.c",
     dev_source_pyxis_sdl_pyxisvideo_c = "dev/share/sources/sdl2/pyxis/SDL_pyxisvideo.c",

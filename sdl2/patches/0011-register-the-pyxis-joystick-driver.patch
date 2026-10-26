@@ -1,0 +1,25 @@
+diff --git a/src/joystick/SDL_joystick.c b/src/joystick/SDL_joystick.c
+--- a/src/joystick/SDL_joystick.c
++++ b/src/joystick/SDL_joystick.c
+@@ -51,6 +51,9 @@
+ #endif
+ 
+ static SDL_JoystickDriver *SDL_joystick_drivers[] = {
++#ifdef SDL_JOYSTICK_PYXIS
++    &SDL_PYXIS_JoystickDriver,
++#endif
+ #ifdef SDL_JOYSTICK_HIDAPI /* Before WINDOWS_ driver, as WINDOWS wants to check if this driver is handling things */
+     &SDL_HIDAPI_JoystickDriver,
+ #endif
+diff --git a/src/joystick/SDL_sysjoystick.h b/src/joystick/SDL_sysjoystick.h
+--- a/src/joystick/SDL_sysjoystick.h
++++ b/src/joystick/SDL_sysjoystick.h
+@@ -235,5 +235,8 @@
+ 
+ /* The available joystick drivers */
++#ifdef SDL_JOYSTICK_PYXIS
++extern SDL_JoystickDriver SDL_PYXIS_JoystickDriver;
++#endif
+ extern SDL_JoystickDriver SDL_ANDROID_JoystickDriver;
+ extern SDL_JoystickDriver SDL_BSD_JoystickDriver;
+ extern SDL_JoystickDriver SDL_DARWIN_JoystickDriver;

@@ -26,7 +26,7 @@ the SDL input path in that archive, not GL rendering. The 1160 by 800 diagnostic
 canvas scales in software to the actual window surface, including after resize.
 
 Launch from a foreground local shell with display, keyboard and `gamepad/input`
-authority. Tab selects the next open device; Escape exits. Attach logs include
+authority, plus `pipe/create` for cross-thread event wakeup. Tab selects the next open device; Escape exits. Attach logs include
 name, instance ID, GUID, VID/PID/version, raw counts and full mapping. The left
 panel shows six raw axes, 19 buttons and hat 0 using the native DualSense Edge
 order. The right shows SDL's six standardized axes and 21 buttons, including

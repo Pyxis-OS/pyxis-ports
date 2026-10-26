@@ -89,8 +89,7 @@
 #define SDL_LOADSO_DISABLED 1
 #define SDL_POWER_DISABLED 1
 
-/* Joysticks initialize and report zero devices. */
-#define SDL_JOYSTICK_DUMMY 1
+#define SDL_JOYSTICK_PYXIS 1
 
 #define SDL_VIDEO_DRIVER_PYXIS 1
 #define SDL_VIDEO_RENDER_SW 1

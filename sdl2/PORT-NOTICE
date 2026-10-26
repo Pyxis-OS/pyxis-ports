@@ -23,7 +23,7 @@ The GL profile preserves the logical canvas across native output/fullscreen
 changes and queries actual context attributes.
 The patches retain SDL's zlib license.
 
-The Pyxis backend in pyxis/ (video, OpenGL, input, clipboard, audio, timer, threads and paths) and SDL_config.h
+The Pyxis backend in pyxis/ (video, OpenGL, input, joystick, clipboard, audio, timer, threads and paths) and SDL_config.h
 are original Pyxis material under the Mozilla Public License, version 2.0;
 see the ports repository's LICENSE and LICENSING.md. The backend uses the
 shared US key layout exported by the Pyxis SDK.
@@ -44,3 +44,6 @@ The opt-in manual SDL clipboard exercise in manual/ is original Pyxis material
 under MPL-2.0. Its small bitmap glyph rows follow the native mousetest tool.
 The asset-free manual/gears program and its lettering are original Pyxis
 material under MPL-2.0.
+
+The asset-free manual/gamepad SDL joystick/GameController viewer and its
+diagnostic lettering are original Pyxis material under MPL-2.0.

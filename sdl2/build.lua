@@ -53,7 +53,7 @@ return function(ctx)
     if dependencies then assert(provenance:write("dependencies=" .. dependencies .. "\n")) end
     assert(provenance:close())
   end
-  local common_profile = "static library, Pyxis video/input/audio/timer/threads/paths, software renderer"
+  local common_profile = "static library, Pyxis video/input/joystick/audio/timer/threads/paths, software renderer"
   local common_omitted = "thread priorities and detach, audio capture, haptics, sensors, HIDAPI, shared objects, Vulkan, SDL_main, SDL_test"
   write_provenance("provenance", common_profile, common_omitted .. ", OpenGL backend")
   write_provenance("gl_provenance", common_profile .. ", PYXIS_USE_OSMESA, static Mesa softpipe OpenGL",
@@ -75,6 +75,8 @@ return function(ctx)
     "pyxis/SDL_pyxisaudio.c",
     "pyxis/SDL_pyxisclipboard.c",
     "pyxis/SDL_pyxisevents.c",
+    "pyxis/SDL_pyxisjoystick.c",
+    "pyxis/SDL_pyxisjoystick.h",
     "pyxis/SDL_pyxismouse.c",
     "pyxis/SDL_pyxisopengl.c",
     "pyxis/SDL_pyxisvideo.c",

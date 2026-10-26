@@ -37,6 +37,9 @@ optional, and without it or a mouse the program runs from the keyboard.
 Threads and callback timers need a bundle declaring `threads/manage`, and
 blocking event waits in a threaded program also need `pipe/create`. Audio
 output needs the `audio` grant and, for SDL's callback thread, `threads/manage`.
+Joystick/GameController initialization requires a bundle declaring `gamepad/input`.
+Missing authority or competing acquisition fails initialization; an empty catalog
+with authority succeeds and observes later attachment.
 
 ## The backend
 
@@ -154,6 +157,51 @@ The files in `pyxis/` are the platform layer:
   - `SDL_GetBasePath` is unsupported, because Pyxis has no reliable
     executable path.
 
+## Joysticks and GameController
+
+Both archives register the named Pyxis joystick driver over one native gamepad
+INPUT session, independently of video ownership. It preserves native attachment
+identity across open handles: removal detaches the old SDL instance and replug
+creates a new one. Its USB GUID contains actual VID/PID/bcdDevice, a private
+Pyxis driver signature and the admitted layout profile; no Linux or HIDAPI
+identity is claimed. No filesystem path or serial identity is available.
+
+The Edge profile exposes six raw signed SDL axes, 19 buttons in native ABI
+order and one SDL hat. Each unsigned report byte maps linearly as
+`value * 257 - 32768`; there is no deadzone, inversion, analog trigger synthesis
+or extra precision. Raw trigger buttons remain separate from analog axes.
+GameController uses the backend's automatic mapping, including independent
+triggers, D-pad hat, mic as Misc1 and touchpad click. Paddle1/2 are right/left
+paddles; Paddle3/4 are right/left function buttons, matching upstream Edge
+conventions. Remapped native paddles remain unqualified as independent controls.
+
+The backend clears SDL holds and centers logical axes on invalidation, focus
+loss, RESET and removal. The kernel's rearming rules remain authoritative:
+held buttons/hat need a fresh action after focus return, while sticks/triggers
+resume physical position on a fresh valid focused report. Recovery snapshots
+fence older queued input; ordinary removal is consumed in event order so a
+catalog refresh cannot erase pending button edges. Recursive event-watcher
+pumps cannot interleave native report publication. SDL's background-input hint
+cannot bypass native space focus.
+
+A video event wait includes native gamepad readiness, so controller-only input
+and topology can wake it. SDL 2.32 still caps waits to 1 ms with attached
+joysticks and 3 seconds without them; those upstream periodic wakeups are kept.
+Joystick-only programs without a video window use SDL's normal polling fallback.
+The backend starts no polling thread. Subsystem shutdown releases INPUT; one
+delegated handle is retained until process exit to keep concurrent video wait
+interests safe against handle-number reuse.
+
+Rumble, trigger effects, LEDs, sensors and opaque output effects are unsupported;
+capabilities are zero and backend effect calls fail explicitly. SDL core currently
+shortcuts repeated LED requests and already-zero rumble to success without
+calling the backend. Resolving that exception is a pending scope decision;
+no output is implemented. Player index is
+SDL-local metadata, with no LED or persistent physical assignment. Generic HID,
+Bluetooth and other controller layouts are outside this profile. The
+[manual viewer](manual/gamepad/README.md) checks raw/mapped input and refusal
+through each archive separately, using public SDL APIs and no external assets.
+
 ## Clipboard
 
 All three clipboard hooks use native explicitly delegated `clipboard_local`
@@ -219,6 +267,10 @@ editor is the in-tree Set and Has-then-Get consumer.
    the Pyxis pointer is in use, so signed fractional increments cancel. Other
    drivers keep upstream behavior.
 8. `0008` registers the Pyxis audio driver in SDL's audio bootstrap list.
+9. `0009` and `0010` preserve the Pyxis logical GL canvas and expose actual
+   current-context attributes.
+10. `0011` adds only the guarded named Pyxis joystick declaration and registry
+    entry; controller behavior and automatic mapping remain in `pyxis/`.
 
 ## Not built
 
@@ -229,8 +281,6 @@ These facilities report themselves as unsupported, as upstream does:
 - **Audio capture** and output device selection: there is one default output.
 - **Haptics, sensors, HIDAPI, shared objects, power and Vulkan.**
 - **OpenGL in the ordinary archive.** Select the separate OSMesa archive for GL.
-- **Joysticks.** They use SDL's dummy driver: `SDL_INIT_JOYSTICK` succeeds
-  with zero devices.
 
 Named SDL system-cursor shapes and message boxes are unsupported.
 `SDL_main` and `SDL_test` are not built.
