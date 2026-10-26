@@ -27,7 +27,10 @@ return function(ctx)
   ctx.run({ "cp", "-R", ctx.source .. "/src/fast/shaders/opengl", ctx.stage .. "/dev/share/libultraship/shaders/" })
   local provenance = assert(io.open(ctx.stage .. "/" .. ctx.metadata.outputs.source, "w"))
   assert(provenance:write("commit=" .. ctx.metadata.source.commit .. "\nsha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
-    "profile=Pyxis; F3DEX_GBI_2; controller buttons uint32; priority/pause workers; read-only ZIP/O2R; static GL3.3compat\n"))
+    "profile=Pyxis; F3DEX_GBI_2; controller buttons uint32; priority/pause workers; read-only ZIP/O2R; native SDL GameController; static GL3.3compat\n"))
+  for _, patch in ipairs(ctx.metadata.patches) do
+    assert(provenance:write("patch=" .. patch .. "\n"))
+  end
   assert(provenance:close())
   install(ctx.build .. "/lus-demo.pxe", ctx.metadata.outputs.executable)
   install(ctx.recipe .. "/manifest.json", ctx.metadata.outputs.manifest)

@@ -189,13 +189,7 @@ diff --git a/include/ship/window/Window.h b/include/ship/window/Window.h
 diff --git a/include/ship/window/gui/Gui.h b/include/ship/window/gui/Gui.h
 --- a/include/ship/window/gui/Gui.h
 +++ b/include/ship/window/gui/Gui.h
-@@ -10,11 +10,15 @@
- #include <unordered_map>
- #include <vector>
- #include "ship/window/gui/ConsoleWindow.h"
-+#ifndef __pyxis__
- #include "ship/controller/physicaldevice/SDLAddRemoveDeviceEventHandler.h"
-+#endif
+@@ -14,7 +14,9 @@
  #include "ship/window/gui/IconsFontAwesome4.h"
  #include "ship/window/gui/GameOverlay.h"
  #include "ship/window/gui/StatsWindow.h"
@@ -205,7 +199,7 @@ diff --git a/include/ship/window/gui/Gui.h b/include/ship/window/gui/Gui.h
  #include "ship/window/gui/GuiWindow.h"
  #include "ship/window/gui/GuiMenuBar.h"
  
-@@ -234,6 +238,9 @@
+@@ -234,6 +236,9 @@
      std::map<std::string, std::shared_ptr<GuiWindow>> mGuiWindows; ///< Registered window map (name → window).
  
    private:
@@ -290,18 +284,6 @@ diff --git a/src/fast/Fast3dGui.cpp b/src/fast/Fast3dGui.cpp
      switch (mImpl.Backend) {
  #ifdef ENABLE_OPENGL
          case WindowBackend::FAST3D_SDL_OPENGL:
-@@ -244,7 +273,11 @@
-         return;
-     }
- 
-+#ifdef __pyxis__
-+    ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_Manual, nullptr, 0);
-+#else
-     ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_AutoAll, nullptr, 0);
-+#endif
- }
- 
- void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
 diff --git a/src/fast/Fast3dWindow.cpp b/src/fast/Fast3dWindow.cpp
 --- a/src/fast/Fast3dWindow.cpp
 +++ b/src/fast/Fast3dWindow.cpp
@@ -1084,21 +1066,7 @@ diff --git a/src/ship/Context.cpp b/src/ship/Context.cpp
          auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 10, 10);
          sinks.push_back(fileSink);
  #ifdef _DEBUG
-@@ -278,6 +314,7 @@
-         return false;
-     }
- 
-+#ifndef __pyxis__
-     // Bring up the SDL game-controller subsystem here rather than in osContInit, so controllers work
-     // in pre-game UI (e.g. navigating extraction prompts). osContInit still runs ControlDeck::Init(),
-     // which needs the game's controllerBits.
-@@ -293,21 +330,13 @@
-         SPDLOG_WARN("Failed to initialize SDL game controllers ({})", SDL_GetError());
-     }
- 
-+#endif
-+
-     return true;
+@@ -297,17 +333,7 @@
  }
  
  bool Context::InitCrashHandler() {
@@ -1117,7 +1085,7 @@ diff --git a/src/ship/Context.cpp b/src/ship/Context.cpp
      return true;
  }
  
-@@ -481,122 +510,25 @@
+@@ -481,122 +507,25 @@
  }
  
  std::string Context::GetAppBundlePath() {
@@ -1250,7 +1218,7 @@ diff --git a/src/ship/Context.cpp b/src/ship/Context.cpp
  }
  
  std::string Context::LocateFileAcrossAppDirs(const std::string& path, const std::string& appName) {
-@@ -604,16 +536,16 @@
+@@ -604,16 +533,16 @@
  
      // app configuration dir
      fpath = GetPathRelativeToAppDirectory(path, appName);
@@ -1502,19 +1470,6 @@ diff --git a/src/ship/config/ConsoleVariable.cpp b/src/ship/config/ConsoleVariab
  }
 +#endif
  } // namespace Ship
-diff --git a/src/ship/controller/controldeck/ControlDeck.cpp b/src/ship/controller/controldeck/ControlDeck.cpp
---- a/src/ship/controller/controldeck/ControlDeck.cpp
-+++ b/src/ship/controller/controldeck/ControlDeck.cpp
-@@ -36,7 +36,9 @@
-     if (!mPorts[0]->GetConnectedController()->HasConfig()) {
-         mPorts[0]->GetConnectedController()->AddDefaultMappings(PhysicalDeviceType::Keyboard);
-         mPorts[0]->GetConnectedController()->AddDefaultMappings(PhysicalDeviceType::Mouse);
-+#ifndef __pyxis__
-         mPorts[0]->GetConnectedController()->AddDefaultMappings(PhysicalDeviceType::SDLGamepad);
-+#endif
-     }
- }
- 
 diff --git a/src/ship/resource/ResourceManager.cpp b/src/ship/resource/ResourceManager.cpp
 --- a/src/ship/resource/ResourceManager.cpp
 +++ b/src/ship/resource/ResourceManager.cpp
@@ -2275,20 +2230,7 @@ diff --git a/src/ship/window/gui/Gui.cpp b/src/ship/window/gui/Gui.cpp
  
  #include "ship/config/Config.h"
  #include "ship/Context.h"
-@@ -32,10 +35,12 @@
-         AddGuiWindow(std::make_shared<StatsWindow>(CVAR_STATS_WINDOW_OPEN, "Stats"));
-     }
- 
-+#ifndef __pyxis__
-     if (GetGuiWindow("SDLAddRemoveDeviceEventHandler") == nullptr) {
-         AddGuiWindow(std::make_shared<SDLAddRemoveDeviceEventHandler>("gOpenWindows.SDLAddRemoveDeviceEventHandler",
-                                                                       "SDLAddRemoveDeviceEventHandler"));
-     }
-+#endif
- 
-     if (GetGuiWindow("Console") == nullptr) {
-         AddGuiWindow(std::make_shared<ConsoleWindow>(CVAR_CONSOLE_WINDOW_OPEN, "Console", ImVec2(520, 600),
-@@ -46,9 +51,11 @@
+@@ -46,9 +49,11 @@
      // would call SyncVisibilityConsoleVariable() -> GetWindow()->GetGui() before the Gui is attached
      // to the Window, which crashes. Constructed already visible so Draw() runs every frame; it renders
      // nothing until a pick is queued.
@@ -2300,7 +2242,7 @@ diff --git a/src/ship/window/gui/Gui.cpp b/src/ship/window/gui/Gui.cpp
  }
  
  Gui::Gui() : Gui(std::vector<std::shared_ptr<GuiWindow>>()) {
-@@ -59,7 +66,14 @@
+@@ -59,7 +64,14 @@
  }
  
  void Gui::Init() {
@@ -2315,21 +2257,17 @@ diff --git a/src/ship/window/gui/Gui.cpp b/src/ship/window/gui/Gui.cpp
      ImGui::SetCurrentContext(ctx);
      mImGuiIo = &ImGui::GetIO();
      mImGuiIo->ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_NoMouseCursorChange;
-@@ -94,16 +108,23 @@
+@@ -94,6 +106,9 @@
          mImGuiIo->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
      }
  
 +#ifdef __pyxis__
 +    mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-+    mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-+#else
++#endif
      if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
          GetMenuOrMenubarVisible()) {
          mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-     } else {
-         mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-     }
-+#endif
+@@ -103,7 +118,9 @@
  
      GetGuiWindow("Stats")->Init();
      GetGuiWindow("Console")->Init();
@@ -2339,7 +2277,7 @@ diff --git a/src/ship/window/gui/Gui.cpp b/src/ship/window/gui/Gui.cpp
      GetGameOverlay()->Init();
  
      Context::GetRawInstance()->GetResourceManager()->GetResourceLoader()->RegisterResourceFactory(
-@@ -118,9 +139,22 @@
+@@ -118,9 +135,22 @@
  }
  
  void Gui::ShutDownImGui(Ship::Window* window) {
@@ -2362,38 +2300,7 @@ diff --git a/src/ship/window/gui/Gui.cpp b/src/ship/window/gui/Gui.cpp
  }
  
  void Gui::ImGuiWMShutdown() {
-@@ -145,10 +179,12 @@
- }
- 
- void Gui::UnblockGamepadNavigation() {
-+#ifndef __pyxis__
-     if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
-         GetMenuOrMenubarVisible()) {
-         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-     }
-+#endif
- }
- 
- ImGuiID Gui::GetMainGameWindowID() {
-@@ -174,6 +210,9 @@
- }
- 
- void Gui::UpdateGamepadNavigation() {
-+#ifdef __pyxis__
-+    mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-+#else
-     const bool navWanted = Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
-                            (GetMenuOrMenubarVisible() ||
-                             ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
-@@ -182,6 +221,7 @@
-     } else {
-         mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-     }
-+#endif
- }
- 
- void Gui::DrawMenu() {
-@@ -236,12 +276,16 @@
+@@ -236,12 +266,16 @@
              GetMenuBar()->ToggleVisibility();
          }
          Ship::Context::GetRawInstance()->GetWindow()->GetMouseStateManager()->UpdateMouseCapture();

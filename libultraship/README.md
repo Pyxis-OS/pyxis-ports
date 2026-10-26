@@ -4,7 +4,8 @@ Pinned `da6daf1a50a5e46d6641408d52227e31e85e46df`, matching SoH 9.3.1.
 The reusable static library selects F3DEX_GBI_2, 32-bit controller buttons,
 priority/pause-enabled real workers, read-only ZIP/O2R and desktop GL3.3
 compatibility through SDL2/OSMesa. MPQ, DLL/TinyCC, scripting, file pickers,
-gamepad discovery, networking and crash helpers are excluded. No game code,
+networking and crash helpers are excluded. Native SDL GameController input uses
+the delegated Pyxis gamepad session. No game code,
 ROM or extracted game data belongs in this recipe or its fixture.
 
 From the parent checkout, `make -f scripts/ports.mk libultraship` builds the
@@ -48,6 +49,22 @@ API calls. Shutdown rejects new resource submissions, drains and joins its
 resource pool while archives/renderers are alive, then releases GUI/GL/SDL/audio
 and the owned logger worker. Release external GUI/resource owners before Context.
 No global logger pool is installed. Partial initialization unwinds the same way.
+
+## Controller input
+
+Applications declare `gamepad/input` alongside keyboard authority. Controller
+initialization follows upstream, including optional database loading
+and its existing diagnostics. Hotplug refreshes the manager and ImGui's controller
+list; existing port-ignore, binding and handle-management behavior is retained.
+
+Fresh port-1 configurations receive upstream keyboard, mouse and SDL defaults.
+Existing configured ports reload their mappings without automatic migration or
+erasure. Application settings UIs may add SDL defaults explicitly while keeping
+keyboard mappings. Gamepad menu navigation follows the existing setting and
+menu/popup state; native keyboard navigation remains enabled. ImGui selects the
+normal AutoAll controller mode for this LUS application, without changing the
+shared ImGui default. LED/rumble/sensor output remains unsupported by the Pyxis
+SDL backend; no game-specific output implementation is added.
 
 ## Public first check
 
