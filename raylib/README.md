@@ -76,7 +76,10 @@ changing state. Render textures and the wider raylib API need qualification.
 
 The recipe stages `bin/raylib-shapes.pxb`, separate from ordinary boot programs,
 and `share/raylib/examples/shapes.c` in the development prefix. It has generated
-assets and requests only memory, clock, display, keyboard and optional pointer.
+assets and requests memory, clock, display, keyboard, gamepad and optional pointer.
+Raylib initializes SDL GameController during window startup, so bundles declare
+`gamepad/input` even when the example only uses keyboard controls. An empty
+controller catalog is valid; missing authority is an initialization error.
 The parent supplies opt-in `raylib-shapes` and `raylib-dev` package recipes.
 `raylib-dev` contains raylib only and depends by name on the SDL2 port's separate
 `sdl2-dev` package. Their standard include/lib trees feed the shared `sdk://`

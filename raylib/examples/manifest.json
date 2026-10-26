@@ -42,6 +42,14 @@
       "required": true
     },
     {
+      "name": "gamepad",
+      "resource": "gamepad",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    },
+    {
       "name": "pointer",
       "resource": "pointer",
       "rights": [
