@@ -1,6 +1,6 @@
 # blurgtext
 
-Pinned upstream blurgtext, with its bundled FreeType 2.15.0 and HarfBuzz 15.0.0,
+Upstream blurgtext 0.2.0, with its bundled FreeType 2.15.0 and HarfBuzz 15.0.0,
 built as static libraries and the upstream SDL2/OpenGL demo. SDL2's OSMesa
 profile uses native display/input and Mesa softpipe. The demo's text, layout,
 styles, SVG emoji and CJK sample are unchanged.
@@ -12,7 +12,12 @@ lua build.lua blurgtext --sdk /path/to/sdk \
   --mesa /path/to/mesa/stage/dev
 ```
 
-The first port keeps the supported FT/HB bundle. Metadata pins every direct and
+The 0.2.0 tag identifies `e11c19f4`, already used by the first port. Its Raqm
+0.11.0 archive is fetched from canonical HOST-Oman/libraqm; it is byte-identical
+to the same commit previously fetched through CallumDev. The remaining pins
+are SheenBidi 3.0.0, libunibreak 8.0, plutosvg 0.0.8 and PlutoVG 1.3.3.
+
+The port keeps the supported FT/HB bundle. Metadata pins every direct and
 nested submodule and both library release archives. The runner fetches them
 through the cache; CMake receives verified local archives and cross find roots,
 so host libraries and upstream fallback downloads are not used. No compiler

@@ -21,11 +21,11 @@ return {
       },
       {
         name = "raqm",
-        url = "https://github.com/CallumDev/libraqm/archive/08ee1537e63f93bf926498e12b12ed15ee383216.tar.gz",
+        url = "https://github.com/HOST-Oman/libraqm/archive/08ee1537e63f93bf926498e12b12ed15ee383216.tar.gz",
         commit = "08ee1537e63f93bf926498e12b12ed15ee383216",
         archive = {
-          url = "https://github.com/CallumDev/libraqm/archive/08ee1537e63f93bf926498e12b12ed15ee383216.tar.gz",
-          mirror = "https://repo.internal/repository/raw-github/CallumDev/libraqm/archive/08ee1537e63f93bf926498e12b12ed15ee383216.tar.gz",
+          url = "https://github.com/HOST-Oman/libraqm/archive/08ee1537e63f93bf926498e12b12ed15ee383216.tar.gz",
+          mirror = "https://repo.internal/repository/raw-github/HOST-Oman/libraqm/archive/08ee1537e63f93bf926498e12b12ed15ee383216.tar.gz",
           sha256 = "6e0298f0a02a9ff8de0f04e29671017341aa6c68c1dfe59c43d5b23163905daa",
         },
         destination = "deps/libraqm",
@@ -83,7 +83,7 @@ return {
       },
     },
   },
-  version = "upstream-e11c19f",
+  version = "0.2.0",
   license = "MIT, Old MIT, Apache-2.0, zlib, FTL, BSD-2-Clause, CC0-1.0, Unicode-3.0; dependency notices retained",
   dependencies = {
     host = {
