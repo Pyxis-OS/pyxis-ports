@@ -1,6 +1,6 @@
 # blurgtext
 
-Upstream blurgtext 0.2.0, with its bundled FreeType 2.15.0 and HarfBuzz 15.0.0,
+Upstream blurgtext 0.2.1, with its bundled FreeType 2.15.0 and HarfBuzz 15.0.0,
 built as static libraries and the upstream SDL2/OpenGL demo. SDL2's OSMesa
 profile uses native display/input and Mesa softpipe. The demo's text, layout,
 styles, SVG emoji and CJK sample are unchanged.
@@ -12,10 +12,12 @@ lua build.lua blurgtext --sdk /path/to/sdk \
   --mesa /path/to/mesa/stage/dev
 ```
 
-The 0.2.0 tag identifies `e11c19f4`, already used by the first port. Its Raqm
-0.11.0 archive is fetched from canonical HOST-Oman/libraqm; it is byte-identical
-to the same commit previously fetched through CallumDev. The remaining pins
-are SheenBidi 3.0.0, libunibreak 8.0, plutosvg 0.0.8 and PlutoVG 1.3.3.
+The 0.2.1 tag identifies `bfbb3df5`, including upstream's font-query cache
+lifetime fix for issue #7. Its direct and nested gitlinks match 0.2.0: Raqm
+0.11.0 (canonical HOST-Oman/libraqm), SheenBidi 3.0.0, libunibreak 8.0,
+plutosvg 0.0.8 and PlutoVG 1.3.3. FreeType/HarfBuzz archive pins are unchanged.
+The tag and commit archives were compared through the cache; all three platform
+patches apply unchanged.
 
 The port keeps the supported FT/HB bundle. Metadata pins every direct and
 nested submodule and both library release archives. The runner fetches them
@@ -65,8 +67,10 @@ constructor, so it does not register callback-created faces in the canonical
 family cache. Both public add-file/add-memory APIs register, which would change
 subsequent style selection. Core font-manager/cache and public header changes
 are not needed; the callback cannot resize the family table on this backend.
-The stock-backend cache-lifetime issue is documented separately for upstream,
-not patched here.
+Upstream 0.2.1 fixes the stock-backend cache-lifetime issue reported as #7;
+no port-local core workaround is needed. The existing isolated Fontconfig ASan
+reproducer exits successfully on unpatched 0.2.1. That host check does not qualify
+the native backend or general thread safety.
 
 PlutoVG's optional mmap-based filesystem font-cache loader is disabled by its
 existing build option; SVG rasterization stays enabled. Local changes are listed

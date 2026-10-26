@@ -1,11 +1,11 @@
 return {
   source = {
     url = "https://github.com/CallumDev/blurgtext",
-    commit = "e11c19f4bc124ea8bb1cc7a30e82737a676198f0",
+    commit = "bfbb3df576d2df55451df7621d7e7b506dfae8fe",
     archive = {
-      url = "https://github.com/CallumDev/blurgtext/archive/e11c19f4bc124ea8bb1cc7a30e82737a676198f0.tar.gz",
-      mirror = "https://repo.internal/repository/raw-github/CallumDev/blurgtext/archive/e11c19f4bc124ea8bb1cc7a30e82737a676198f0.tar.gz",
-      sha256 = "52dd92a37ad83fcb51a7d048a1e34e9961ad15192cef08c47619d7497d86e791",
+      url = "https://github.com/CallumDev/blurgtext/archive/bfbb3df576d2df55451df7621d7e7b506dfae8fe.tar.gz",
+      mirror = "https://repo.internal/repository/raw-github/CallumDev/blurgtext/archive/bfbb3df576d2df55451df7621d7e7b506dfae8fe.tar.gz",
+      sha256 = "9394f851dc42df2a056eb40a505e331051edfe2d348faec0d2c16629633a0bee",
     },
     extra = {
       {
@@ -83,7 +83,7 @@ return {
       },
     },
   },
-  version = "0.2.0",
+  version = "0.2.1",
   license = "MIT, Old MIT, Apache-2.0, zlib, FTL, BSD-2-Clause, CC0-1.0, Unicode-3.0; dependency notices retained",
   dependencies = {
     host = {

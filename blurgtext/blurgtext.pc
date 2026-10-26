@@ -4,7 +4,7 @@ includedir=${prefix}/include
 
 Name: blurgtext
 Description: Static blurgtext with its bundled shaping and font libraries
-Version: 0.2.0
+Version: 0.2.1
 Requires.private: libcxx
 Libs: -L${libdir} -Wl,--start-group -lblurgtext -lraqm -lsheenbidi -lunibreak -lplutosvg -lplutovg -lharfbuzz -lfreetype -Wl,--end-group
 Cflags: -I${includedir}
