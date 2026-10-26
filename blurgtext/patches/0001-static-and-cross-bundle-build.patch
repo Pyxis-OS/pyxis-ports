@@ -1,4 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 60d0000..95f6068 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -12,14 +12,23 @@ else()
@@ -35,17 +36,7 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
      elseif(APPLE)
          target_compile_definitions(blurgtext PRIVATE -DBT_ENABLE_CORETEXT=1)
      elseif(UNIX)
-@@ -63,6 +74,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows" AND ${CMAKE_CXX_COMPILER_ID} MATCHES "
- endif()
- 
- set_target_properties(blurgtext PROPERTIES C_VISIBILITY_PRESET hidden)
-+if(NOT BT_BUILD_SHARED)
-+    target_compile_definitions(blurgtext PUBLIC BLURG_STATIC)
-+endif()
- target_compile_definitions(blurgtext PRIVATE -DBUILDING_BLURG)
- target_include_directories(blurgtext PUBLIC "include")
- 
-@@ -135,6 +149,7 @@ if(BT_BUILD_FTHB)
+@@ -135,6 +146,7 @@ if(BT_BUILD_FTHB)
          -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
          -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
          -DFT_DOWNLOADS_DIR=${FT_DOWNLOADS_DIR}
@@ -53,21 +44,8 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
          -G ${CMAKE_GENERATOR}
      )
      ExternalProject_Get_Property(FTHB INSTALL_DIR)
-diff --git a/include/blurgtext.h b/include/blurgtext.h
---- a/include/blurgtext.h
-+++ b/include/blurgtext.h
-@@ -4,7 +4,9 @@
- extern "C" {
- #endif
- 
--#ifdef _WIN32
-+#if defined(BLURG_STATIC)
-+#define BLURGAPI
-+#elif defined(_WIN32)
- #if BUILDING_BLURG
- #define BLURGAPI __declspec(dllexport)
- #else
 diff --git a/deps/ft-hb-bundle/CMakeLists.txt b/deps/ft-hb-bundle/CMakeLists.txt
+index edfbf28..ff079ef 100644
 --- a/deps/ft-hb-bundle/CMakeLists.txt
 +++ b/deps/ft-hb-bundle/CMakeLists.txt
 @@ -8,9 +8,9 @@ endif()

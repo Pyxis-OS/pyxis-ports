@@ -1,4 +1,5 @@
 diff --git a/src/blurgtext_internal.h b/src/blurgtext_internal.h
+index be60de2..4b8741c 100644
 --- a/src/blurgtext_internal.h
 +++ b/src/blurgtext_internal.h
 @@ -14,7 +14,7 @@ extern "C" {
@@ -10,19 +11,12 @@ diff --git a/src/blurgtext_internal.h b/src/blurgtext_internal.h
  #define SYSFONTS
  #endif
  
-@@ -79,6 +79,7 @@ void glyphatlas_get(blurg_t *blurg, blurg_font_t *font, uint32_t index, blurg_gl
- void glyphatlas_destroy(blurg_t *blurg);
- 
- blurg_font_t *blurg_from_freetype(FT_Face face);
-+blurg_font_t *blurg_font_load_file(blurg_t *blurg, const char *filename);
- blurg_font_t *blurg_font_create_internal(blurg_t *blurg, allocated_font *data);
- void blurg_font_rehash(blurg_font_t *fnt);
- blurg_font_t *blurg_font_fallback(blurg_t *blurg, blurg_font_t *font, uint32_t character);
 diff --git a/src/sysfonts_pyxis.c b/src/sysfonts_pyxis.c
 new file mode 100644
+index 0000000..87fb2c9
 --- /dev/null
 +++ b/src/sysfonts_pyxis.c
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,253 @@
 +#if BT_ENABLE_PYXIS
 +#include "blurgtext_internal.h"
 +#include FT_TRUETYPE_TABLES_H
@@ -32,6 +26,8 @@ new file mode 100644
 +#include <stdio.h>
 +#include <string.h>
 +#include <sys/stat.h>
++
++allocated_font *load_file_data(blurg_t *blurg, const char *filename);
 +
 +#define PYXIS_FONT_ROOT "pkg://fonts"
 +#define PYXIS_FONT_LIMIT 512
@@ -255,7 +251,8 @@ new file mode 100644
 +        return NULL;
 +    int embolden = weight >= BLURG_WEIGHT_BOLD && font->weight <= BLURG_WEIGHT_REGULAR;
 +    /* Fallback links are mutable: each query needs its own face, as fontconfig does. */
-+    blurg_font_t *loaded = blurg_font_load_file(blurg, font->path);
++    allocated_font *data = load_file_data(blurg, font->path);
++    blurg_font_t *loaded = data ? blurg_font_create_internal(blurg, data) : NULL;
 +    if(!loaded)
 +        return NULL;
 +    loaded->weight = font->weight;

@@ -107,7 +107,6 @@ return {
   patches = {
     "patches/0001-static-and-cross-bundle-build.patch",
     "patches/0002-pyxis-package-font-discovery.patch",
-    "patches/0003-unregistered-system-font-faces.patch",
     "patches/0004-pyxis-demo-build-and-font-paths.patch",
   },
   outputs = {

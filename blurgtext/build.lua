@@ -55,8 +55,8 @@ return function(ctx)
   copy_tree(ctx.sdk .. "/share/toolchain", app .. "/share/licenses/sdk/toolchain")
   copy_tree(ctx.recipe .. "/patches", app .. "/share/blurgtext/patches")
   -- Include the modified source files covered by the Pyxis ports licence.
-  for _, path in ipairs({ "src/sysfonts_pyxis.c", "src/fontmanager.c", "src/blurgtext_internal.h",
-      "CMakeLists.txt", "include/blurgtext.h", "deps/ft-hb-bundle/CMakeLists.txt", "demo/CMakeLists.txt",
+  for _, path in ipairs({ "src/sysfonts_pyxis.c", "src/blurgtext_internal.h",
+      "CMakeLists.txt", "deps/ft-hb-bundle/CMakeLists.txt", "demo/CMakeLists.txt",
       "demo/main.c", "demo/glad/src/glad.c" }) do
     install(ctx.source .. "/" .. path, "bin/blurgtext.pxb/app/share/sources/blurgtext/" .. path)
   end

@@ -52,10 +52,16 @@ is not claimed.
 1. `0001`: optional static build, cached bundle arguments and cross find roots;
    platform-selected sysfonts source.
 2. `0002`: package-backed Pyxis sysfonts backend and its internal declarations.
-3. `0003`: separate unregistered rendering-face load from public font registration;
-   preserve cache entries before callbacks that can grow the hash table.
-4. `0004`: SDL2/OSMesa selection, package font filenames and callback-only GLAD;
-   checked startup/presentation, no-vsync pacing and cleanup. Demo content unchanged.
+3. `0004`: SDL2/OSMesa selection, package font filenames and callback-only GLAD.
+   Startup, presentation, pacing and cleanup follow the upstream demo unchanged.
+
+The package backend uses upstream's existing internal byte loader and face
+constructor, so it does not register callback-created faces in the canonical
+family cache. Both public add-file/add-memory APIs register, which would change
+subsequent style selection. Core font-manager/cache and public header changes
+are not needed; the callback cannot resize the family table on this backend.
+The stock-backend cache-lifetime issue is documented separately for upstream,
+not patched here.
 
 PlutoVG's optional mmap-based filesystem font-cache loader is disabled by its
 existing build option; SVG rasterization stays enabled. Local changes are listed

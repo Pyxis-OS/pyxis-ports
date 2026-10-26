@@ -21,5 +21,5 @@ source files are included. SDL2/OSMesa, Mesa and SDK notices and covered backend
 sources are retained separately. See ATTRIBUTION and the full adjacent notices.
 
 No font bytes, demo text, coordinates, colours or style spans are changed.
-Only platform build/loading, error handling, presentation pacing and cleanup
-are adapted in the demo. Assets are read from pkg://fonts, never host paths.
+Only SDL2/OSMesa selection, platform font paths and callback-only GL loading
+are adapted in the demo. Startup/presentation/pacing/cleanup follow upstream. Assets are read from pkg://fonts, never host paths.
