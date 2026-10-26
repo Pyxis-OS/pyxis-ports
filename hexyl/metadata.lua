@@ -28,7 +28,6 @@ return {
   },
   patches = {
     "patches/0001-native-seek-and-locked-terminal.patch",
-    "patches/0002-propagate-input-and-final-output-errors.patch",
   },
   outputs = {
     executable = "bin/hexyl.pxe",

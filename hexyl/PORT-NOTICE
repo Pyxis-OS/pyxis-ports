@@ -20,10 +20,8 @@ to that crate use terminal_size's MIT OR Apache-2.0 terms.
 
 Local changes:
 - Replace Hexyl's sole libc ESPIPE use with std ErrorKind::NotSeekable and remove
-  its direct libc dependency. Other locked package versions remain unchanged.
-- Return input read failures instead of printing stale data or retrying forever;
-  Interrupted reads retry. Explicitly flush final buffered output, including C
-  include mode. Upstream BrokenPipe exit-success behavior remains.
+  its direct libc dependency. The local terminal_size lock entry selects its
+  pinned Pyxis backend without enabling Unix-only rustix; versions stay fixed.
 - Select terminal_size's native Pyxis backend and restrict rustix to Unix targets.
   The backend calls the existing supplied-descriptor console-size C API, with
   no new kernel ABI, Unix impersonation or ambient terminal lookup. It checks

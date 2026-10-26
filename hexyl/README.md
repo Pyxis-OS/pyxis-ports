@@ -17,6 +17,8 @@ the earlier stdio-only Gate 2 prefix is insufficient.
 Sources use the approved Hexyl archive and Cargo proxy only. The upstream lock
 is retained beside a narrow patch: remove Hexyl's direct libc dependency and
 replace terminal_size 0.4.0 with the separately checksum-pinned patched source.
+The lock change selects the same pinned terminal_size with our native backend;
+its upstream dependency selection otherwise pulls Unix-only rustix onto Pyxis.
 Every other package version and checksum remains pinned. Locked vendoring uses
 a private Cargo home; the target build is frozen and offline. There is no
 upstream fallback. Release LTO and embedded bitcode are disabled, and panic
@@ -48,11 +50,14 @@ colour and plain output do not require terminal detection. Terminal width querie
 only supplied stdout, stderr, then stdin, falling back to Hexyl's upstream 80
 columns when no valid size is available. No ambient terminal is opened.
 
-Local patches use standard NotSeekable errors for forward stream skipping,
-propagate input failures, flush final buffered output explicitly, and query
-native supplied-console dimensions. File input uses granted paths; absent or
+Local patches only select standard NotSeekable errors for forward stream
+skipping and native supplied-console dimensions. File input uses granted paths; absent or
 denied inputs must fail. Stdin supports forward skipping by reading/discarding;
 backward/end-relative stdin seeks fail. Network, subprocesses, workers, default
 font/glyph additions and general Rust crate support are outside this port.
 Build and runtime qualification are recorded by the parent milestone; these
 recipe notes do not assert a successful build or guest run.
+
+Upstream v0.17.0 can loop on a persistent input read error; include-mode final
+buffer-drop errors can go unreported. These general upstream behaviors are
+retained, not patched in the Pyxis port.
