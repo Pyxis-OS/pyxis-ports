@@ -90,8 +90,12 @@ dimensions. Close withdraws observation. There is no SIGWINCH emulation.
 
 Child launch supports up to three explicit stdin/stdout/stderr slots, directional
 CREATE_PIPE, inherited native PIPE/CONSOLE or native/callable-exported FILE
-descriptors, and callable-exported STREAM input. Child FILE cursors start at zero; selected FILE append policy is
-preserved with libc's non-atomic SIZE/WRITE behavior. Input outcomes use generic
+descriptors, and callable-exported STREAM input. Child FILE cursors start at zero;
+selected FILE append policy is preserved after a zero-length native APPEND
+support/authority probe. Append companions on stdin or non-FILE streams refuse
+before launch. Append uses libc's native FILE APPEND, atomic per operation of at
+most 4,080 bytes; larger writes may interleave and success does not imply storage
+sync. The probe does not reserve later write success. Input outcomes use generic
 descriptions; no HTTP observation companion is delegated. Duplex/IPC pipes, extra
 slots, buffered inherited input and detached, setuid or setgid flags reject
 before launch; Windows-only presentation flags are ignored, as on other

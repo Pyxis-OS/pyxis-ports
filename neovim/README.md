@@ -49,7 +49,10 @@ an absolute native scheme path; missing/unproved parents refuse selection.
 The selected name stays fixed across `:cd`. New files, `:w newname` and new
 `:saveas` targets create exclusively; files that appeared meanwhile require
 force. `:w!` selects the current writable target before truncation. Plain
-`:w >> missing` refuses; `:w! >> missing` creates and appends.
+`:w >> missing` refuses; `:w! >> missing` creates and appends. Append uses libc's
+native FILE APPEND, atomic per operation of at most 4,080 bytes. A buffer write
+may span operations and interleave; it does not imply storage sync. Unsupported
+append targets refuse before creation or truncation.
 
 Loaded file buffers retain a file reference until unload. Ordinary
 `:w` compares the held reference with the actual writable target, including

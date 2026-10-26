@@ -41,9 +41,12 @@ native clock sleep authority, as specified by the SDK C++ runtime.
 
 Upstream delivery limits remain: stdout/color sinks ignore write/flush results;
 the default error handler is best-effort stderr output; file close errors are
-not reported; `flush` drains FILE output without storage sync. File append is
-not atomic between independent writers. Rotation removes/renames files in order
-and can truncate the active log after repeated rename failure; it is not a
+not reported; `flush` drains FILE output without storage sync. File append uses
+libc's native FILE APPEND, atomic per operation of at most 4,080 bytes. A log
+message may span operations and interleave with independent writers. Unsupported
+append targets refuse before creation or truncation. Rotation removes/renames
+files in order and can truncate the active log after repeated rename failure;
+it is not a
 crash-safe transaction. No persistence guarantee follows from a successful log
 call or shutdown. Examples, benchmarks, shared libraries and upstream tests are
 not built.

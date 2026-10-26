@@ -56,7 +56,10 @@ fails with SDL's error and the game runs silent, as with `-nosound`.
    - **Generated files:** `-writedir PATH`, default `home://chocolate-quake`,
      sends config, saves, screenshots, demos and the `-condebug` log to
      `PATH/<game directory>` and searches it before the data, as the native
-     port's option does. Files are written in place, as upstream does.
+     port's option does. Files are written in place, as upstream does. The log's
+     libc append uses native FILE APPEND, atomic per operation of at most 4,080
+     bytes; log messages may interleave and success does not imply storage sync.
+     Unsupported append targets refuse before creation or truncation.
    - **Directories:** `Sys_mkdir`, empty upstream, calls libc `mkdir`.
 3. **Frame sleep.** Upstream checks the clock in a tight loop between its
    72 Hz frames, keeping one CPU busy. On Pyxis the frame filter sleeps through

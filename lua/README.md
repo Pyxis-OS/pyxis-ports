@@ -315,10 +315,14 @@ are not supported.
 `io.input`/`io.output` rebinding remains Lua-local. Standard files retain upstream Lua's protection against
 closing them through `io.close`; the native accessor also handles streams closed
 at the C runtime level. FILE append policy is preserved through the selected
-stream's TEXT companion. File cursors, pushback and read-ahead remain private;
+stream's TEXT companion after a zero-length native APPEND support/authority
+probe. Append companions on stdin or non-FILE streams refuse before launch.
+File cursors, pushback and read-ahead remain private;
 child file streams start at zero. FILE and forward-only STREAM input carry
 their own generic description; neither needs an HTTP observation companion.
-Append retains libc's non-atomic SIZE/WRITE behavior.
+Append uses libc's native FILE APPEND, atomic per operation of at most 4,080
+bytes. Larger writes and formatted lines may interleave; success does not imply
+storage sync. A successful launch probe does not reserve later write success.
 Launch authority is LAUNCH-only and explicitly opt-in per space. Shell Ctrl+C
 terminates Lua itself; a child can outlive it, subject to any enclosing remote
 execution group's lifetime.

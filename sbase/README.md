@@ -71,13 +71,15 @@ cat host://input | tee home://first home://second | cksum
 ```
 
 Tee copies stdin to stdout and each named output. Named outputs use
-O_WRONLY|O_CREAT|O_TRUNC with 0666; creation and truncation follow the caller's
-grants. In the current SDK, 0666 requests native creation policy and promises no
-Unix permission bits. No permission or user model is added by this port.
+O_WRONLY|O_CREAT|O_TRUNC by default, or O_WRONLY|O_CREAT|O_APPEND with `-a`,
+with 0666; creation and truncation follow the caller's grants. In the current SDK,
+0666 requests native creation policy and promises no Unix permission bits. No permission or user model is added by this port.
 
-Only file operands are accepted. Options -a and -i fail before opening outputs;
-there is no non-atomic O_APPEND approximation or fake signal handler. Use `--`
-before an operand beginning with a dash. This is a restricted upstream port,
+`-a` uses libc's native FILE APPEND. EOF placement is atomic per operation of at
+most 4,080 bytes; a buffer or input line can span operations and interleave with
+other writers. Unsupported append targets refuse before creation or truncation.
+`-i` fails before opening outputs because signal handling is unsupported. Use
+`--` before an operand beginning with a dash. This is a restricted upstream port,
 not the full POSIX tee interface.
 
 Patch 0002 validates stdin and snapshots stdout availability with zero-length

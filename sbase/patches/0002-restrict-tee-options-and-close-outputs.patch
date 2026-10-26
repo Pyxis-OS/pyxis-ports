@@ -8,12 +8,12 @@
  #include <unistd.h>
  
  #include "util.h"
-@@ -8,53 +8,81 @@
+@@ -8,53 +8,84 @@
  static void
  usage(void)
  {
 -	eprintf("usage: %s [-ai] [file ...]\n", argv0);
-+	eprintf("usage: %s [file ...]\n", argv0);
++	eprintf("usage: %s [-a] [file ...]\n", argv0);
 +}
 +
 +static int
@@ -35,13 +35,13 @@
 -	int ret = 0, aflag = O_TRUNC, iflag = 0;
 +	size_t i, nfds, active = 0;
 +	ssize_t n = 0;
-+	int ret = 0;
++	int ret = 0, aflag = O_TRUNC;
  	char buf[BUFSIZ];
  
  	ARGBEGIN {
--	case 'a':
--		aflag = O_APPEND;
--		break;
+ 	case 'a':
+ 		aflag = O_APPEND;
+ 		break;
 -	case 'i':
 -		iflag = 1;
 -		break;
@@ -67,8 +67,7 @@
 +	}
  
  	for (i = 0; i < argc; i++) {
--		if ((fds[i] = open(argv[i], O_WRONLY|O_CREAT|aflag, 0666)) < 0) {
-+		if ((fds[i] = open(argv[i], O_WRONLY|O_CREAT|O_TRUNC, 0666)) < 0) {
+ 		if ((fds[i] = open(argv[i], O_WRONLY|O_CREAT|aflag, 0666)) < 0) {
  			weprintf("open %s:", argv[i]);
  			ret = 1;
 +		} else {

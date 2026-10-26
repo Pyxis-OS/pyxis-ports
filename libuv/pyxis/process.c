@@ -12,6 +12,7 @@
 #include <bundle_launch.h>
 #include <command_search.h>
 #include <fcntl.h>
+#include <file.h>
 #include <errno.h>
 #include <handle.h>
 #include <launcher.h>
@@ -93,6 +94,14 @@ static int prepare_streams(uv_loop_t *loop, const uv_process_options_t *options,
           !(binding->access & access) || (i == ENVIRONMENT_STDIN && binding->buffered_read) ||
           (binding->append && (i == ENVIRONMENT_STDIN || !file))) {
         return UV_ENOSYS;
+      }
+      if (binding->append) {
+        uint64_t offset;
+        size_t written;
+        enum call_status status = file_append(binding->handle, NULL, 0, &offset, &written);
+        if (status != CALL_OK) {
+          return uv__pyxis_status(status);
+        }
       }
     }
   }

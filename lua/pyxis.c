@@ -419,6 +419,14 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     if ((info.transport & transport) != transport) {
       return CALL_DENIED;
     }
+    if (streams[i].append) {
+      uint64_t offset;
+      size_t written;
+      status = file_append(streams[i].handle, NULL, 0, &offset, &written);
+      if (status != CALL_OK) {
+        return status;
+      }
+    }
     owned->entries[request->entry_count++] = (struct launch_environment_entry){
       (uintptr_t)stream_names[i], ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
     owned->grants[request->grant_count++] = (struct launch_grant){streams[i].handle, rights, transport};
