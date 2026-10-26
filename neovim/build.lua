@@ -24,7 +24,7 @@ return function(ctx)
     "-DCMAKE_TOOLCHAIN_FILE=" .. ctx.sdk .. "/share/pyxis.cmake",
     "-DPYXIS_CROSS_COMPILE=" .. ctx.cross_compile,
     "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-    "-DCMAKE_C_FLAGS=-ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -march=x86-64",
+    "-DCMAKE_C_FLAGS=-fno-stack-protector -fno-pic -fno-pie -mno-red-zone -march=x86-64",
     "-DCMAKE_FIND_ROOT_PATH=" .. ctx.lua51 .. ";" .. ctx.libuv .. ";" ..
       ctx.utf8proc .. ";" .. ctx.tree_sitter,
     "-DLUA_INCLUDE_DIR=" .. ctx.lua51 .. "/include/lua5.1",

@@ -12,6 +12,10 @@ pkg-config and the matching SDK compiler. Only the pinned mirror is downloaded.
 pkg-config metadata, original source/header notices and licence texts. Debug
 sections are stripped from the staged archive; the build archive retains them.
 C clients must link the SDK C++ closure because Mesa includes C++ compiler code.
+The release profile explicitly selects O2. Compiler optimization switches from
+the SDK are removed from cross-file C/C++ args so Meson owns the level; link
+flags and upstream floating-point policy are preserved. Target C is hosted,
+with libc/startup implementation exceptions supplied by the SDK.
 
 Copy `stage/manual/mesa-triangle.pxb` into an ordinary writable capability root
 and run it with a writable output path. It reports softpipe and writes a

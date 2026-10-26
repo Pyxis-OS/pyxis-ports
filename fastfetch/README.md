@@ -206,7 +206,8 @@ On 2026-10-07 the recipe built with Pyxis's LLVM toolchain:
 `fastfetch --structure OS:Kernel:CPU:Memory:Uptime` ran in an all-LLVM image
 (four-CPU nested KVM). Two recipe changes were needed:
 - **Patch 0002:** the Pyxis `main` now returns 0 explicitly. Under
-  `-ffreestanding`, Clang does not exempt `main` from `-Werror=return-type`.
+  the then-freestanding SDK, Clang did not exempt `main` from
+  `-Werror=return-type`. The explicit return remains valid with hosted C.
 - **The CMake link:** it names the SDK's runtime library
   (`PYXIS_RUNTIME_LIBRARY` from `pyxis.mk`) instead of `gcc`, and CMake no
   longer receives the SDK's `-MMD -MP`.
