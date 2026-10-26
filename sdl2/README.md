@@ -193,10 +193,9 @@ delegated handle is retained until process exit to keep concurrent video wait
 interests safe against handle-number reuse.
 
 Rumble, trigger effects, LEDs, sensors and opaque output effects are unsupported;
-capabilities are zero and backend effect calls fail explicitly. SDL core currently
-shortcuts repeated LED requests and already-zero rumble to success without
-calling the backend. Resolving that exception is a pending scope decision;
-no output is implemented. Player index is
+capabilities are zero and backend effect calls fail explicitly.
+SDL retains its upstream cached-LED and zero-rumble success shortcuts on every platform; real output requests reaching the Pyxis backend return Unsupported.
+Player index is
 SDL-local metadata, with no LED or persistent physical assignment. Generic HID,
 Bluetooth and other controller layouts are outside this profile. The
 [manual viewer](manual/gamepad/README.md) checks raw/mapped input and refusal
