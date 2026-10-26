@@ -34,17 +34,17 @@ offered to CMake, so screenshots are PCX.
      `DISABLE_SDL2MIXER` guard.
    - **IWAD search:** `pkg://doom` replaces the XDG and Steam
      directories.
-   - **Known libc gaps,** each worked around in the patch until libc provides
-     it:
-     - **`putenv`:** a configured video driver goes to SDL's
+   - **Libc adaptations:**
+     - **`putenv` remains unavailable:** a configured video driver goes to SDL's
        `SDL_HINT_VIDEODRIVER` instead of the environment, which only SDL reads
        anyway. The X screensaver embedding, which also sets the environment,
        is left out.
-     - **`localeconv`:** configuration floats always use the "C" locale's `.`.
-       This matches libc, which has only the "C" locale.
+     - **`localeconv`:** the historical workaround makes configuration floats
+       always use `.`. Libc now provides `localeconv` for its only locale, "C",
+       with the same decimal point.
      - **`EISDIR`:** when a name fails to open as a file, a `stat` reporting a
-       directory decides that it still exists. The answer is the same; it
-       costs one more lookup.
+       directory decides that it still exists. Libc now defines and reports
+       `EISDIR`; the retained workaround gives the same answer with one more lookup.
 3. **Software scaling.**
    - **Default:** `force_software_renderer` defaults to on: one
      nearest-neighbour stretch from 320x200 to the 4:3 area, because SDL's
