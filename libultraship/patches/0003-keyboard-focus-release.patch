@@ -20,15 +20,3 @@
                  }
              }
          }
---- a/src/ship/controller/controldevice/controller/mapping/factories/RumbleMappingFactory.cpp
-+++ b/src/ship/controller/controldevice/controller/mapping/factories/RumbleMappingFactory.cpp
-@@ -35,6 +35,9 @@
- 
- std::vector<std::shared_ptr<ControllerRumbleMapping>>
- RumbleMappingFactory::CreateDefaultSDLRumbleMappings(PhysicalDeviceType physicalDeviceType, uint8_t portIndex) {
-+    if (physicalDeviceType != PhysicalDeviceType::SDLGamepad) {
-+        return {};
-+    }
-     std::vector<std::shared_ptr<ControllerRumbleMapping>> mappings = { std::make_shared<SDLRumbleMapping>(
-         portIndex, DEFAULT_LOW_FREQUENCY_RUMBLE_PERCENTAGE, DEFAULT_HIGH_FREQUENCY_RUMBLE_PERCENTAGE) };
- 

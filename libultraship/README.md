@@ -21,34 +21,34 @@ the complete list. No dependencies are downloaded by CMake. `stage/dev` carries
 `libultraship.a`, matching headers/profile, `libultraship.pc` and
 `LibUltraShip::LibUltraShip`. Consumers must use the supplied target/module:
 its forced profile header is part of the compiled C++ layout. Public GUI texture
-headers carry the required stb include directory. Fonts added after renderer
-initialization rebuild the GL atlas before the next ImGui frame. Texture dispatch keeps explicit resolved-segment/resource ownership for low
+headers carry the required stb include directory. Upstream ImGui creates device/font objects lazily on the next frame. Texture dispatch keeps explicit resolved-segment/resource ownership for low
 heap addresses; its remaining image-membership fallback uses the SDK's
 `__pyxis_image_start/end` symbols, never a fake loader.
 
 ## Ownership and paths
 
-Explicit regular `.o2r`/`.zip` filenames are read-only. Folder archives, archive
-writes, legacy text-CVar conversion and arbitrary host path discovery are not
-in this profile. Native stdio/stat/mkdir implement paths; libc++ filesystem and
-fstream are not enabled. Defaults are `app://` resources and
-`home://<shortName>/` state/logs, with ordinary home authority, not isolation.
-Native JSON configuration publication requires file sync, checked close,
-replacement and parent-directory sync. Errors after replacement starts may
-already have published; no rollback is claimed. `ConsoleVariable::Save` returns
-the result; the void C bridge contains exceptions. Owner-thread-only sticky
-`Config` failure/uncertainty state survives Context destruction for application
-feedback and exit status; saving does not silently retry. Malformed JSON is
-reported and preserved.
+Explicit regular `.o2r`/`.zip` filenames use native paths. Folder archives,
+legacy text-CVar conversion and hosted path discovery are excluded because this
+build has no libc++ filesystem/fstream. `app://` bundles open ZIP read-only;
+other archive paths retain upstream open/write behavior and ordinary grants.
+Defaults are `app://` resources and `home://<shortName>/` state/logs, with
+ordinary home authority, not isolation. Log filenames retain the full application
+name.
 
-The application owner stops and joins its audio producer before changing the
-backend/channels or destroying Context. Fixed stereo is the qualified profile.
-A requested SDL backend failure is visible; it never silently selects Null.
-Destroy Context from its owner, not a resource worker, with no concurrent new
-API calls. Shutdown rejects new resource submissions, drains and joins its
-resource pool while archives/renderers are alive, then releases GUI/GL/SDL/audio
-and the owned logger worker. Release external GUI/resource owners before Context.
-No global logger pool is installed. Partial initialization unwinds the same way.
+Native JSON configuration publication requires file sync, checked close,
+replacement and parent-directory sync. Failure after replacement starts may
+already have published; no rollback/replay is claimed. `Config::Save` and
+`ConsoleVariable::Save` return the native result. Owner-thread
+`SaveWasUncertain`/`GetLastSaveError` describe the latest attempt, reset by the
+next save; failure is logged once and does not impose a sticky process exit
+status. Malformed JSON retains upstream parse-error behavior.
+
+Audio fallback, queue handling, shared logging and Context lifecycle retain
+upstream behavior. Applications that continue teardown must stop their own audio
+producer before destroying its backend. Native relative capture, physical output
+size and unsupported window/vsync operations use the SDL backend. Resource
+workers use a minimal direct-load path for nested synchronous work, avoiding a
+one-worker pool waiting on itself.
 
 ## Controller input
 
@@ -61,7 +61,7 @@ Fresh port-1 configurations receive upstream keyboard, mouse and SDL defaults.
 Existing configured ports reload their mappings without automatic migration or
 erasure. Application settings UIs may add SDL defaults explicitly while keeping
 keyboard mappings. Gamepad menu navigation follows the existing setting and
-menu/popup state; native keyboard navigation remains enabled. ImGui selects the
+menu/popup state; keyboard navigation retains the upstream default. ImGui selects the
 normal AutoAll controller mode for this LUS application, without changing the
 shared ImGui default. LED/rumble/sensor output remains unsupported by the Pyxis
 SDL backend; no game-specific output implementation is added.
@@ -73,8 +73,8 @@ an uncached bulk load with one worker, refuses missing resources and read-only
 writes, and checks a real FBO/depth readback. Its UI runs the pinned Fast3D
 interpreter and ImGui together at the real output size, 1:1, MSAA off/interval0.
 Keyboard/pointer/resize use SDL; Escape exits. Keyboard release/reset visits
-every binding, including both stick axes; keyboard defaults do not create SDL
-rumble mappings. A real SDL queued-audio producer
+every binding, including both stick axes; other controller factories retain
+upstream behavior. A real SDL queued-audio producer
 submits silence (a lifecycle check, not an audibility check), then joins before
 Context teardown. No launcher or network authority is requested. This optional
 package is outside the boot archive and does not qualify the private game.
