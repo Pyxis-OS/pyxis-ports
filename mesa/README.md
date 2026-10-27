@@ -3,14 +3,16 @@
 Build Mesa 26.2.5 with the restored 25.0.7 OSMesa context/render frontend:
 
 ```sh
-lua build.lua mesa --sdk /absolute/path/to/pyxis/build/sdk --work /absolute/path/to/mesa-work \
-  --llvm-development /absolute/path/to/llvm-development-prefix
+lua build.lua mesa --sdk /absolute/path/to/pyxis/build/sdk --work /absolute/path/to/mesa-work
 ```
 
 The host needs Meson 1.4+, Ninja, Python Mako/PyYAML/packaging, flex, bison,
 pkg-config and the matching SDK compiler. Only the pinned mirror is downloaded.
-The explicit LLVM development prefix comes from Pyxis's pinned
-`toolchain/build-llvm-development.sh`; it is separate from the installed compiler.
+The compiler container supplies target LLVM libraries from the same fork pin as
+the compiler. The runner discovers their prefix through the matching
+`x86_64-unknown-pyxis-llvm-config` (or `--cross-prefix` equivalent). An older
+container without that tool refuses before downloading or building Mesa. Ordinary
+image/port builds do not build LLVM.
 Mesa selects static LLVM MCJIT. The recipe embeds the selected LLVM dependency
 archives in `libOSMesa.a`, preserving its single-archive link interface, and
 stages the prefix's full notices/provenance plus the selected archive hashes.
