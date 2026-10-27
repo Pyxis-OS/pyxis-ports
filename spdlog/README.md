@@ -19,18 +19,11 @@ Keep matching headers and archive together. Do not mix bundled fmt headers or
 symbols with another fmt version in one program.
 
 The native patch rejects `%P` when a pattern is configured, with a clear
-`spdlog_ex`; it exports no process-ID accessor. Clock reads use libc's real
-realtime clock and throw on failure. Calendar conversions check libc's result
-and throw on invalid TZ, unavailable zone files or an unrepresentable calendar.
-Convenience calendar calls use the checked clock, preserving valid pre-epoch
-timestamps. There is no invented PID, epoch or fallback date. The native
-default error handler writes a timestamp-free stderr message, without querying
-the failed clock or calendar again. Formatted and raw string-view logging both
-route admission failures through spdlog's error handler, preserving source
-location. Direct `details::os` calls still propagate `spdlog_ex` to callers.
-Set a custom error handler when the application needs explicit error accounting.
-Exceptions thrown by that handler retain the caller's policy. The overload
-accepting an explicit timestamp does not acquire a current timestamp.
+`spdlog_ex`; it exports no process-ID accessor. Clock, calendar conversion,
+exception specifications and the default error handler retain upstream behavior.
+Current timestamps use the SDK's real `std::chrono::system_clock` backend;
+calendar conversion uses libc. The explicit-timestamp overload does not acquire
+current time.
 
 Recursive log-directory creation preserves complete native `name://` roots,
 including a filename directly under a root. FILE access, stat, mkdir, rename,

@@ -34,7 +34,7 @@ return function(ctx)
     assert(provenance:write("patch=" .. patch .. "\n"))
   end
   assert(provenance:write("profile=static bundled fmt; native threads/TLS, exceptions, stdout/color, basic/rotating file, async logging\n",
-    "native=checked libc clock/calendar; timestamp-free error reporter; name:// directory roots\n",
+    "native=name:// directory roots; libc tm_gmtoff UTC offset; upstream clock/calendar/error handler\n",
     "unsupported=%P process-ID pattern (configuration throws); no PID accessor\n",
     "omitted=external fmt, shared library, examples, benchmarks, upstream tests\n"))
   assert(provenance:close())

@@ -1,104 +1,8 @@
 diff --git a/include/spdlog/details/os-inl.h b/include/spdlog/details/os-inl.h
-index edbbd5c..e315305 100644
+index edbbd5c..9a57376 100644
 --- a/include/spdlog/details/os-inl.h
 +++ b/include/spdlog/details/os-inl.h
-@@ -72,8 +72,32 @@ namespace spdlog {
- namespace details {
- namespace os {
- 
--SPDLOG_INLINE spdlog::log_clock::time_point now() SPDLOG_NOEXCEPT {
--#if defined __linux__ && defined SPDLOG_CLOCK_COARSE
-+SPDLOG_INLINE spdlog::log_clock::time_point now() SPDLOG_OS_TIME_NOEXCEPT {
-+#if defined(__pyxis__)
-+    timespec ts;
-+    if (::clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-+        throw_spdlog_ex("Failed reading realtime clock", errno);
-+    }
-+    using duration = spdlog::log_clock::duration;
-+    using seconds = std::chrono::seconds;
-+    auto whole_seconds = ts.tv_sec;
-+    auto fraction = std::chrono::duration_cast<duration>(std::chrono::nanoseconds(ts.tv_nsec));
-+    // Convert negative fractional times without first overflowing the whole second.
-+    if (whole_seconds < 0 && fraction.count() != 0) {
-+        ++whole_seconds;
-+        fraction -= std::chrono::duration_cast<duration>(seconds(1));
-+    }
-+    if (whole_seconds < std::chrono::duration_cast<seconds>(duration::min()).count() ||
-+        whole_seconds > std::chrono::duration_cast<seconds>(duration::max()).count()) {
-+        throw_spdlog_ex("Realtime clock is outside the logging clock range", EOVERFLOW);
-+    }
-+    auto integral = std::chrono::duration_cast<duration>(seconds(whole_seconds));
-+    if ((fraction.count() > 0 && integral > duration::max() - fraction) ||
-+        (fraction.count() < 0 && integral < duration::min() - fraction)) {
-+        throw_spdlog_ex("Realtime clock is outside the logging clock range", EOVERFLOW);
-+    }
-+    return spdlog::log_clock::time_point(integral + fraction);
-+#elif defined __linux__ && defined SPDLOG_CLOCK_COARSE
-     timespec ts;
-     ::clock_gettime(CLOCK_REALTIME_COARSE, &ts);
-     return std::chrono::time_point<log_clock, typename log_clock::duration>(
-@@ -84,36 +108,56 @@ SPDLOG_INLINE spdlog::log_clock::time_point now() SPDLOG_NOEXCEPT {
-     return log_clock::now();
- #endif
- }
--SPDLOG_INLINE std::tm localtime(const std::time_t &time_tt) SPDLOG_NOEXCEPT {
-+SPDLOG_INLINE std::tm localtime(const std::time_t &time_tt) SPDLOG_OS_TIME_NOEXCEPT {
- #ifdef _WIN32
-     std::tm tm;
-     ::localtime_s(&tm, &time_tt);
- #else
-     std::tm tm;
-+    #ifdef __pyxis__
-+    if (::localtime_r(&time_tt, &tm) == nullptr) {
-+        throw_spdlog_ex("Failed converting local calendar time", errno);
-+    }
-+    #else
-     ::localtime_r(&time_tt, &tm);
-+    #endif
- #endif
-     return tm;
- }
- 
--SPDLOG_INLINE std::tm localtime() SPDLOG_NOEXCEPT {
-+SPDLOG_INLINE std::tm localtime() SPDLOG_OS_TIME_NOEXCEPT {
-+#ifdef __pyxis__
-+    return localtime(log_clock::to_time_t(now()));
-+#else
-     std::time_t now_t = ::time(nullptr);
-     return localtime(now_t);
-+#endif
- }
- 
--SPDLOG_INLINE std::tm gmtime(const std::time_t &time_tt) SPDLOG_NOEXCEPT {
-+SPDLOG_INLINE std::tm gmtime(const std::time_t &time_tt) SPDLOG_OS_TIME_NOEXCEPT {
- #ifdef _WIN32
-     std::tm tm;
-     ::gmtime_s(&tm, &time_tt);
- #else
-     std::tm tm;
-+    #ifdef __pyxis__
-+    if (::gmtime_r(&time_tt, &tm) == nullptr) {
-+        throw_spdlog_ex("Failed converting UTC calendar time", errno);
-+    }
-+    #else
-     ::gmtime_r(&time_tt, &tm);
-+    #endif
- #endif
-     return tm;
- }
- 
--SPDLOG_INLINE std::tm gmtime() SPDLOG_NOEXCEPT {
-+SPDLOG_INLINE std::tm gmtime() SPDLOG_OS_TIME_NOEXCEPT {
-+#ifdef __pyxis__
-+    return gmtime(log_clock::to_time_t(now()));
-+#else
-     std::time_t now_t = ::time(nullptr);
-     return gmtime(now_t);
-+#endif
- }
- 
- // fopen_s on non windows for writing
-@@ -262,6 +306,8 @@ SPDLOG_INLINE int utc_minutes_offset(const std::tm &tm) {
+@@ -262,6 +262,8 @@ SPDLOG_INLINE int utc_minutes_offset(const std::tm &tm) {
          offset -= tzinfo.StandardBias;
      }
      return offset;
@@ -107,7 +11,7 @@ index edbbd5c..e315305 100644
  #else
  
      #if defined(sun) || defined(__sun) || defined(_AIX) ||                        \
-@@ -388,6 +434,7 @@ SPDLOG_INLINE std::string filename_to_str(const filename_t &filename) {
+@@ -388,6 +390,7 @@ SPDLOG_INLINE std::string filename_to_str(const filename_t &filename) {
  SPDLOG_INLINE std::string filename_to_str(const filename_t &filename) { return filename; }
  #endif
  
@@ -115,7 +19,7 @@ index edbbd5c..e315305 100644
  SPDLOG_INLINE int pid() SPDLOG_NOEXCEPT {
  #ifdef _WIN32
      return conditional_static_cast<int>(::GetCurrentProcessId());
-@@ -395,6 +442,7 @@ SPDLOG_INLINE int pid() SPDLOG_NOEXCEPT {
+@@ -395,6 +398,7 @@ SPDLOG_INLINE int pid() SPDLOG_NOEXCEPT {
      return conditional_static_cast<int>(::getpid());
  #endif
  }
@@ -123,7 +27,7 @@ index edbbd5c..e315305 100644
  
  // Determine if the terminal supports colors
  // Based on: https://github.com/agauniyal/rang/
-@@ -513,6 +561,16 @@ static SPDLOG_INLINE bool mkdir_(const filename_t &path) {
+@@ -513,6 +517,16 @@ static SPDLOG_INLINE bool mkdir_(const filename_t &path) {
  #endif
  }
  
@@ -140,7 +44,7 @@ index edbbd5c..e315305 100644
  // create the given directory - and all directories leading to it
  // return true on success or if the directory already exists
  SPDLOG_INLINE bool create_dir(const filename_t &path) {
-@@ -525,6 +583,9 @@ SPDLOG_INLINE bool create_dir(const filename_t &path) {
+@@ -525,6 +539,9 @@ SPDLOG_INLINE bool create_dir(const filename_t &path) {
      }
  
      size_t search_offset = 0;
@@ -150,7 +54,7 @@ index edbbd5c..e315305 100644
      do {
          auto token_pos = path.find_first_of(folder_seps_filename, search_offset);
          // treat the entire path as a folder if no folder separator not found
-@@ -559,6 +620,12 @@ SPDLOG_INLINE bool create_dir(const filename_t &path) {
+@@ -559,6 +576,12 @@ SPDLOG_INLINE bool create_dir(const filename_t &path) {
  // "abc///" => "abc//"
  SPDLOG_INLINE filename_t dir_name(const filename_t &path) {
      auto pos = path.find_last_of(folder_seps_filename);
@@ -164,38 +68,10 @@ index edbbd5c..e315305 100644
  }
  
 diff --git a/include/spdlog/details/os.h b/include/spdlog/details/os.h
-index 5fd12ba..4d7b761 100644
+index 5fd12ba..777d26e 100644
 --- a/include/spdlog/details/os.h
 +++ b/include/spdlog/details/os.h
-@@ -10,15 +10,22 @@ namespace spdlog {
- namespace details {
- namespace os {
- 
--SPDLOG_API spdlog::log_clock::time_point now() SPDLOG_NOEXCEPT;
-+// Native clock/calendar failures must remain reportable to logging callers.
-+#ifdef __pyxis__
-+    #define SPDLOG_OS_TIME_NOEXCEPT
-+#else
-+    #define SPDLOG_OS_TIME_NOEXCEPT SPDLOG_NOEXCEPT
-+#endif
-+
-+SPDLOG_API spdlog::log_clock::time_point now() SPDLOG_OS_TIME_NOEXCEPT;
- 
--SPDLOG_API std::tm localtime(const std::time_t &time_tt) SPDLOG_NOEXCEPT;
-+SPDLOG_API std::tm localtime(const std::time_t &time_tt) SPDLOG_OS_TIME_NOEXCEPT;
- 
--SPDLOG_API std::tm localtime() SPDLOG_NOEXCEPT;
-+SPDLOG_API std::tm localtime() SPDLOG_OS_TIME_NOEXCEPT;
- 
--SPDLOG_API std::tm gmtime(const std::time_t &time_tt) SPDLOG_NOEXCEPT;
-+SPDLOG_API std::tm gmtime(const std::time_t &time_tt) SPDLOG_OS_TIME_NOEXCEPT;
- 
--SPDLOG_API std::tm gmtime() SPDLOG_NOEXCEPT;
-+SPDLOG_API std::tm gmtime() SPDLOG_OS_TIME_NOEXCEPT;
- 
- // eol definition
- #if !defined(SPDLOG_EOL)
-@@ -79,7 +86,9 @@ SPDLOG_API void sleep_for_millis(unsigned int milliseconds) SPDLOG_NOEXCEPT;
+@@ -79,7 +79,9 @@ SPDLOG_API void sleep_for_millis(unsigned int milliseconds) SPDLOG_NOEXCEPT;
  
  SPDLOG_API std::string filename_to_str(const filename_t &filename);
  
@@ -205,55 +81,6 @@ index 5fd12ba..4d7b761 100644
  
  // Determine if the terminal supports colors
  // Source: https://github.com/agauniyal/rang/
-diff --git a/include/spdlog/logger-inl.h b/include/spdlog/logger-inl.h
-index 6879273..9d0f96f 100644
---- a/include/spdlog/logger-inl.h
-+++ b/include/spdlog/logger-inl.h
-@@ -172,6 +172,14 @@ SPDLOG_INLINE void logger::err_handler_(const std::string &msg) const {
-     if (custom_err_handler_) {
-         custom_err_handler_(msg);
-     } else {
-+#ifdef __pyxis__
-+        // Clock/calendar failure can reach this path; do not query either again.
-+        static std::mutex mutex;
-+        static size_t err_counter = 0;
-+        std::lock_guard<std::mutex> lk{mutex};
-+        std::fprintf(stderr, "[*** LOG ERROR #%04zu ***] [%s] %s\n", ++err_counter,
-+                     name().c_str(), msg.c_str());
-+#else
-         using std::chrono::system_clock;
-         static std::mutex mutex;
-         static std::chrono::system_clock::time_point last_report_time;
-@@ -192,6 +200,7 @@ SPDLOG_INLINE void logger::err_handler_(const std::string &msg) const {
- #else
-         std::fprintf(stderr, "[*** LOG ERROR #%04zu ***] [%s] [%s] %s\n", err_counter, date_buf,
-                      name().c_str(), msg.c_str());
-+#endif
- #endif
-     }
- }
-diff --git a/include/spdlog/logger.h b/include/spdlog/logger.h
-index 8c3cd91..f8845a7 100644
---- a/include/spdlog/logger.h
-+++ b/include/spdlog/logger.h
-@@ -119,8 +119,15 @@ public:
-             return;
-         }
- 
--        details::log_msg log_msg(loc, name_, lvl, msg);
--        log_it_(log_msg, log_enabled, traceback_enabled);
-+#ifdef __pyxis__
-+        SPDLOG_TRY {
-+#endif
-+            details::log_msg log_msg(loc, name_, lvl, msg);
-+            log_it_(log_msg, log_enabled, traceback_enabled);
-+#ifdef __pyxis__
-+        }
-+        SPDLOG_LOGGER_CATCH(loc)
-+#endif
-     }
- 
-     void log(level::level_enum lvl, string_view_t msg) { log(source_loc{}, lvl, msg); }
 diff --git a/include/spdlog/pattern_formatter-inl.h b/include/spdlog/pattern_formatter-inl.h
 index fd408ed..9e023de 100644
 --- a/include/spdlog/pattern_formatter-inl.h

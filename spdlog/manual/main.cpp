@@ -11,47 +11,13 @@
 #include <cstdio>
 #include <string>
 
-static int clock_errors()
-{
-    spdlog::logger logger("clock-errors");
-    int handled = 0;
-    bool raw_location = false;
-    logger.set_error_handler([&](const std::string &message) {
-        ++handled;
-        if (handled == 1) {
-            raw_location = message.find("clock-routing(1)") != std::string::npos;
-        }
-        std::printf("handler %d: %s\n", handled, message.c_str());
-    });
-    logger.log(spdlog::source_loc{"clock-routing", 1, "clock_errors"},
-               spdlog::level::info, spdlog::string_view_t{"raw message"});
-    logger.info("formatted message {}", 1);
-    bool direct_threw = false;
-    try {
-        (void)spdlog::details::os::now();
-    } catch (const spdlog::spdlog_ex &error) {
-        direct_threw = true;
-        std::printf("direct clock failure: %s\n", error.what());
-    }
-    // This timestamp is caller-authored; this overload needs no current clock.
-    logger.log(spdlog::log_clock::time_point{std::chrono::seconds{946684800}},
-               spdlog::source_loc{}, spdlog::level::info,
-               spdlog::string_view_t{"explicit timestamp"});
-    std::printf("missing-clock routing: handled=%d raw-location=%d direct-threw=%d\n",
-                handled, raw_location, direct_threw);
-    return handled == 2 && raw_location && direct_threw ? 0 : 1;
-}
-
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        std::fprintf(stderr, "usage: spdlog-manual LOG_DIRECTORY|--clock-errors\n");
+        std::fprintf(stderr, "usage: spdlog-manual LOG_DIRECTORY\n");
         return 2;
     }
     try {
-        if (std::string(argv[1]) == "--clock-errors") {
-            return clock_errors();
-        }
         try {
             spdlog::pattern_formatter unsupported("%P");
             std::fprintf(stderr, "process-ID pattern was unexpectedly accepted\n");
