@@ -27,15 +27,16 @@ heap addresses; its remaining image-membership fallback uses the SDK's
 
 ## Ownership and paths
 
-Explicit regular `.o2r`/`.zip` filenames use native paths. Folder archives,
-legacy text-CVar conversion and hosted path discovery are excluded because this
-build has no libc++ filesystem/fstream. `app://` bundles open ZIP read-only;
+Explicit regular `.o2r`/`.zip` filenames use native `std::filesystem` paths.
+Folder archives, legacy text-CVar conversion and hosted path discovery remain
+outside this selected profile. `app://` bundles open ZIP read-only;
 other archive paths retain upstream open/write behavior and ordinary grants.
 Defaults are `app://` resources and `home://<shortName>/` state/logs, with
 ordinary home authority, not isolation. Log filenames retain the full application
 name.
 
-Native JSON configuration publication requires file sync, checked close,
+Configuration reload uses `std::ifstream` and native `std::filesystem` metadata.
+Native JSON configuration publication still requires file sync, checked close,
 replacement and parent-directory sync. Failure after replacement starts may
 already have published; no rollback/replay is claimed. `Config::Save` and
 `ConsoleVariable::Save` return the native result. Owner-thread

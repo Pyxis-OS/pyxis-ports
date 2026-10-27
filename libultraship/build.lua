@@ -9,7 +9,6 @@ return function(ctx)
   end
   ctx.run({ "mkdir", "-p", ctx.stage .. "/dev/include", ctx.stage .. "/dev/share/sources" })
   ctx.run({ "cp", "-R", ctx.source .. "/include/.", ctx.stage .. "/dev/include/" })
-  install(ctx.recipe .. "/native/include/ship/NativePaths.h", "dev/include/ship/NativePaths.h")
   install(ctx.build .. "/pyxis_profile.h", ctx.metadata.outputs.profile)
   install(ctx.build .. "/upstream/libultraship.a", ctx.metadata.outputs.library)
   install(ctx.recipe .. "/libultraship.pc", ctx.metadata.outputs.pc)

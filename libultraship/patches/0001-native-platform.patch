@@ -424,12 +424,12 @@ index bf0e76e..c25ab96 100644
  #include <memory>
  
 diff --git a/src/ship/Context.cpp b/src/ship/Context.cpp
-index 28a211f..03a69d9 100644
+index 28a211f..bf4a7f2 100644
 --- a/src/ship/Context.cpp
 +++ b/src/ship/Context.cpp
 @@ -1,4 +1,5 @@
  #include "ship/Context.h"
-+#include "ship/NativePaths.h"
++#include <filesystem>
  #include "ship/controller/controldevice/controller/mapping/keyboard/KeyboardScancodes.h"
  #include <cstring>
  #include <iostream>
@@ -437,7 +437,7 @@ index 28a211f..03a69d9 100644
          sinks.push_back(systemConsoleSink);
  #endif
  
-+        Native::MakeDirectory(GetPathRelativeToAppDirectory("logs"));
++        std::filesystem::create_directories(GetPathRelativeToAppDirectory("logs"));
          auto logPath = GetPathRelativeToAppDirectory(("logs/" + GetName() + ".log"));
          auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 10, 10);
          sinks.push_back(fileSink);
@@ -460,7 +460,7 @@ index 28a211f..03a69d9 100644
      return true;
  }
  
-@@ -481,122 +473,22 @@ std::string Context::GetShortName() const {
+@@ -481,118 +473,18 @@ std::string Context::GetShortName() const {
  }
  
  std::string Context::GetAppBundlePath() {
@@ -575,33 +575,28 @@ index 28a211f..03a69d9 100644
 -    return ".";
 +    const auto name = appName.empty() ? GetRawInstance()->GetShortName() : appName;
 +    auto path = std::string("home://") + name;
-+    Native::MakeDirectory(path);
++    std::filesystem::create_directories(path);
 +    return path;
  }
  
  std::string Context::GetPathRelativeToAppBundle(const std::string& path) {
 -    return GetAppBundlePath() + "/" + path;
-+    return Native::Join(GetAppBundlePath(), path);
++    return GetAppBundlePath() + path;
  }
  
  std::string Context::GetPathRelativeToAppDirectory(const std::string& path, const std::string& appName) {
--    return GetAppDirectoryPath(appName) + "/" + path;
-+    return Native::Join(GetAppDirectoryPath(appName), path);
- }
- 
- std::string Context::LocateFileAcrossAppDirs(const std::string& path, const std::string& appName) {
 @@ -604,16 +496,16 @@ std::string Context::LocateFileAcrossAppDirs(const std::string& path, const std:
  
      // app configuration dir
      fpath = GetPathRelativeToAppDirectory(path, appName);
 -    if (std::filesystem::exists(fpath)) {
-+    if (Native::IsFile(fpath)) {
++    if (std::filesystem::is_regular_file(fpath)) {
          return fpath;
      }
      // app install dir
      fpath = GetPathRelativeToAppBundle(path);
 -    if (std::filesystem::exists(fpath)) {
-+    if (Native::IsFile(fpath)) {
++    if (std::filesystem::is_regular_file(fpath)) {
          return fpath;
      }
      // current dir
@@ -611,19 +606,21 @@ index 28a211f..03a69d9 100644
  
  } // namespace Ship
 diff --git a/src/ship/config/Config.cpp b/src/ship/config/Config.cpp
-index 03f17a1..db7af35 100644
+index 03f17a1..ea5f9e2 100644
 --- a/src/ship/config/Config.cpp
 +++ b/src/ship/config/Config.cpp
-@@ -1,17 +1,111 @@
+@@ -1,8 +1,21 @@
  #include "ship/config/Config.h"
  
 -#include <fstream>
  #include <string>
++#include <fstream>
+ #include <filesystem>
 +#ifdef __pyxis__
-+#include "ship/NativePaths.h"
 +#include <cerrno>
 +#include <cstdio>
 +#include <memory>
++#include <sstream>
 +#include <system_error>
 +#include <unistd.h>
 +extern "C" {
@@ -631,19 +628,12 @@ index 03f17a1..db7af35 100644
 +#include <handle.h>
 +#include <path.h>
 +}
-+#else
-+#include <fstream>
- #include <filesystem>
 +#endif
  #include <unordered_map>
  #include <any>
  #include <spdlog/spdlog.h>
- #include "ship/utils/StringHelper.h"
- #include "ship/Context.h"
- 
-+#ifndef __pyxis__
+@@ -12,6 +25,77 @@
  namespace fs = std::filesystem;
-+#endif
  
  namespace Ship {
 +#ifdef __pyxis__
@@ -657,15 +647,8 @@ index 03f17a1..db7af35 100644
 +}
 +
 +std::string ConfigParent(const std::string& path) {
-+    const auto slash = path.find_last_of('/');
-+    if (slash == std::string::npos) {
-+        return ".";
-+    }
-+    const auto scheme = path.find("://");
-+    if (scheme != std::string::npos && slash < scheme + 3) {
-+        return path.substr(0, scheme + 3);
-+    }
-+    return slash == 0 ? "/" : path.substr(0, slash);
++    const auto parent = fs::path(path).parent_path().string();
++    return parent.empty() ? "." : parent;
 +}
 +
 +struct ConfigDirectoryOwner {
@@ -727,34 +710,31 @@ index 03f17a1..db7af35 100644
  Config::Config(std::string path) : mPath(std::move(path)), mIsNewInstance(false) {
      Reload();
  }
-@@ -193,6 +287,76 @@ void Config::Copy(const std::string& fromKey, const std::string& toKey) {
+@@ -193,6 +277,73 @@ void Config::Copy(const std::string& fromKey, const std::string& toKey) {
      }
  }
  
 +#ifdef __pyxis__
 +void Config::Reload() {
-+    if (mPath == "None" || !Native::IsFile(mPath)) {
++    if (mPath == "None" || !fs::is_regular_file(mPath)) {
 +        mIsNewInstance = true;
 +        mFlattenedJson = nlohmann::json::object();
 +        return;
 +    }
-+    std::unique_ptr<FILE, decltype(&fclose)> file(fopen(mPath.c_str(), "rb"), fclose);
-+    if (!file) {
++    std::ifstream file(mPath, std::ios::binary);
++    if (!file.is_open()) {
 +        throw std::system_error(errno, std::generic_category(), "cannot read config " + mPath);
 +    }
-+    std::string contents;
-+    char buffer[4096];
-+    while (const auto count = fread(buffer, 1, sizeof(buffer), file.get())) {
-+        contents.append(buffer, count);
-+    }
-+    if (ferror(file.get())) {
-+        throw std::system_error(errno, std::generic_category(), "config read failed " + mPath);
++    std::ostringstream contents;
++    contents << file.rdbuf();
++    if (file.bad() || contents.bad()) {
++        throw std::system_error(EIO, std::generic_category(), "config read failed " + mPath);
 +    }
 +
 +    mNestedJson = nlohmann::json::object();
 +    mFlattenedJson = nlohmann::json::object();
 +    try {
-+        mNestedJson = nlohmann::json::parse(contents);
++        mNestedJson = nlohmann::json::parse(contents.str());
 +        mFlattenedJson = mNestedJson.flatten();
 +    } catch (const nlohmann::json::exception& e) {
 +        SPDLOG_ERROR("Failed to parse config file {}: {}", mPath, e.what());
@@ -804,7 +784,7 @@ index 03f17a1..db7af35 100644
  void Config::Reload() {
      if (mPath == "None" || !fs::exists(mPath) || !fs::is_regular_file(mPath)) {
          mIsNewInstance = true;
-@@ -239,6 +403,8 @@ void Config::Save() {
+@@ -239,6 +390,8 @@ void Config::Save() {
      }
  }
  
@@ -892,17 +872,9 @@ index c62ee72..5fad91b 100644
          SPDLOG_TRACE("Failed to load resource file at path {}", identifier.Path);
      }
 diff --git a/src/ship/resource/archive/ArchiveManager.cpp b/src/ship/resource/archive/ArchiveManager.cpp
-index 463ae99..d131cff 100644
+index 463ae99..a57864d 100644
 --- a/src/ship/resource/archive/ArchiveManager.cpp
 +++ b/src/ship/resource/archive/ArchiveManager.cpp
-@@ -1,6 +1,6 @@
- #include "ship/resource/archive/ArchiveManager.h"
- 
--#include <filesystem>
-+#include "ship/NativePaths.h"
- #include "spdlog/spdlog.h"
- 
- #include "ship/resource/archive/Archive.h"
 @@ -8,7 +8,6 @@
  #include "ship/resource/archive/OtrArchive.h"
  #endif
@@ -938,7 +910,7 @@ index 463ae99..d131cff 100644
 -            }
 -        } else {
 -            SPDLOG_WARN("No archive path supplied");
-+        if (archivePath.empty() || !Native::IsFile(archivePath)) {
++        if (archivePath.empty() || !std::filesystem::is_regular_file(archivePath)) {
 +            SPDLOG_WARN("The archive at path {} does not exist", archivePath);
 +            continue;
          }
@@ -951,7 +923,7 @@ index 463ae99..d131cff 100644
  std::shared_ptr<Archive> ArchiveManager::AddArchive(const std::string& archivePath) {
 -    const std::filesystem::path path = archivePath;
 -    const std::string extension = path.extension().string();
-+    const std::string extension = Native::Extension(archivePath);
++    const std::string extension = std::filesystem::path(archivePath).extension().string();
      std::shared_ptr<Archive> archive = nullptr;
  
 -    SPDLOG_INFO("Reading archive: {}", path.string());

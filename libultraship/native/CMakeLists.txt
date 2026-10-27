@@ -45,7 +45,7 @@ add_subdirectory("${SOURCE}/src" upstream)
 get_target_property(_sources libultraship SOURCES)
 list(FILTER _sources EXCLUDE REGEX "(/FolderArchive\\.cpp|/FileBrowserWindow\\.cpp)$")
 set_property(TARGET libultraship PROPERTY SOURCES "${_sources}")
-target_sources(libultraship PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Paths.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/Stb.c")
+target_sources(libultraship PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Stb.c")
 target_include_directories(libultraship PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/include" "${THREAD_POOL_INCLUDE}" "${DR_LIBS_INCLUDE}" "${STB_INCLUDE}" "${IMGUI_BACKENDS_INCLUDE}")
 target_compile_options(libultraship PRIVATE -ffunction-sections -fdata-sections)

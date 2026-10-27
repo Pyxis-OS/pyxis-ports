@@ -12,7 +12,6 @@
 #include <imgui.h>
 #include "libultraship/libultraship.h"
 #include "ship/Context.h"
-#include "ship/NativePaths.h"
 #include "ship/window/MouseStateManager.h"
 #include "ship/config/Config.h"
 #include "ship/controller/controldeck/ControlDeck.h"
