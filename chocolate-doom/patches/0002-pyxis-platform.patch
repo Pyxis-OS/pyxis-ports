@@ -131,47 +131,6 @@ index 6ff3b80..01b5cd5 100644
  
      SetSDLVideoDriver();
  
-diff --git a/src/m_config.c b/src/m_config.c
-index e1a0260..10fd4f7 100644
---- a/src/m_config.c
-+++ b/src/m_config.c
-@@ -2288,11 +2288,17 @@ static void SetVariable(default_t *def, const char *value)
-             // mitigate this, we replace the first non-digit,
-             // non-minus character in the string with the current
-             // locale's decimal separator before passing it to atof().
-+#ifdef __pyxis__
-+            // Pyxis's libc has only the "C" locale, and no localeconv.
-+            char dec = '.', *str;
-+            int i = 0;
-+#else
-             struct lconv *lc = localeconv();
-             char dec, *str;
-             int i = 0;
- 
-             dec = lc->decimal_point[0];
-+#endif
-             str = M_StringDuplicate(value);
- 
-             // Skip sign indicators.
-diff --git a/src/m_misc.c b/src/m_misc.c
-index daa58ff..8b5770c 100644
---- a/src/m_misc.c
-+++ b/src/m_misc.c
-@@ -339,7 +339,14 @@ boolean M_FileExists(const char *filename)
-         // If we can't open because the file is a directory, the 
-         // "file" exists at least!
- 
-+#ifdef __pyxis__
-+        // Pyxis reports no EISDIR; ask whether a directory is there.
-+        struct stat st;
-+
-+        return stat(filename, &st) == 0 && S_ISDIR(st.st_mode);
-+#else
-         return errno == EISDIR;
-+#endif
-     }
- }
- 
 diff --git a/textscreen/txt_fileselect.c b/textscreen/txt_fileselect.c
 index 08c0c8f..ca349f9 100644
 --- a/textscreen/txt_fileselect.c
