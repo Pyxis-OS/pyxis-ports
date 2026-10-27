@@ -20,7 +20,7 @@ use fork, POSIX signal handlers or BSD sockets. Networking is unavailable;
 engine loopback remains. SDL2 supplies native input, video, sound and timers.
 The ordinary upstream r_mode default selects the desktop resolution.
 
-SDL2, its native MPL-2.0 backend, Mesa softpipe and the SDK's C++ runtime are
+SDL2, its native MPL-2.0 backend, Mesa's softpipe/llvmpipe profile, LLVM and the SDK's C++ runtime are
 statically linked. Their complete license/notice directories accompany the
 bundle. Covered SDL backend sources and the engine's native adapters are kept
 under share/sources. No Quake 3, Team Arena or OpenArena assets are included.
