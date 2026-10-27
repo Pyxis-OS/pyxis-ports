@@ -26,6 +26,6 @@ return function(ctx)
     "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
     "commit=" .. ctx.metadata.source.commit .. "\n",
     "version=" .. ctx.metadata.version .. "\npatch=0001-pyxis-terminal-and-file-saves.patch\n",
-    "profile=native ncursesw, raw input and KEY_RESIZE, checked file saves\n"))
+    "profile=native ncursesw, raw input and KEY_RESIZE, upstream file saves\n"))
   assert(provenance:close())
 end

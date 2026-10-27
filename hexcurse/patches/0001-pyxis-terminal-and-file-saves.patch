@@ -1,16 +1,16 @@
+diff --git a/include/hex.h b/include/hex.h
+index 57845c0..4f33d99 100644
 --- a/include/hex.h
 +++ b/include/hex.h
-@@ -22,7 +22,8 @@
+@@ -22,7 +22,6 @@
  #include <limits.h>
  #include <stdio.h>				/* general includes           */
  #include <stdlib.h>				/* standard library           */
 -#include <signal.h>				/* unix signals               */
-+#include <sys/stat.h>
-+#include <pyxis/resource.h>
  #include <string.h>				/* string processing          */
  #include <strings.h>				/* string processing          */
  #include <unistd.h>				/* unix std routines          */
-@@ -85,6 +86,7 @@
+@@ -85,6 +84,7 @@ extern char *fpINfilename, *fpOUTfilename;      /* global file ptrs           */
  extern int  MAXY;				/* external globals           */
  extern WINS *windows;                           /* struct that stores windows */
  extern hexList *head;				/* head for linked list       */
@@ -18,16 +18,7 @@
  extern int  BASE;                               /* the base for the number    */
  extern int  MIN_ADDR_LENGTH;
  extern int  hex_outline_width;
-@@ -107,7 +109,7 @@
- #define CTRL_AND(c) ((c) & 037)			/* macro to use the ctrl key  */
- 						/* cursor location in the file*/
- #define cursorLoc(line,col,editHex,b) (((line)*(b)) + ((col)/((editHex)?3:1)))
--#define llalloc() (struct LinkedList *) calloc(1, sizeof(struct LinkedList))
-+hexList *llalloc(void);
- #define isEmptyStack(stack) (((stack) == NULL) ? TRUE : FALSE)
- 
- #define UNUSED(x) (void)(x)
-@@ -126,7 +128,7 @@
+@@ -126,7 +126,7 @@ extern bool color_enabled;
  #define max(a,b) ((a) >(b) ? (a) : (b))
  #endif
  
@@ -36,18 +27,15 @@
  
  /* function prototypes */
  
-@@ -154,7 +156,9 @@
+@@ -154,7 +154,6 @@ int hgetopt(int argc, char *const *argv, const char *optstring);
  off_t parseArgs(int argc, char *argv[]);
  /*void printDebug(hexList *head, int loc);*/
  int getMinimumAddressLength(off_t len);
 -RETSIGTYPE catchSegfault(int sig);
-+int editor_file_size(FILE *stream, off_t *length);
-+int editor_getc(FILE *stream);
-+void editor_seek(FILE *stream, off_t offset, int origin);
  
  /* llist.c */
  hexList *deleteNode(hexList *head, off_t loc);
-@@ -170,7 +174,7 @@
+@@ -170,7 +169,7 @@ void exit_err(char *err_str);
  void init_screen(void);
  void screen_exit(int exit_val);
  void init_fkeys();
@@ -56,34 +44,16 @@
  void refreshall(WINS *win);
  WINDOW *drawbox(int y, int x, int height, int width);
  void scrollbar(WINS *windows, int currentLine, long maxLines);
+diff --git a/src/acceptch.c b/src/acceptch.c
+index 1580645..a732a2d 100644
 --- a/src/acceptch.c
 +++ b/src/acceptch.c
-@@ -63,12 +63,15 @@
-     maxlines    = maxLines(len);			/* lines in file      */
-     
-     bool shouldExit = false;
-+    bool dirty = false;
- 
-     /*createStack(stack);*/				/* init the stack     */
-     stack = NULL;
-     temp = (char *)calloc(81, sizeof(char));
--
--    if (fpIN)						/* if file opened then*/
-+    if (temp == NULL)
-+        exit_err("hexcurse: search allocation");
-+
-+    if (fpIN && len > 0)				/* if file has data */
-     {							/* highlight 0,0 loc  */
-         curVal = getLocVal(0);
- 	wattron(win->ascii, A_UNDERLINE);
-@@ -86,7 +89,15 @@
+@@ -86,7 +86,13 @@ int wacceptch(WINS *win, off_t len)
      while(!shouldExit)
      //while (!(save=quitProgram(isEmptyStack(stack),(key = wgetch(Winds)))))
      {
 -        key = wgetch(Winds);
 +        key = wgetch((COLS < MIN_COLS || LINES < MIN_LINES) ? stdscr : Winds);
-+        if (key == ERR)
-+            exit_err("hexcurse: terminal input");
 +        if (key == KEY_RESIZE) {
 +            checkScreenSize();
 +            Winds = win->hex;
@@ -93,410 +63,20 @@
  	lastRow = row;
  	lastCol = col;
  	getyx(Winds, row, col);				/* curent cursor loc  */
-@@ -107,8 +118,9 @@
- 	    continue;					/* ignore user input  */
+@@ -843,6 +849,11 @@ char *inputLine(WINDOW *win, int line, int col)
  
- 	/* if file isn't opened only allow user input from the following keys */
--	if (!fpIN && (key != CTRL_AND('o')) && (key != KEY_F(3)) &&
--	   (key != CTRL_AND('h')) && (key != KEY_F(1)))
-+	if ((!fpIN || len == 0) && (key != CTRL_AND('s')) && (key != CTRL_AND('o')) && (key != KEY_F(3)) &&
-+	   (key != CTRL_AND('h')) && (key != CTRL_AND('p')) &&
-+           (key != CTRL_AND('q')) && (key != CTRL_AND('x')) && (key != KEY_F(1)))
- 	    continue;
- 	
- 
-@@ -118,7 +130,7 @@
- 	case CTRL_AND('q'):
- 	case CTRL_AND('x'):
- 	case KEY_F(8):
--		if (isEmptyStack(stack))
-+		if (!dirty)
- 		{
- 			/* No pending changes */
- 			shouldExit = true;
-@@ -198,8 +210,8 @@
- 							/* if not in ll...    */
- 			if ((val = searchList(head, cl)) == -1)
- 		  	{
--			    fseeko(fpIN, cl, SEEK_SET);	/* get val from file  */
--			    val = fgetc(fpIN);
-+			    editor_seek(fpIN, cl, SEEK_SET);	/* get val from file  */
-+			    val = editor_getc(fpIN);
- 			}
- 
- 			wattron(win->hex, A_BOLD);
-@@ -247,12 +259,15 @@
- 							/* edit list          */
- 			head = insertItem(head, cl, val);
- 		/* calloc() is used because it NULLS out all returned memory  */
--    			tmpStack = (hexStack *) calloc(1, sizeof(hexStack));
-+                tmpStack = (hexStack *) calloc(1, sizeof(hexStack));
-+                if (tmpStack == NULL)
-+                    exit_err("hexcurse: undo allocation");
- 			tmpStack->currentLoc = cl;
- 			tmpStack->llist	     = head;
- 			tmpStack->savedVal   = tmpval;
- 			tmpStack->prev       = NULL;
- 			pushStack(&stack, tmpStack);
-+                        dirty = true;
- 		    }					/* continue to next
- 							    case              */
- 
-@@ -422,6 +437,16 @@
- 	case KEY_F(3):					/* if F3 or ^o...     */
- 
- 
-+                if (dirty) {
-+                    int answer = questionWin("Save changes before Open? (y/n/c)");
-+                    if (answer == 'y' || answer == 'Y') {
-+                        if (savefile(win) != 0)
-+                            break;
-+                        dirty = false;
-+                    } else if (answer != 'n' && answer != 'N') {
-+                        break;
-+                    }
-+                }
- 		if (openfile(win))			/* open file          */
- 		{
- 		    if (fpIN)
-@@ -429,13 +454,16 @@
- 			MIN_ADDR_LENGTH = getMinimumAddressLength(maxLoc(fpIN));
- 			curVal = getLocVal(0);
-                     }                
-+                    free(temp);
-+                    smashDaStack(&stack);
- 	 	    return TRUE;			/* TRUE if worked     */
- 		}
- 		break;
- 
- 	case CTRL_AND('s'):				/* if F2 or ^s...     */
- 	case KEY_F(2):					/* save the file      */
--		savefile(win);
-+                if (savefile(win) == 0)
-+                    dirty = false;
- 		break;
- 
- 	case CTRL_AND('f'):
-@@ -680,7 +708,8 @@
- 		    /*if (stack != NULL) val = stack->savedVal;               */
- 		    val = stack->savedVal;
- 		    popStack(&stack);
--		    head = deleteNode(head,cl);
-+                    dirty = true;
-+		    head = insertItem(head, cl, val);
- 
- 
-                     currentLine = gotoLine(fpIN, 
-@@ -743,7 +772,7 @@
- 	}
- 
- 	getyx(Winds, row, col);				/* get cur row/col    */
--	if (fpIN)
-+	if (fpIN && len > 0)
- 	{
- 							/* store current loc  */
- 	    /* remove underline from previous character */
-@@ -830,57 +859,44 @@
- \********************************************************/
- char *inputLine(WINDOW *win, int line, int col)
- {
--    int x;
--    unsigned long int c;
--    char *ch;
--    int allocated = 81;
--
--    noecho();
--
--    ch = (char *)malloc(allocated);				/* allocate space     */
--
--    wmove(win, line, col);
--
--    for (x = 0; (c = wgetch(win)) != 10; x++) 
--    {
--	if (x > 0 && x >= allocated)
--	{
--		ch = (char*)realloc(ch, x + 1);
--		allocated = x + 1;
--	}
--	
--        wclrtoeol(win);					/* clear line         */
--        if (c == '\b' || c == 127) 			/* get backspace      */
--	{
--            mvwaddch(win, line, col + (x-1), 32);
--            wmove(win, line, col + (x-1));
--            ch[x] = '\0';
--            x -= 2;					/* modify ptr         */
-+    size_t length = 0, capacity = 81;
-+    char *text = malloc(capacity);
-+    if (text == NULL)
-+        exit_err("hexcurse: filename allocation");
-+    for (;;) {
-+        int key;
-+        text[length] = 0;
-+        wmove(win, line, col);
-+        wclrtoeol(win);
-+        waddnstr(win, text, COLS > col ? COLS - col : 0);
-+        key = wgetch(win);
-+        if (key == ERR)
-+            exit_err("hexcurse: terminal input");
-+        if (key == '\n' || key == '\r')
-+            return text;
-+        if (key == KEY_RESIZE || key == 27) {
-+            if (key == KEY_RESIZE)
-+                ungetch(KEY_RESIZE);
-+            text[0] = 27;
-+            text[1] = 0;
-+            return text;
-         }
--        else if (c > 32 && c < 127) 			/* if printable char  */
--	{
--            ch[x] = c;
--            waddch(win, ch[x]);
--        }
--	else if (c == 27)				/* if the escape key  */
--	{   						/* is pressed, return */
--	    ch[0] = 27;					/* setting ch to 0xff */
--	    return ch;					
--	}
--        else 						/* if anything else   */
--	{
--            ch[x] = '\0';
--            x--;
--        }
--
--        if (x < 0) 
--	{
--            wmove(win, line, col);			/* move cursor        */
--            x = -1;
-+        if (key == KEY_BACKSPACE || key == 8 || key == 127) {
-+            if (length != 0)
-+                --length;
-+        } else if (key >= 32 && key < 127) {
-+            if (length + 1 == capacity) {
-+                if (capacity > SIZE_MAX / 2) {
-+                    errno = EOVERFLOW;
-+                    exit_err("hexcurse: filename too long");
-+                }
-+                capacity *= 2;
-+                char *grown = realloc(text, capacity);
-+                if (grown == NULL)
-+                    exit_err("hexcurse: filename allocation");
-+                text = grown;
-+            }
-+            text[length++] = (char)key;
-         }
-     }
--
--    ch[x] = '\0';					/* terminate          */
--
--    return ch;
- }
---- a/src/file.c
-+++ b/src/file.c
-@@ -55,10 +55,10 @@
-     wprintw(windows->address, (printHex) ? "%0*jX ":"%0*jd ", MIN_ADDR_LENGTH, (intmax_t)(linenum * BASE));
-     address_color_off((intmax_t)(linenum * BASE));
- 
--    rewind(fp);									/* reset the file ptr */
--    fseeko(fp, (linenum * BASE), 0);				/* set new pos for fp */
--
--    for (i = 0; i < BASE && (c = getc(fp)) != EOF; i++)
-+    editor_seek(fp, 0, SEEK_SET);									/* reset the file ptr */
-+    editor_seek(fp, (linenum * BASE), 0);				/* set new pos for fp */
-+
-+    for (i = 0; i < BASE && (c = editor_getc(fp)) != EOF; i++)
+     for (x = 0; (c = wgetch(win)) != 10; x++) 
      {
- 		if (tmp[i] != -1) 						/* while not EOF      */
- 		{	c = tmp[i];							/* store val in c     */
-@@ -84,10 +84,40 @@
-  *		file.  It returns the number of chars  *
-  *		in the file                            *
- \*******************************************************/
-+int editor_getc(FILE *stream)
-+{
-+    int byte = fgetc(stream);
-+    if (byte == EOF && ferror(stream))
-+        exit_err("hexcurse: input read");
-+    return byte;
-+}
-+
-+void editor_seek(FILE *stream, off_t offset, int origin)
-+{
-+    if (fseeko(stream, offset, origin) != 0)
-+        exit_err("hexcurse: input seek");
-+}
-+
-+int editor_file_size(FILE *stream, off_t *length)
-+{
-+    struct stat info;
-+    if (fstat(fileno(stream), &info) != 0)
-+        return -1;
-+    if (!S_ISREG(info.st_mode)) {
-+        errno = ENOTSUP;
-+        return -1;
-+    }
-+    if (fseeko(stream, 0, SEEK_END) != 0 || (*length = ftello(stream)) < 0)
-+        return -1;
-+    return fseeko(stream, 0, SEEK_SET);
-+}
-+
- off_t maxLoc(FILE *fp)
- {
--    fseeko(fp, 0, SEEK_END);				/* seek to end of file*/
--    return(ftello(fp));				/* return val at EOF  */
-+    off_t length;
-+    if (editor_file_size(fp, &length) != 0)
-+        exit_err("hexcurse: input size");
-+    return length;
- }
- 
- /******************************************************\
-@@ -131,60 +161,35 @@
- \********************************************************/
- int openfile(WINS *win)
- {
--    char *ch;
--    FILE *tmpfp;                                        /* temp pointer       */
--
--    wmove(win->hex_outline, LINES-1, 21);               /* output prompt      */
--    wclrtoeol(win->hex_outline);
-+    off_t length;
-+    char message[128];
-     mvwaddstr(win->hex_outline, LINES - 1, 1, "Enter file to open: ");
--
--    freeList(head);										/* free linked list   */
--	head = NULL;
--	if (!fpINfilename)
--        fpINfilename = (char *) malloc(81);             /* allocate if NULL   */
--
--    ch = inputLine(win->hex_outline, LINES - 1, 21);	/* get filename       */
--
--    if (ch[0] == 27)									/* if escape was hit  */
--    {
--		restoreBorder(win);								/* restore border     */
--		wrefresh(win->hex_outline);                    	/* refresh window     */
--		free(ch);
--		return FALSE; 
--    }
--
--    if (ch[0] != '\0') {
--	free(fpINfilename);
--	fpINfilename = ch;
--    }
--
--    if (!(tmpfp = fopen(fpINfilename, "r")))            /* if cannot open...  */
--    {
--        wmove(win->hex_outline, LINES-1, 1);
--        wclrtoeol(win->hex_outline);
--														/* output message    */
--        /*mvwaddstr(win->hex_outline, LINES - 1, 1, "Could not open file");*/
--        popupWin("Could not open file!", -1);
-+    char *name = inputLine(win->hex_outline, LINES - 1, 21);
-+    if (name[0] == 27 || name[0] == 0) {
-+        free(name);
-         restoreBorder(win);
--        wnoutrefresh(win->hex_outline);					/* refresh window     */
--
--        return FALSE;                                   /* return bad         */
--    }
--
--    restoreBorder(win);									/* restore border     */
--
--    wrefresh(win->hex_outline);                         /* refresh window     */
--    fclose(tmpfp);                                      /* close temp pointer */
--
--    fpIN = fopen(fpINfilename, "r");                    /* open file: read    */
--
--    wclear(win->hex);                                   /* clear windows      */
--    wclear(win->ascii);
--    wclear(win->address);
--
--    refreshall(win);                                    /* refresh everything */
--    doupdate();                                         /* update screen      */
--    return TRUE;                                        /* return good        */
-+        return FALSE;
-+    }
-+    FILE *candidate = fopen(name, "rb");
-+    if (candidate == NULL || editor_file_size(candidate, &length) != 0) {
-+        int error = errno;
-+        if (candidate != NULL)
-+            pyxis_fclose_abandon(candidate);
-+        snprintf(message, sizeof(message), "Open failed: %s", strerror(error));
-+        popupWin(message, -1);
-+        free(name);
-+        restoreBorder(win);
-+        return FALSE;
-+    }
-+    FILE *previous = fpIN;
-+    fpIN = candidate;
-+    free(fpINfilename);
-+    fpINfilename = name;
-+    head = freeList(head);
-+    if (previous != NULL && fclose(previous) == EOF)
-+        popupWin("Previous input close failed", -1);
-+    restoreBorder(win);
-+    return TRUE;
- }
- 
- /********************************************************\
-@@ -252,9 +257,9 @@
-     int loop, tmp, c, flag=0;
-     off_t currLoc, startLoc, foundLoc=-1;		/* init vars          */
- 
--    fseeko(fp, startfp, SEEK_SET);			/* begin from loc     */
--
--    c = getc(fp);					/* get char from file */
-+    editor_seek(fp, startfp, SEEK_SET);			/* begin from loc     */
-+
-+    c = editor_getc(fp);					/* get char from file */
-     currLoc = ftello(fp);				/* get location       */
-     if ((tmp = searchList(head, currLoc-1)) != -1)	/* check for val in ll*/
- 	c = tmp;
-@@ -267,7 +272,7 @@
- 							/* loop to find rest  */
- 	    for (loop = 1; (loop < length) && (c != EOF); loop++)
- 	    {
--		c = fgetc(fp); 
-+		c = editor_getc(fp);
-     		currLoc = ftello(fp);
-     		if ((tmp = searchList(head, currLoc-1)) != -1)
- 		    c = tmp;
-@@ -275,7 +280,7 @@
- 		    break;
- 		    
- 	    }
--		fseeko(fp, startLoc, SEEK_SET);
-+		editor_seek(fp, startLoc, SEEK_SET);
- 
- 	    if ((loop == length) && (flag))		/* if found it        */
- 		return startLoc - 1;			/* return location    */
-@@ -287,13 +292,13 @@
- 		
- 
- 	if (c == EOF)					/* if EOF rewind      */
--	    rewind(fp);
-+	    editor_seek(fp, 0, SEEK_SET);
- 
-         currLoc = ftello(fp);				/* current location   */
- 
- 	if (currLoc != startfp) 			/* if not at start... */
++        if (c == KEY_RESIZE) {
++            ungetch(KEY_RESIZE);
++            ch[0] = 27;
++            return ch;
++        }
+ 	if (x > 0 && x >= allocated)
  	{
--	    c = fgetc(fp);				/* get another char   */
-+	    c = editor_getc(fp);				/* get another char   */
-     	    currLoc = ftello(fp);
-     	    if ((tmp = searchList(head, currLoc-1)) != -1)
- 	        c = tmp;
-@@ -399,8 +404,8 @@
-     if (tmpHead != NULL && (tmpHead->loc == loc))
- 	return(tmpHead->val);
- 
--    fseeko(fpIN, loc, SEEK_SET);				/* goto location      */
--    return(fgetc(fpIN));
-+    editor_seek(fpIN, loc, SEEK_SET);				/* goto location      */
-+    return(editor_getc(fpIN));
- }
- 
- /********************************************************\
+ 		ch = (char*)realloc(ch, x + 1);
+diff --git a/src/hexcurse.c b/src/hexcurse.c
+index 9a275ee..dfae923 100644
 --- a/src/hexcurse.c
 +++ b/src/hexcurse.c
 @@ -27,6 +27,7 @@
@@ -507,61 +87,7 @@
  int     BASE, MAXY, resize = 0;
  int     MIN_ADDR_LENGTH;
  hexList *head;						/* linked list struct */
-@@ -69,8 +70,10 @@
-     int   x, retval = 1;			/* counters, etc.     */
-     off_t val, len;					/* len need to be off_t*/
- 
--    windows = (WINS *) calloc(1, sizeof(WINS));	/* malloc windows     */
--    head = llalloc();							/* malloc list space  */
-+    windows = (WINS *) calloc(1, sizeof(WINS));
-+    if (windows == NULL)
-+        exit_err("hexcurse: window allocation");
-+    head = NULL;							/* malloc list space  */
-     fpINfilename = NULL;			/* allocate in and    */
-     fpOUTfilename = NULL;			/* out file name ptrs */
-     printHex = TRUE;							/* address format     */
-@@ -102,7 +105,7 @@
- 	free_windows(windows);
-         
- 	/* calculate screen   */
--	BASE                = (resize > 0 && resize < COLS) ? resize:((COLS-6-MIN_ADDR_LENGTH)/4);
-+	BASE                = (resize > 0 && resize <= (COLS-6-MIN_ADDR_LENGTH)/4) ? resize:((COLS-6-MIN_ADDR_LENGTH)/4);
- 	MAXY                = (LINES) - 3;
- 	hex_win_width       = BASE * 3;
- 	ascii_win_width     = BASE;
-@@ -132,6 +135,9 @@
- 	retval = wacceptch(windows, len); 
-     }
-     
-+    if (fpIN != NULL && fclose(fpIN) == EOF)
-+        exit_err("hexcurse: input close");
-+    fpIN = NULL;
-     free(fpINfilename);
-     free(fpOUTfilename);
-     freeList(head);
-@@ -179,7 +185,7 @@
-     int val;						/* counters, etc.     */
- 
- 							/* get args           */
--    while ((val = hgetopt(argc, argv, "a:i:o:r:e")) != -1) 
-+    while ((val = hgetopt(argc, argv, "ai:o:r:e")) != -1)
-     {
- 	switch (val)					/* test args          */
-         {
-@@ -231,10 +237,10 @@
- \********************************************************/
- int getMinimumAddressLength(off_t len)
- {
--        char buffer[1];
-+
-         int min_address_length;
-         
--        min_address_length = snprintf(buffer, 1, "%jd", (intmax_t)len);
-+        min_address_length = snprintf(NULL, 0, "%jd", (intmax_t)len);
-         
-         /* At least 8 characters wide */
-         return min_address_length > 8 ? min_address_length : 8;
-@@ -247,17 +253,3 @@
+@@ -247,17 +248,3 @@ int getMinimumAddressLength(off_t len)
   * 		report.					*
   * Returns:	length of file				*
  \********************************************************/
@@ -579,203 +105,8 @@
 -
 -    exit(-1);
 -}
---- a/src/llist.c
-+++ b/src/llist.c
-@@ -17,6 +17,14 @@
-  *									      *
- \******************************************************************************/
- #include "hex.h"
-+
-+hexList *llalloc(void)
-+{
-+    hexList *node = calloc(1, sizeof(*node));
-+    if (node == NULL)
-+        exit_err("hexcurse: edit allocation");
-+    return node;
-+}
- 
- /********************************************************\
-  * Description: deletes an item from the linked list and*
-@@ -105,62 +113,107 @@
-  *		file or to a specified output file	*
- \*******************************************************/
- int writeChanges()
--{   
--    FILE *fpOUT = NULL;
--    FILE *fptmp = NULL;
--    
--    off_t buff,prev_loc;					/* declare llist vars */
--    hexList *tmpHead = head;
--
--    if (fpOUTfilename && fpIN && (fpOUT = fopen(fpOUTfilename, "w+")))
--    {							/* open the write file*/
--	fptmp = fpOUT;
--        rewind(fpIN);					/* set file loc to 0  */
--	rewind(fpOUT);					
--	while ((buff = fgetc(fpIN)) != EOF)		/*write to file buffer*/
--		fputc(buff, fpOUT);
--    }
--    else if (fpIN)				/* if no output file  */
--    {
--	fptmp = fpIN;
--	fpIN = fopen(fpINfilename, "r+");
--	if (!fpIN)
--	{
--		fpIN = fptmp;
--		popupWin("Cannot write to file: bad permissions", -1);
--		return 1;
--	}
--	fclose(fptmp);
--	fptmp = fpIN;
--    }
--    else
--    {
--	popupWin("No data written.", -1);
--	return 1;
--    }
--    
--    rewind(fpIN);
--    rewind(fptmp);
--    prev_loc = -1;
--    while (tmpHead != NULL)		/* write to file      */
--    {
--	/* only print the latest change  from the linked list*/
--	if (prev_loc != tmpHead->loc) { 
--		fseeko(fptmp, tmpHead->loc, SEEK_SET);
--		fputc(tmpHead->val, fptmp);
--	}
--	prev_loc = tmpHead->loc;
--	tmpHead = tmpHead->next;
--    }
--
--    fflush(fptmp);					/* flush buffto disk  */
--    
--    rewind(fpIN);					/* reset file pointer */
--    if (fpIN != fptmp)
--	fclose(fptmp);
--
-+{
-+    struct stat source_info, target_info;
-+    struct describe_reply description;
-+    const uint64_t identity = STAT_DEV_VALID | STAT_INO_VALID;
-+    const char *name = fpOUTfilename != NULL ? fpOUTfilename : fpINfilename;
-+    FILE *target = NULL;
-+    int error = 0;
-+    char message[128];
-+    if (fpIN == NULL || name == NULL) {
-+        errno = EINVAL;
-+        goto failed;
-+    }
-+    if (fstat(fileno(fpIN), &source_info) != 0)
-+        goto failed;
-+    if (!S_ISREG(source_info.st_mode) || source_info.st_size < 0 ||
-+        (source_info.st_valid & identity) != identity) {
-+        errno = ENOTSUP;
-+        goto failed;
-+    }
-+    for (hexList *edit = head; edit != NULL; edit = edit->next) {
-+        if (edit->loc < 0 || edit->loc >= source_info.st_size) {
-+            errno = EBUSY;
-+            goto failed;
-+        }
-+    }
-+    clearerr(fpIN);
-+    target = fopen(name, "r+b");
-+    if (target == NULL && errno == ENOENT && fpOUTfilename != NULL)
-+        target = fopen(name, "w+bx");
-+    if (target == NULL)
-+        goto failed;
-+    /* A pending provider transaction is not a random-access file save.
-+     * Abandon it rather than committing on error cleanup. */
-+    if (pyxis_describe(target, &description) != 0)
-+        goto failed;
-+    if (description.protocol != PROTOCOL_FILE) {
-+        errno = ENOTSUP;
-+        goto failed;
-+    }
-+    if (fstat(fileno(target), &target_info) != 0)
-+        goto failed;
-+    if (!S_ISREG(target_info.st_mode) ||
-+        (target_info.st_valid & identity) != identity) {
-+        errno = ENOTSUP;
-+        goto failed;
-+    }
-+    bool same = source_info.st_dev == target_info.st_dev &&
-+        source_info.st_ino == target_info.st_ino;
-+    if (fpOUTfilename == NULL && !same) {
-+        errno = EBUSY;
-+        goto failed;
-+    }
-+    if (setvbuf(target, NULL, _IONBF, 0) != 0)
-+        goto failed;
-+    if (!same) {
-+        unsigned char bytes[4096];
-+        off_t remaining = source_info.st_size;
-+        if (fseeko(fpIN, 0, SEEK_SET) != 0)
-+            goto failed;
-+        while (remaining > 0) {
-+            size_t amount = remaining > (off_t)sizeof(bytes) ? sizeof(bytes) : (size_t)remaining;
-+            size_t received = fread(bytes, 1, amount, fpIN);
-+            if (received != amount) {
-+                if (!ferror(fpIN))
-+                    errno = EIO;
-+                goto failed;
-+            }
-+            if (fwrite(bytes, 1, amount, target) != amount)
-+                goto failed;
-+            remaining -= (off_t)amount;
-+        }
-+        if (ftruncate(fileno(target), source_info.st_size) != 0)
-+            goto failed;
-+    }
-+    off_t previous = -1;
-+    for (hexList *edit = head; edit != NULL; edit = edit->next) {
-+        if (edit->loc != previous &&
-+            (fseeko(target, edit->loc, SEEK_SET) != 0 ||
-+             fputc(edit->val, target) == EOF))
-+            goto failed;
-+        previous = edit->loc;
-+    }
-+    if (fflush(target) != 0 || fsync(fileno(target)) != 0)
-+        goto failed;
-+    error = fclose(target) == EOF ? (errno ? errno : EIO) : 0;
-+    target = NULL;
-+    if (error) {
-+        errno = error;
-+        goto failed;
-+    }
-+    if (fseeko(fpIN, 0, SEEK_SET) != 0)
-+        goto failed;
-     return 0;
--
-+failed:
-+    error = errno ? errno : EIO;
-+    if (target != NULL)
-+        pyxis_fclose_abandon(target);
-+    snprintf(message, sizeof(message), "Save failed: %s", strerror(error));
-+    popupWin(message, -1);
-+    errno = error;
-+    return 1;
- } 
- 
- /********************************************************\
-@@ -171,10 +224,10 @@
- \********************************************************/
- hexList *freeList(hexList *head)
- {
--    if (head != NULL) 						/* while head != NULL */
--    {
--        freeList(head->next);				/* check next item    */
--        free(head);							/* free the memory    */
--    }
--    return NULL;							/* return NULL to head*/
-+    while (head != NULL) {
-+        hexList *next = head->next;
-+        free(head);
-+        head = next;
-+    }
-+    return NULL;
- } 
+diff --git a/src/screen.c b/src/screen.c
+index 2cef657..d31fbe2 100644
 --- a/src/screen.c
 +++ b/src/screen.c
 @@ -18,6 +18,8 @@
@@ -787,7 +118,7 @@
  /******************************************************\
   * Description: Inits the menu and the user interface *
   *		that the hex editor uses.             *
-@@ -27,10 +29,7 @@
+@@ -27,10 +29,7 @@ void init_menu(WINS *windows)
      int x;
      WINDOW *win;
  
@@ -799,7 +130,7 @@
  
  							/* draw the windows   */
      windows->hex_outline = drawbox(0, 0, LINES, hex_outline_width);
-@@ -54,9 +53,8 @@
+@@ -54,9 +53,8 @@ void init_menu(WINS *windows)
      waddch(windows->scrollbar, ACS_DARROW);
      wrefresh(windows->scrollbar);
      
@@ -811,26 +142,25 @@
  
      win = windows->hex;
      for (x = 0; x <= 2; x++)				
-@@ -104,10 +102,14 @@
+@@ -104,10 +102,14 @@ void free_windows(WINS *windows)
  \******************************************************/
  void exit_err(char *err_str)
  {
 -    endwin(); 						/* end curses screen  */
 -    perror(err_str);					/* print errno        */
--    printf("\n\n");
--    exit(EXIT_FAILURE);					/* return with exitval*/
-+    int error = errno ? errno : EIO;
 +    if (native_screen != NULL) {
 +        endwin();
 +        delscreen(native_screen);
 +        native_screen = NULL;
 +    }
-+    fprintf(stderr, "%s: %s\n", err_str, strerror(error));
++    perror(err_str);
+     printf("\n\n");
+-    exit(EXIT_FAILURE);					/* return with exitval*/
 +    exit(EXIT_FAILURE);
  }
  
  /******************************************************\
-@@ -117,13 +119,9 @@
+@@ -117,13 +119,9 @@ void exit_err(char *err_str)
  \******************************************************/ 
  void init_screen(void)
  {
@@ -847,22 +177,18 @@
  }
  
  /******************************************************\
-@@ -132,8 +130,12 @@
+@@ -132,7 +130,9 @@ void init_screen(void)
  \******************************************************/
  void screen_exit(int exit_val)
  {
 -    endwin();						/* end curses screeen */
--    printf("\n");
-+    if (endwin() == ERR) {
-+        fprintf(stderr, "hexcurse: terminal restoration failed: %s\n", strerror(errno));
-+        exit_val = EXIT_FAILURE;
-+    }
++    endwin();
 +    delscreen(native_screen);
 +    native_screen = NULL;
+     printf("\n");
      exit(exit_val);
  }
- 
-@@ -142,14 +144,14 @@
+@@ -142,14 +142,14 @@ void screen_exit(int exit_val)
  \******************************************************/ 
  void init_fkeys()
  {
@@ -885,7 +211,7 @@
      slk_set(9, "Quit",		1);
      slk_noutrefresh();					/* refresh the screen */
  }
-@@ -159,71 +161,38 @@
+@@ -159,71 +159,36 @@ void init_fkeys()
   *		terminal and prompts for the user to  *
   *		change the screen.		      *
  \******************************************************/
@@ -934,7 +260,14 @@
 -	/*mvwprintw(windows->hex, 1, 2, "Resize it to continue");*/
 -	refreshall(windows);
 -	doupdate();
--    }
++    free_windows(windows);
++    SIZE_CH = TRUE;
++    if (COLS < MIN_COLS || LINES < MIN_LINES) {
++        erase();
++        addnstr("hexcurse: resize to continue", COLS > 0 ? COLS - 1 : 0);
++        refresh();
++        return;
+     }
 -    else
 -    {
 -	init_fkeys();                                   /* define menu bar    */
@@ -955,17 +288,7 @@
 -	/* this next refresh is to put the cursor in the correct window */
 -        wnoutrefresh(windows->hex);
 -	doupdate();
--    }
-+    free_windows(windows);
-+    SIZE_CH = TRUE;
-+    if (COLS < MIN_COLS || LINES < MIN_LINES) {
-+        erase();
-+        addnstr("hexcurse: resize to continue", COLS > 0 ? COLS - 1 : 0);
-+        if (refresh() == ERR)
-+            exit_err("hexcurse: redraw");
-+        return;
-+    }
-+    BASE = (resize > 0 && resize <= (COLS - 6 - MIN_ADDR_LENGTH) / 4) ? resize : (COLS - 6 - MIN_ADDR_LENGTH) / 4;
++    BASE = (resize > 0 && resize < COLS) ? resize : (COLS - 6 - MIN_ADDR_LENGTH) / 4;
 +    MAXY = LINES - 3;
 +    hex_win_width = BASE * 3;
 +    ascii_win_width = BASE;
@@ -979,27 +302,15 @@
 +    if (fpIN != NULL) {
 +        for (count = 0; count <= MAXY && count <= maxlines; ++count)
 +            outline(fpIN, count);
-+    }
+     }
 +    wmove(windows->hex, 0, 0);
 +    wmove(windows->ascii, 0, 0);
 +    refreshall(windows);
-+    if (doupdate() == ERR)
-+        exit_err("hexcurse: redraw");
++    doupdate();
  }
  
  /******************************************************\
-@@ -271,8 +240,8 @@
-      * in other functions as an int.  Eventually everything should be using
-      * long rather than int */
- 
--    if (fpIN != NULL)
--	percent = (float)cl/(float)maxLoc(fpIN);	/* protect against x/0*/
-+    if (fpIN != NULL && maxLoc(fpIN) > 0)
-+	percent = (float)cl/(float)maxLoc(fpIN);
-     else
- 	percent = 0.0;
- 
-@@ -309,7 +278,7 @@
+@@ -309,7 +274,7 @@ void printHelp(WINS *win)
      {
  	wmove(ctrl,0,0);
  	mvwprintw(ctrl, 0, 1, "Ctrl Key");		/* print in address   */
@@ -1008,7 +319,7 @@
  	mvwprintw(ctrl, 3, 1, "CTRL+S");
  	mvwprintw(ctrl, 4, 1, "CTRL+O");
  	mvwprintw(ctrl, 5, 1, "CTRL+G");
-@@ -323,15 +292,15 @@
+@@ -323,15 +288,15 @@ void printHelp(WINS *win)
  	mvwprintw(ctrl, 14, 1, "CTRL+T");
  	mvwprintw(ctrl, 15, 1, "CTRL+B");
  
@@ -1033,25 +344,18 @@
  	mvwprintw(small, 11, 1, "Page up  = PGUP");
  	mvwprintw(small, 12, 1, "Page down= PGDN");
  
-@@ -357,7 +326,11 @@
+@@ -357,7 +322,9 @@ void printHelp(WINS *win)
      wnoutrefresh(small);
      doupdate();						/* update screen      */
  
 -    wgetch(ctrl);					/* wait for a char    */
 +    int key = wgetch(ctrl);
-+    if (key == ERR)
-+        exit_err("hexcurse: help input");
 +    if (key == KEY_RESIZE)
 +        ungetch(KEY_RESIZE);
  
      delwin(ctrl);					/* delete help wins   */
      delwin(help);
-@@ -451,12 +424,17 @@
- 
-     keypad(tmpwin, TRUE);
- 
--    mvwprintw(tmpwin,2,3, msg);				/* output mesg        */
-+    mvwprintw(tmpwin,2,3, "%s", msg);				/* output mesg        */
+@@ -455,8 +422,11 @@ void popupWin(char *msg, int time)
      wmove(tmpwin,2,len+4);
      wrefresh(tmpwin);
  
@@ -1059,26 +363,16 @@
 -        wgetch(tmpwin);
 +    if (time == -1) {
 +        int key = wgetch(tmpwin);
-+        if (key == ERR)
-+            exit_err("hexcurse: popup input");
 +        if (key == KEY_RESIZE)
 +            ungetch(KEY_RESIZE);
 +    }
      else
          sleep(time);					/* wait               */
  
-@@ -492,11 +470,17 @@
- 
-     tmpwin = drawbox(y, x, 5, len + 6);			/* create window      */
- 
--    mvwprintw(tmpwin,2,3, msg);
-+    mvwprintw(tmpwin,2,3, "%s", msg);
-     wmove(tmpwin,2,len+4);
+@@ -497,6 +467,10 @@ short int questionWin(char *msg)
      wrefresh(tmpwin);
  
      ch = wgetch(tmpwin);
-+    if (ch == ERR)
-+        exit_err("hexcurse: question input");
 +    if (ch == KEY_RESIZE) {
 +        ungetch(KEY_RESIZE);
 +        ch = 'c';
