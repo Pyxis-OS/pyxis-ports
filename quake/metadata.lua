@@ -12,7 +12,6 @@ return {
   patches = {
     "patches/0001-64-bit-quakec-strings.patch",
     "patches/0002-writable-game-directory.patch",
-    "patches/0003-atomic-file-replacement.patch",
   },
   outputs = {
     executable = "bin/quake.pxb/app/bin/quake.pxe",

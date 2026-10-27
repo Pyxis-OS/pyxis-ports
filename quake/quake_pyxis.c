@@ -350,15 +350,6 @@ double pyxis_quake_time(void)
   return (double)(now_ns() - started_at) / NANOSECONDS_PER_SECOND;
 }
 
-void pyxis_quake_sleep_until(double seconds)
-{
-  if (seconds <= 0) {
-    return;
-  }
-  uint64_t deadline = started_at + (uint64_t)(seconds * NANOSECONDS_PER_SECOND);
-  require_ok(clock_sleep_until(clock, deadline), "sleep");
-}
-
 void QG_Init(void)
 {
 }

@@ -11,7 +11,5 @@ void pyxis_quake_start(void);
 void pyxis_quake_stop(void);
 /* Elapsed monotonic seconds since start, independent of input focus. */
 double pyxis_quake_time(void);
-/* Sleep until the given elapsed time, measured like pyxis_quake_time(). */
-void pyxis_quake_sleep_until(double seconds);
 
 #endif

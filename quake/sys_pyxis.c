@@ -13,8 +13,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See the GNU General Public License for more details.
 */
 
-/* Pyxis system layer and main loop, replacing quakegeneric's sys_null.c and
- * quakegeneric.c. File I/O follows sys_null.c through libc streams. */
+/* Pyxis system layer and native frame loop. The upstream generic entry
+ * supplies engine initialization; file I/O follows sys_null.c. */
 
 #include <errno.h>
 #include <stdarg.h>
@@ -22,32 +22,18 @@ See the GNU General Public License for more details.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #include "quakedef.h"
+#include "quakegeneric.h"
 #include "quake_pyxis.h"
 
-#define QUAKE_MEMORY_BYTES (32 * 1024 * 1024)
 #define QUAKE_BASE_DIRECTORY "pkg://quake/"
 #define QUAKE_WRITE_DIRECTORY "home://quake"
-/* Quake renders at most this often outside timedemo; sleeping until then
- * avoids spinning through frames Host_Frame would skip. */
-#define QUAKE_FRAME_RATE 72.0
 #define MAX_HANDLES 10
-#define MAX_ATOMIC_FILES 2
-#define ATOMIC_SUFFIX ".XXXXXX"
 
 qboolean isDedicated;
 
 static FILE *sys_handles[MAX_HANDLES];
-
-struct atomic_file {
-  FILE *file;
-  char *target;
-  char *temporary;
-};
-
-static struct atomic_file atomic_files[MAX_ATOMIC_FILES];
 
 static int find_handle(void)
 {
@@ -122,101 +108,6 @@ int Sys_FileTime(char *path)
     return 1;
   }
   return -1;
-}
-
-/* Replace a file as a whole. The data goes to a uniquely named file beside the
- * target and is renamed over it only after every write, the sync and the close
- * succeeded, so any failure leaves the old file untouched.
- *
- * mkstemp reserves the name with native exclusive creation and fdopen writes
- * through that same descriptor. The rename replaces the target atomically on
- * the same volume, and the filesystem flushes the moved file first. Libc
- * exposes no directory sync, so the new name itself may be lost in a crash;
- * the old contents then remain. A crash before the rename leaves the temporary
- * file behind. */
-FILE *Sys_AtomicOpen(char *path)
-{
-  struct atomic_file *slot = NULL;
-  for (int i = 0; i < MAX_ATOMIC_FILES; ++i) {
-    if (!atomic_files[i].file) {
-      slot = &atomic_files[i];
-      break;
-    }
-  }
-  if (!slot) {
-    Sys_Error("out of atomic files");
-  }
-
-  size_t length = strlen(path);
-  char *target = malloc(length + 1);
-  char *temporary = malloc(length + sizeof(ATOMIC_SUFFIX));
-  if (!target || !temporary) {
-    free(target);
-    free(temporary);
-    Con_Printf("Couldn't write %s: %s\n", path, strerror(ENOMEM));
-    return NULL;
-  }
-  memcpy(target, path, length + 1);
-  memcpy(temporary, path, length);
-  memcpy(temporary + length, ATOMIC_SUFFIX, sizeof(ATOMIC_SUFFIX));
-
-  FILE *file = NULL;
-  int descriptor = mkstemp(temporary);
-  if (descriptor >= 0) {
-    file = fdopen(descriptor, "wb");
-    if (!file) {
-      int error = errno;
-      close(descriptor);
-      remove(temporary);
-      errno = error;
-    }
-  }
-  if (!file) {
-    Con_Printf("Couldn't write %s: %s\n", path, strerror(errno));
-    free(target);
-    free(temporary);
-    return NULL;
-  }
-  slot->file = file;
-  slot->target = target;
-  slot->temporary = temporary;
-  return file;
-}
-
-qboolean Sys_AtomicClose(FILE *file)
-{
-  struct atomic_file *slot = NULL;
-  for (int i = 0; i < MAX_ATOMIC_FILES; ++i) {
-    if (atomic_files[i].file == file) {
-      slot = &atomic_files[i];
-      break;
-    }
-  }
-  if (!slot) {
-    Sys_Error("closing an unknown atomic file");
-  }
-
-  /* The stream is unbuffered, so a write failure is the error indicator. */
-  int error = 0;
-  if (ferror(file)) {
-    error = EIO;
-  } else if (fsync(fileno(file)) != 0) {
-    error = errno;
-  }
-  if (fclose(file) != 0 && !error) {
-    error = errno;
-  }
-  if (!error && rename(slot->temporary, slot->target) != 0) {
-    error = errno;
-  }
-  if (error) {
-    remove(slot->temporary);
-    Con_Printf("Couldn't write %s: %s\n", slot->target, strerror(error));
-  }
-  free(slot->target);
-  free(slot->temporary);
-  *slot = (struct atomic_file){0};
-  return error == 0;
 }
 
 void Sys_mkdir(char *path)
@@ -296,34 +187,25 @@ void Sys_LowFPPrecision(void)
 {
 }
 
-/* Defaults for a fresh configuration: mouse look stays on, so the middle
- * button selects the next weapon instead of toggling it. A saved config.cfg
- * carries the player's own bindings from then on. */
-static void queue_first_run_defaults(void)
-{
-  FILE *config = fopen(va("%s/config.cfg", com_gamedir), "r");
-  if (config) {
-    fclose(config);
-    return;
-  }
-  Cbuf_AddText("bind mouse3 \"impulse 10\"\n");
-}
-
 int main(int argc, char **argv)
 {
-  static quakeparms_t parameters;
-
   /* Our options go before the caller's, so trailing +commands stay intact. */
-  char **arguments = calloc((size_t)argc + 3, sizeof(*arguments));
+  char **arguments = calloc((size_t)argc + 5, sizeof(*arguments));
   if (!arguments) {
     fputs("quake: cannot allocate arguments\n", stderr);
     return EXIT_FAILURE;
   }
   int count = 0;
   arguments[count++] = argv[0];
+  qboolean has_base_directory = false;
   qboolean has_write_directory = false;
   for (int i = 1; i < argc; ++i) {
-    has_write_directory |= Q_strcasecmp(argv[i], "-writedir") == 0;
+    has_base_directory |= Q_strcmp(argv[i], "-basedir") == 0;
+    has_write_directory |= Q_strcmp(argv[i], "-writedir") == 0;
+  }
+  if (!has_base_directory) {
+    arguments[count++] = "-basedir";
+    arguments[count++] = QUAKE_BASE_DIRECTORY;
   }
   if (!has_write_directory) {
     arguments[count++] = "-writedir";
@@ -334,29 +216,12 @@ int main(int argc, char **argv)
   }
 
   pyxis_quake_start();
-  parameters.memsize = QUAKE_MEMORY_BYTES;
-  parameters.membase = malloc(parameters.memsize);
-  if (!parameters.membase) {
-    Sys_Error("cannot allocate %d bytes of game memory", parameters.memsize);
-  }
-  parameters.basedir = QUAKE_BASE_DIRECTORY;
-  COM_InitArgv(count, arguments);
-  parameters.argc = com_argc;
-  parameters.argv = com_argv;
-  Host_Init(&parameters);
-
-  /* Host_Init queued quake.rc, which runs default.cfg, config.cfg and the
-   * command line first; these follow it. */
-  queue_first_run_defaults();
-  Cbuf_AddText("+mlook\n");
+  QG_Create(count, arguments);
 
   double previous = pyxis_quake_time();
   for (;;) {
     double now = pyxis_quake_time();
-    Host_Frame(now - previous);
+    QG_Tick(now - previous);
     previous = now;
-    if (!cls.timedemo) {
-      pyxis_quake_sleep_until(now + 1.0 / QUAKE_FRAME_RATE);
-    }
   }
 }

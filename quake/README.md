@@ -7,10 +7,8 @@ upstream's GPL license. Game data is not downloaded or included by the recipe.
 The bundle ships in the `quake` game package with the data and reads that
 package, read-only, as `pkg://quake`;
 a missing package refuses launch on both live and installed systems.
-The required `random/read` grant lets libc `mkstemp` reserve names for atomic
-configuration, save and screenshot replacement.
 
-The adapter replaces upstream's `sys_null.c` and `quakegeneric.c`:
+The adapter replaces upstream's `sys_null.c` and uses unchanged `quakegeneric.c`:
 
 - `quake_pyxis.c` (C23, Pyxis headers) owns the display, keyboard, optional
   pointer and clock sessions, input translation, elapsed time and the 320x240
@@ -19,10 +17,12 @@ The adapter replaces upstream's `sys_null.c` and `quakegeneric.c`:
 - `sys_pyxis.c` (gnu99, because Quake's headers define their own false/true
   enum) is the Quake system layer and main loop. File I/O follows `sys_null.c`
   through libc streams; `Sys_mkdir` uses libc `mkdir`; `Sys_Quit` runs
-  `Host_Shutdown` so `config.cfg` is written. The heap is 32 MiB.
+  `Host_Shutdown` so `config.cfg` is written. Upstream `QG_Create` owns the
+  unchanged 8 MiB heap and initialization; `QG_Tick` dispatches frames.
 
-The loop measures elapsed monotonic time and sleeps to Quake's 72 Hz cap except
-during `timedemo`. It starts and keeps running without input focus, including
+The loop passes elapsed monotonic time to unchanged upstream `QG_Tick`; the
+engine's frame filter owns pacing without an added sleep. It keeps running
+without input focus, including
 while its graphics layer is hidden or another space is selected. Explicit game
 pause remains available. Keyboard focus changes and resets release every held
 input; pointer focus, reset and lock changes release held mouse buttons and
@@ -45,8 +45,7 @@ Focus, reset, lock and geometry changes clear residue. Translation retains its
 limit of eight wheel pairs per pointer event and discards excess complete steps.
 Only the first three buttons have engine bindings; extra buttons and horizontal
 scroll have no action.
-`+mlook` is queued at every start, and a first run without `config.cfg` binds
-the middle button to `impulse 10`.
+Mouse preferences and bindings follow upstream and the saved configuration.
 Defaults are `-basedir pkg://quake/` and `-writedir home://quake`, inserted
 before the caller's arguments so trailing `+commands` stay intact.
 
@@ -60,18 +59,9 @@ Ordered patches:
    as Quakespasm does.
 2. `0002-writable-game-directory.patch`: `-writedir PATH` sends generated files
    to `PATH/<game directory>` and searches it before the game data.
-3. `0003-atomic-file-replacement.patch`: `config.cfg`, `save` files (also F6
-   quicksave and the menus) and screenshots are written through
-   `Sys_AtomicOpen`/`Sys_AtomicClose` in `sys_pyxis.c`. `mkstemp` reserves a
-   random `NAME.XXXXXX` beside the target, whose descriptor `fdopen` turns
-   into the stream that is written, `fsync`ed, closed and renamed over the
-   target. Any failure removes the temporary file, keeps the old file and
-   prints `Couldn't write NAME: reason`; a failed save no longer prints
-   `done.` and a failed screenshot no longer prints `Wrote`. Demos stay
-   streamed in place, as do the console log and VCR files. Rename replaces
-   atomically on one volume, but libc has no directory sync, so a crash can
-   lose the new name (the old contents remain) or leave a stray temporary file.
-   Saving needs CREATE and REMOVE on the directory, not only WRITE on the file.
+Configuration, saves and screenshots use upstream's direct file-writing and
+error-handling behavior. There is no added atomic replacement, previous-file
+preservation or crash-durability promise.
 
 No sound, networking, CD audio, joystick or video-mode switching. Upstream
 compiler warnings remain visible; no broad cleanup or warning blanket is applied
