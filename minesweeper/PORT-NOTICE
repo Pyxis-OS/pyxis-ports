@@ -4,7 +4,6 @@ The upstream repository's MIT license accompanies main.c and resources/flag.png;
 no separate asset license is declared. The PNG is shipped unchanged. Unused WAV
 files and the upstream Makefile are not distributed.
 
-Pyxis changes select the delegated app:// texture, cap drawing at 60 FPS,
-report display/texture initialization failure and release the texture on exit.
+The sole Pyxis source change selects the delegated app:// texture.
 Game rules are unchanged. The executable statically links raylib/rlsw and SDL2;
 the public package also carries their complete license notices.

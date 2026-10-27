@@ -1,40 +1,11 @@
 --- a/main.c
 +++ b/main.c
-@@ -4,6 +4,7 @@
- // https://www.youtube.com/watch?v=3-EYrPRdjp4
- 
- #include <stdlib.h>
-+#include <stdio.h>
- #include <time.h>
- 
- #include "raylib.h"
-@@ -65,7 +66,20 @@
+@@ -65,7 +65,7 @@
  
  	InitWindow(screenWidth, screenHeight, "Raylib Minesweeper by Andrew Hamel");
  
 -	flagSprite = LoadTexture("resources/flag.png");
-+	if (!IsWindowReady())
-+	{
-+		fputs("minesweeper: display initialization failed\n", stderr);
-+		return 1;
-+	}
-+	SetTargetFPS(60);
-+
 +	flagSprite = LoadTexture("app://resources/flag.png");
-+	if (!IsTextureValid(flagSprite))
-+	{
-+		fputs("minesweeper: flag texture unavailable\n", stderr);
-+		CloseWindow();
-+		return 1;
-+	}
  
  	GameInit();
  	
-@@ -136,6 +150,7 @@
- 		EndDrawing();
- 	}
- 	
-+	UnloadTexture(flagSprite);
- 	CloseWindow();
- 	
- 	return 0;
