@@ -14,10 +14,10 @@ index 879508a..ae7100f 100644
  #include "common/memrchr.h"
 diff --git a/src/common/impl/FFPlatform_pyxis.c b/src/common/impl/FFPlatform_pyxis.c
 new file mode 100644
-index 0000000..d15b6df
+index 0000000..73929cb
 --- /dev/null
 +++ b/src/common/impl/FFPlatform_pyxis.c
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,52 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "FFPlatform_private.h"
 +#include "common/pyxis.h"
@@ -45,6 +45,13 @@ index 0000000..d15b6df
 +{
 +  platform->sysinfo.pageSizeShift = (uint32_t) __builtin_ctzll(MEMORY_PAGE_SIZE);
 +
++  ffStrbufSetS(&platform->homeDir, "home://");
++  ffStrbufSetS(&platform->cacheDir, "home://.cache/");
++  ffPlatformPathAddHome(&platform->configDirs, platform, ".config/");
++  ffPlatformPathAddHome(&platform->configDirs, platform, "");
++  ffPlatformPathAddHome(&platform->dataDirs, platform, ".local/share/");
++  ffPlatformPathAddHome(&platform->dataDirs, platform, "");
++
 +  identity = (struct system_info_identity) {};
 +  handle_t handle = HANDLE_INVALID;
 +  environment_capability(startup_environment_handle(), "system_info", &handle);
@@ -64,16 +71,10 @@ index 0000000..d15b6df
 +  ffStrbufSetS(&platform->sysinfo.architecture, identity.architecture);
 +}
 diff --git a/src/common/impl/init.c b/src/common/impl/init.c
-index 16932e1..75ff8d8 100644
+index 16932e1..dcf378d 100644
 --- a/src/common/impl/init.c
 +++ b/src/common/impl/init.c
-@@ -9,11 +9,13 @@
- 
- #include <stdlib.h>
- #include <unistd.h>
-+#ifndef __pyxis__
- #include <locale.h>
-+#endif
+@@ -13,7 +13,7 @@
  #ifdef _WIN32
      #include <windows.h>
      #include "common/windows/unicode.h"
@@ -82,16 +83,7 @@ index 16932e1..75ff8d8 100644
      #include <signal.h>
  #endif
  #if __linux__
-@@ -62,7 +64,7 @@ void ffInitInstance(void) {
-             atexit(resetConsoleCP);
-         }
-     }
--#else
-+#elif !defined(__pyxis__)
-     // Never use `setlocale(LC_ALL, "")`
-     setlocale(LC_TIME, "");
- #endif
-@@ -101,7 +103,7 @@ BOOL WINAPI consoleHandler([[maybe_unused]] DWORD signal) {
+@@ -101,7 +101,7 @@ BOOL WINAPI consoleHandler([[maybe_unused]] DWORD signal) {
      resetConsole();
      exit(0);
  }
@@ -100,21 +92,28 @@ index 16932e1..75ff8d8 100644
  static void exitSignalHandler([[maybe_unused]] int signal) {
      resetConsole();
      exit(0);
-@@ -120,7 +122,7 @@ void ffStart(void) {
-         setvbuf(stdout, nullptr, _IOFBF, 4096);
-     }
-     SetConsoleCtrlHandler(consoleHandler, TRUE);
--#else
-+#elif !defined(__pyxis__)
+@@ -124,6 +124,7 @@ void ffStart(void) {
      if (instance.config.display.noBuffer) {
          setvbuf(stdout, nullptr, _IONBF, 0);
      }
++#if !defined(__pyxis__)
+     struct sigaction action;
+     sigemptyset(&action.sa_mask);
+     action.sa_flags = 0;
+@@ -135,6 +136,7 @@ void ffStart(void) {
+     sigemptyset(&newmask);
+     sigaddset(&newmask, SIGCHLD);
+     sigprocmask(SIG_BLOCK, &newmask, nullptr);
++#endif
+ #endif
+ 
+     // reset everything to default before we start printing
 diff --git a/src/common/impl/io_pyxis.c b/src/common/impl/io_pyxis.c
 new file mode 100644
-index 0000000..add1a24
+index 0000000..7afc50b
 --- /dev/null
 +++ b/src/common/impl/io_pyxis.c
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,120 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "common/io.h"
 +
@@ -125,12 +124,12 @@ index 0000000..add1a24
 +#include <environment.h>
 +#include <handle.h>
 +#include <stdlib.h>
++#include <errno.h>
++#include <sys/stat.h>
++#include <pyxis/resource.h>
 +
 +bool ffIsTerminal(int fd)
 +{
-+  if (fd < STDIN_FILENO || fd > STDERR_FILENO) {
-+    return false;
-+  }
 +  return isatty(fd) == 1;
 +}
 +
@@ -211,16 +210,41 @@ index 0000000..add1a24
 +  free(directories);
 +  return exists;
 +}
++
++bool ffWriteFileData(const char* fileName, size_t dataSize, const void* data)
++{
++  FILE *file = fopen(fileName, "wb");
++  if (file == NULL && errno == ENOENT) {
++    FF_STRBUF_AUTO_DESTROY path = ffStrbufCreate();
++    const char *scheme = strstr(fileName, "://");
++    const char *part = scheme ? scheme + 3 : fileName;
++    const char *slash;
++    while ((slash = strchr(part, '/')) != NULL) {
++      ffStrbufSetNS(&path, (uint32_t) (slash - fileName), fileName);
++      mkdir(path.chars, 0700);
++      part = slash + 1;
++    }
++    file = fopen(fileName, "wb");
++  }
++  if (file == NULL)
++    return false;
++  if (fwrite(data, 1, dataSize, file) != dataSize) {
++    pyxis_fclose_abandon(file);
++    return false;
++  }
++  return fclose(file) == 0;
++}
 diff --git a/src/common/impl/time_pyxis.c b/src/common/impl/time_pyxis.c
 new file mode 100644
-index 0000000..a959db2
+index 0000000..254700c
 --- /dev/null
 +++ b/src/common/impl/time_pyxis.c
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,31 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "common/time.h"
 +
 +#include <clock.h>
++#include <time.h>
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <startup.h>
@@ -242,11 +266,16 @@ index 0000000..a959db2
 +  }
 +  return (double) nanoseconds / 1000000.0;
 +}
++
++bool ffTimeSleep(uint32_t msec)
++{
++  return nanosleep(&(struct timespec) { msec / 1000, (long) (msec % 1000) * 1000000 }, nullptr) == 0;
++}
 diff --git a/src/common/io.h b/src/common/io.h
-index 78da571..0b7f32d 100644
+index 78da571..61801b5 100644
 --- a/src/common/io.h
 +++ b/src/common/io.h
-@@ -3,6 +3,23 @@
+@@ -3,6 +3,24 @@
  #include "common/FFstrbuf.h"
  #include "common/FFlist.h"
  
@@ -266,11 +295,12 @@ index 78da571..0b7f32d 100644
 +bool ffAppendFileBuffer(const char* path, FFstrbuf* buffer);
 +bool ffWriteFDBuffer(FFNativeFD fd, const FFstrbuf* buffer);
 +bool ffPathExists(const char* path, FFPathType pathType);
++bool ffWriteFileData(const char* fileName, size_t dataSize, const void* data);
 +#else
  #ifdef _WIN32
      #include <fileapi.h>
      #include <handleapi.h>
-@@ -305,3 +322,5 @@ bool ffIsTerminal(int fd);
+@@ -305,3 +323,5 @@ bool ffIsTerminal(int fd);
  // The representation is uniform across platforms so that a value derived from it means the
  // same thing everywhere, which matters for callers that store it as a cache key.
  [[gnu::nonnull(1)]] uint64_t ffPathGetMtime(const char* path);
@@ -302,25 +332,131 @@ index ee30dbc..87ffc26 100644
  
  #ifdef _WIN32
 diff --git a/src/common/time.h b/src/common/time.h
-index a4d2534..37d65ad 100644
+index a4d2534..3fd1264 100644
 --- a/src/common/time.h
 +++ b/src/common/time.h
-@@ -1,5 +1,9 @@
+@@ -1,5 +1,12 @@
  #pragma once
  
 +#if defined(__pyxis__)
++#include <stdbool.h>
++#include <stdint.h>
 +double ffTimeGetTick(void);
++bool ffTimeSleep(uint32_t msec);
 +#else
 +
  #include <stdbool.h>
  #include <stdint.h>
  #include <time.h>
-@@ -78,3 +82,5 @@ typedef struct FFTimeGetAgeResult {
+@@ -78,3 +85,5 @@ typedef struct FFTimeGetAgeResult {
  } FFTimeGetAgeResult;
  
  FFTimeGetAgeResult ffTimeGetAge(uint64_t birthMs, uint64_t nowMs);
 +
 +#endif
+diff --git a/src/detection/battery/battery_pyxis.c b/src/detection/battery/battery_pyxis.c
+new file mode 100644
+index 0000000..1cfd527
+--- /dev/null
++++ b/src/detection/battery/battery_pyxis.c
+@@ -0,0 +1,97 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "battery.h"
++
++#include <startup.h>
++#include <environment.h>
++#include <handle.h>
++#include <system_info.h>
++
++#define SECONDS_PER_HOUR 3600
++
++static void init_string(FFstrbuf *string, const char *value)
++{
++  ffStrbufInitS(string, value);
++  ffStrbufTrimRightSpace(string);
++}
++
++/* Discharge time as Linux computes it: remaining capacity over the present
++ * rate, both in the firmware's unit. */
++static int32_t time_remaining(const struct system_info_battery *battery)
++{
++  if (battery->remaining_capacity == SYSTEM_INFO_BATTERY_UNKNOWN ||
++      battery->present_rate == SYSTEM_INFO_BATTERY_UNKNOWN || battery->present_rate == 0) {
++    return -1;
++  }
++  uint64_t seconds = (uint64_t) battery->remaining_capacity * SECONDS_PER_HOUR / battery->present_rate;
++  return seconds > INT32_MAX ? INT32_MAX : (int32_t) seconds;
++}
++
++static const char *clear_batteries(FFlist *results, const char *error)
++{
++  FF_LIST_FOR_EACH (FFBatteryResult, result, *results) {
++    ffStrbufDestroy(&result->manufacturer);
++    ffStrbufDestroy(&result->manufactureDate);
++    ffStrbufDestroy(&result->modelName);
++    ffStrbufDestroy(&result->technology);
++    ffStrbufDestroy(&result->serial);
++  }
++  results->length = 0;
++  return error;
++}
++
++/* ACPI reports no temperature or manufacture date. Batteries without a
++ * percentage are skipped, as Linux skips those without a capacity. */
++const char *ffDetectBattery(FFBatteryOptions *options, FFlist *results)
++{
++  (void) options;
++  handle_t handle = HANDLE_INVALID;
++  environment_capability(startup_environment_handle(), "system_info", &handle);
++  if (handle == HANDLE_INVALID) {
++    return "Missing system_info READ grant";
++  }
++  struct system_info_power power;
++  enum call_status status = system_info_get_power(handle, &power);
++  if (status != CALL_OK) {
++    handle_close(handle);
++    return "Native power query failed";
++  }
++
++  for (uint32_t i = 0; i < power.battery_count; ++i) {
++    struct system_info_battery battery;
++    if (system_info_get_battery(handle, i, &battery) != CALL_OK) {
++      handle_close(handle);
++      return clear_batteries(results, "Native battery query failed");
++    }
++    if (!(battery.flags & SYSTEM_INFO_BATTERY_PRESENT) ||
++        battery.percent == SYSTEM_INFO_BATTERY_UNKNOWN) {
++      continue;
++    }
++
++    FFBatteryResult *result = FF_LIST_ADD(FFBatteryResult, *results);
++    init_string(&result->manufacturer, battery.oem);
++    init_string(&result->modelName, battery.model);
++    init_string(&result->technology, battery.type);
++    init_string(&result->serial, battery.serial);
++    ffStrbufInit(&result->manufactureDate);
++    result->capacity = battery.percent;
++    result->temperature = FF_BATTERY_TEMP_UNSET;
++    result->cycleCount = battery.cycle_count == SYSTEM_INFO_BATTERY_UNKNOWN ? 0 : battery.cycle_count;
++    result->timeRemaining = -1;
++    result->status = FF_BATTERY_STATUS_NONE;
++    if (power.ac == SYSTEM_INFO_AC_ONLINE) {
++      result->status |= FF_BATTERY_STATUS_AC_CONNECTED;
++    }
++    if (battery.flags & SYSTEM_INFO_BATTERY_CHARGING) {
++      result->status |= FF_BATTERY_STATUS_CHARGING;
++    }
++    if (battery.flags & SYSTEM_INFO_BATTERY_DISCHARGING) {
++      result->status |= FF_BATTERY_STATUS_DISCHARGING;
++      result->timeRemaining = time_remaining(&battery);
++    }
++    if (battery.flags & SYSTEM_INFO_BATTERY_CRITICAL) {
++      result->status |= FF_BATTERY_STATUS_CRITICAL;
++    }
++  }
++  handle_close(handle);
++  return nullptr;
++}
 diff --git a/src/detection/cpu/cpu.c b/src/detection/cpu/cpu.c
 index 896bbbc..5b07cb1 100644
 --- a/src/detection/cpu/cpu.c
@@ -336,7 +472,7 @@ index 896bbbc..5b07cb1 100644
  
 diff --git a/src/detection/cpu/cpu_pyxis.c b/src/detection/cpu/cpu_pyxis.c
 new file mode 100644
-index 0000000..a6b6568
+index 0000000..053a8bf
 --- /dev/null
 +++ b/src/detection/cpu/cpu_pyxis.c
 @@ -0,0 +1,28 @@
@@ -368,9 +504,162 @@ index 0000000..a6b6568
 +  cpu->coresOnline = (uint16_t) info.online_count;
 +  return nullptr;
 +}
+diff --git a/src/detection/disk/disk.c b/src/detection/disk/disk.c
+index b1ad006..9d23549 100644
+--- a/src/detection/disk/disk.c
++++ b/src/detection/disk/disk.c
+@@ -19,6 +19,7 @@ const char* ffDetectDisks(FFDiskOptions* options, FFlist* disks) {
+     // Note that we sort alphabetically here for a better ordering when printing the list,
+     //  so the check must be done in reverse order
+     ffListSort(disks, sizeof(FFDisk), (void*) compareDisks);
++#ifndef __pyxis__
+     FF_LIST_FOR_EACH (FFDisk, disk, *disks) {
+         if (disk->bytesTotal == 0) {
+             disk->type |= FF_DISK_VOLUME_TYPE_UNKNOWN_BIT;
+@@ -26,11 +27,12 @@ const char* ffDetectDisks(FFDiskOptions* options, FFlist* disks) {
+             disk->bytesUsed = disk->bytesTotal - (options->calcType == FF_DISK_CALC_TYPE_FREE ? disk->bytesFree : disk->bytesAvailable);
+         }
+     }
++#endif
+ 
+     return nullptr;
+ }
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+     #include <fnmatch.h>
+ 
+ bool ffDiskMatchesFolderPatterns(FFstrbuf* folders, const char* path, char separator) {
+diff --git a/src/detection/disk/disk.h b/src/detection/disk/disk.h
+index 57aaf2f..d767ff5 100644
+--- a/src/detection/disk/disk.h
++++ b/src/detection/disk/disk.h
+@@ -25,16 +25,24 @@ typedef struct FFDisk {
+     uint32_t filesTotal;
+ 
+     uint64_t createTime;
++#ifdef __pyxis__
++    char poolId[33];
++    char volumeId[33];
++    uint64_t selectedGeneration;
++    uint64_t poolAllocatableBytes;
++    bool gptDegraded;
++    bool filesystemDegraded;
++#endif
+ } FFDisk;
+ 
+ /**
+  * Returns a List of FFDisk, sorted alphabetically by mountpoint.
+- * If error is not set, disks contains at least one disk.
++ * An empty list means no observable disks; errors leave no Pyxis rows.
+  */
+ const char* ffDetectDisks(FFDiskOptions* options, FFlist* disks /* list of FFDisk */);
+ 
+ const char* ffDetectDisksImpl(FFDiskOptions* options, FFlist* disks);
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+ bool ffDiskMatchesFolderPatterns(FFstrbuf* folders, const char* path, char separator);
+ #endif
+diff --git a/src/detection/disk/disk_pyxis.c b/src/detection/disk/disk_pyxis.c
+new file mode 100644
+index 0000000..2a82790
+--- /dev/null
++++ b/src/detection/disk/disk_pyxis.c
+@@ -0,0 +1,90 @@
++/* SPDX-License-Identifier: MPL-2.0 */
++#include "disk.h"
++
++#include <directory.h>
++#include <handle.h>
++#include <startup.h>
++#include <environment.h>
++
++static void format_id(const uint8_t id[16], char text[33])
++{
++  static const char digits[] = "0123456789abcdef";
++  for (uint32_t i = 0; i < 16; ++i) {
++    text[i * 2] = digits[id[i] >> 4];
++    text[i * 2 + 1] = digits[id[i] & 15];
++  }
++  text[32] = '\0';
++}
++
++static const char *clear_disks(FFlist *disks, const char *error)
++{
++  FF_LIST_FOR_EACH (FFDisk, disk, *disks) {
++    ffStrbufDestroy(&disk->mountFrom);
++    ffStrbufDestroy(&disk->mountpoint);
++    ffStrbufDestroy(&disk->filesystem);
++    ffStrbufDestroy(&disk->name);
++  }
++  disks->length = 0;
++  return error;
++}
++
++const char *ffDetectDisksImpl(FFDiskOptions *options, FFlist *disks)
++{
++  if (options->folders.length || options->hideFolders.length) {
++    return "Folder filters are unsupported on Pyxis";
++  }
++
++  struct environment_capture capture = {};
++  if (environment_capture_init(startup_environment_handle(), 0, &capture) != CALL_OK) {
++    return "Native environment capture failed";
++  }
++  const struct environment_value *roots = capture.values;
++  const char *error = nullptr;
++  for (size_t i = 0; i < capture.count; ++i) {
++    if (roots[i].kind != ENVIRONMENT_CAP) {
++      continue;
++    }
++    struct handle_info grant;
++    if (handle_query(roots[i].handle, &grant) != CALL_OK) {
++      error = "Native root grant query failed";
++      break;
++    }
++    if (grant.kind != HANDLE_KIND_NATIVE || grant.protocol != PROTOCOL_DIRECTORY ||
++        !(grant.rights & DIRECTORY_RIGHT_FILESYSTEM_INFO)) {
++      continue;
++    }
++
++    struct directory_filesystem_info info;
++    if (directory_filesystem_info(roots[i].handle, &info) != CALL_OK) {
++      error = "Native filesystem information query failed";
++      break;
++    }
++    if (info.type != FILESYSTEM_TYPE_NPFS) {
++      error = "Unsupported native filesystem type";
++      break;
++    }
++    if (ffStrbufSeparatedContainS(&options->hideFS, "npfs", ':')) {
++      continue;
++    }
++
++    // Each snapshot grant stays owned until all queries are complete.
++    FFDisk *disk = ffListAdd(disks, sizeof(*disk));
++    *disk = (FFDisk) {};
++    ffStrbufInit(&disk->mountFrom);
++    ffStrbufInitF(&disk->mountpoint, "%s://", (const char *) roots[i].name);
++    ffStrbufInitS(&disk->filesystem, "npfs");
++    ffStrbufInitS(&disk->name, info.volume_name);
++    disk->type = FF_DISK_VOLUME_TYPE_REGULAR_BIT;
++    if (info.flags & FILESYSTEM_FLAG_READ_ONLY) {
++      disk->type |= FF_DISK_VOLUME_TYPE_READONLY_BIT;
++    }
++    format_id(info.pool_id, disk->poolId);
++    format_id(info.volume_id, disk->volumeId);
++    disk->selectedGeneration = info.generation;
++    disk->poolAllocatableBytes = info.pool_allocatable_bytes;
++    disk->gptDegraded = !!(info.flags & FILESYSTEM_FLAG_GPT_DEGRADED);
++    disk->filesystemDegraded = !!(info.flags & FILESYSTEM_FLAG_DEGRADED);
++  }
++  environment_capture_close(&capture);
++  return error ? clear_disks(disks, error) : nullptr;
++}
 diff --git a/src/detection/memory/memory_pyxis.c b/src/detection/memory/memory_pyxis.c
 new file mode 100644
-index 0000000..bb21cef
+index 0000000..b385545
 --- /dev/null
 +++ b/src/detection/memory/memory_pyxis.c
 @@ -0,0 +1,25 @@
@@ -418,7 +707,7 @@ index 0000000..b9fb6d7
 +}
 diff --git a/src/detection/terminalsize/terminalsize_pyxis.c b/src/detection/terminalsize/terminalsize_pyxis.c
 new file mode 100644
-index 0000000..801597d
+index 0000000..1978df8
 --- /dev/null
 +++ b/src/detection/terminalsize/terminalsize_pyxis.c
 @@ -0,0 +1,28 @@
@@ -452,7 +741,7 @@ index 0000000..801597d
 +}
 diff --git a/src/detection/uptime/uptime_pyxis.c b/src/detection/uptime/uptime_pyxis.c
 new file mode 100644
-index 0000000..1c63451
+index 0000000..8a42bb3
 --- /dev/null
 +++ b/src/detection/uptime/uptime_pyxis.c
 @@ -0,0 +1,24 @@
@@ -496,7 +785,7 @@ index b3c3514..00ef235 100644
  #elif defined(__linux__)
      #define FF_SYSNAME "Linux"
 diff --git a/src/fastfetch.c b/src/fastfetch.c
-index 4591301..470fa18 100644
+index 4591301..1de8e54 100644
 --- a/src/fastfetch.c
 +++ b/src/fastfetch.c
 @@ -330,6 +330,11 @@ static void printCommandHelp(const char* command) {
@@ -511,7 +800,7 @@ index 4591301..470fa18 100644
      FF_LIST_FOR_EACH (FFstrbuf, path, instance.state.platform.dataDirs) {
          ffStrbufAppendS(path, "fastfetch/presets/");
          ffListFilesRecursively(path->chars, pretty);
-@@ -341,18 +346,28 @@ static void listAvailablePresets(bool pretty) {
+@@ -341,14 +346,20 @@ static void listAvailablePresets(bool pretty) {
          ffStrbufAppendS(&absolutePath, "/presets/");
          ffListFilesRecursively(absolutePath.chars, pretty);
      }
@@ -532,108 +821,17 @@ index 4591301..470fa18 100644
  }
  
  [[gnu::cold]]
- static void listConfigPaths(void) {
-+#if defined(__pyxis__)
-+    fputs("Listing config paths is unsupported on Pyxis\n", stderr);
-+    exit(1);
-+#else
-     FF_LIST_FOR_EACH (FFstrbuf, folder, instance.state.platform.configDirs) {
-         bool exists = false;
-         uint32_t length = folder->length + (uint32_t) strlen("fastfetch") + 1 /* trailing slash */;
-@@ -361,14 +376,20 @@ static void listConfigPaths(void) {
-         ffStrbufSubstrBefore(folder, length);
-         printf("%s%s\n", folder->chars, exists ? " (*)" : "");
-     }
-+#endif
- }
- 
- [[gnu::cold]]
- static void listDataPaths(void) {
-+#if defined(__pyxis__)
-+    fputs("Listing data paths is unsupported on Pyxis\n", stderr);
-+    exit(1);
-+#else
-     FF_LIST_FOR_EACH (FFstrbuf, folder, instance.state.platform.dataDirs) {
-         ffStrbufAppendS(folder, "fastfetch/");
-         puts(folder->chars);
-     }
-+#endif
- }
- 
- [[gnu::cold]]
-@@ -441,6 +462,7 @@ static bool parseJsoncFile(FFdata* data, const char* path, yyjson_read_flag flg)
-     return true;
- }
- 
-+#if !defined(__pyxis__)
- [[gnu::cold]]
- static void setupGenConfigPath(FFdata* data, const char* filePath) {
-     if (!filePath) {
-@@ -457,7 +479,9 @@ static void setupGenConfigPath(FFdata* data, const char* filePath) {
-         ffStrbufSetS(&data->genConfigPath, filePath);
-     }
- }
-+#endif
- 
-+#if !defined(__pyxis__)
- [[gnu::cold]]
- static void generateConfigFile(FFdata* data, const char* filePath) {
-     if (data->resultDoc) {
-@@ -475,8 +499,32 @@ static void generateConfigFile(FFdata* data, const char* filePath) {
-     data->docType = FF_RESULT_DOC_TYPE_CONFIG;
-     data->resultDoc = yyjson_mut_doc_new(nullptr);
- }
-+#endif
- 
- static void optionParseConfigFile(FFdata* data, const char* key, const char* value) {
-+#if defined(__pyxis__)
-+    if (data->configLoaded || !value) {
-+        fprintf(stderr, "Error: supply one %s <native URI>\n", key);
-+        exit(413);
-+    }
-+    data->configLoaded = true;
-+    if (ffStrEqualsIgnCase(value, "none")) return;
-+    if (!strstr(value, "://")) {
-+        fputs("Error: config requires an explicit native URI\n", stderr);
-+        exit(413);
-+    }
-+    yyjson_read_flag flags;
-+    if (ffStrEndsWithIgnCase(value, ".json")) flags = 0;
-+    else if (ffStrEndsWithIgnCase(value, ".jsonc")) flags = YYJSON_READ_ALLOW_COMMENTS | YYJSON_READ_ALLOW_TRAILING_COMMAS;
-+    else {
-+        fputs("Error: config requires .json or .jsonc\n", stderr);
-+        exit(413);
-+    }
-+    if (!parseJsoncFile(data, value, flags)) {
-+        fprintf(stderr, "Error: could not open config %s\n", value);
-+        exit(414);
-+    }
-+#else
-     if (data->configLoaded) {
-         fprintf(stderr, "Error: only one config file can be loaded\n");
-         exit(413);
-@@ -582,6 +630,7 @@ static void optionParseConfigFile(FFdata* data, const char* key, const char* val
- 
-     fprintf(stderr, "Error: couldn't find config: %s\n", value);
-     exit(414);
-+#endif
- }
- 
- [[gnu::cold]]
-@@ -602,6 +651,12 @@ static void enableJsonOutput(FFdata* data) {
+@@ -602,6 +613,9 @@ static void enableJsonOutput(FFdata* data) {
  }
  
  static void genConfigCommon(FFdata* data, const char* value) {
 +#if defined(__pyxis__)
-+    (void) data;
-+    (void) value;
-+    fputs("Config generation is unsupported on Pyxis\n", stderr);
-+    exit(1);
++    generateConfigFile(data, value);
 +#else
      if (!getenv("NO_COLOR") && ffIsTerminal(STDOUT_FILENO) && ffIsTerminal(STDIN_FILENO)
          #ifdef _WIN32
              && ffIsWindows10OrGreater()
-@@ -612,6 +667,7 @@ static void genConfigCommon(FFdata* data, const char* value) {
+@@ -612,6 +626,7 @@ static void genConfigCommon(FFdata* data, const char* value) {
      } else {
          generateConfigFile(data, value);
      }
@@ -641,112 +839,22 @@ index 4591301..470fa18 100644
  }
  
  static void parseCommand(FFdata* data, char* key, char* value) {
-@@ -732,6 +788,7 @@ static void parseOption(FFdata* data, const char* key, const char* value) {
-     }
- }
- 
-+#if !defined(__pyxis__)
- static void parseConfigFiles(FFdata* data) {
-     if (__builtin_expect(data->genConfigPath.length == 0, true)) {
-         FF_LIST_FOR_EACH (FFstrbuf, dir, instance.state.platform.configDirs) {
-@@ -754,6 +811,8 @@ static void parseConfigFiles(FFdata* data) {
-     }
- }
- 
-+#endif
-+
- static void parseArguments(FFdata* data, int argc, char** argv, void (*parser)(FFdata* data, char* key, char* value)) {
-     for (int i = 1; i < argc; i++) {
-         const char* key = argv[i];
-@@ -790,7 +849,11 @@ static void run(FFdata* data) {
-         ffPrepareCommandOption(data);
-     }
- 
-+#if defined(__pyxis__)
-+    if (!data->resultDoc) ffStart();
-+#else
-     ffStart();
-+#endif
- 
-     if (!data->resultDoc) {
-         ffLogoPrint();
-@@ -809,6 +872,9 @@ static void run(FFdata* data) {
-             ffPrintCommandOption(data);
+@@ -919,6 +934,7 @@ int main(int argc, char** argv) {
+         if (data.structure.length == 0) {
+             ffStrbufSetS(&data.structure, FASTFETCH_DATATEXT_STRUCTURE); // Cannot use `ffStrbufSetStatic` here because we will modify the string
          }
- 
-+#if defined(__pyxis__)
-+        break;
-+#else
-         if (instance.state.dynamicInterval > 0) {
-             ffLogoPrintRemaining(); // `logoLineCacheClear` inside so that ffLogoPrintLine will use `\e[nC` to move the cursor to the right position instead of reprinting the logo
-             fputs("\e[J", stdout); // Clear from cursor to the end of the screen to prevent artifacts when the new output is shorter than the previous one
-@@ -826,6 +892,7 @@ static void run(FFdata* data) {
-         } else {
-             ffPrepareCommandOption(data);
++#if !defined(__pyxis__)
+         if (data.genConfigInteractive && !ffGenConfigInteractive(&data)) {
+             // User canceled the interactive config generation
+             ffStrbufDestroy(&data.structure);
+@@ -927,6 +943,7 @@ int main(int argc, char** argv) {
+             ffStrbufDestroy(&data.genConfigPath);
+             return 0;
          }
 +#endif
-     }
- 
-     if (data->resultDoc) {
-@@ -838,6 +905,7 @@ static void run(FFdata* data) {
-     }
- }
- 
-+#if !defined(__pyxis__)
- [[gnu::cold]]
- static void writeConfigFile(FFdata* data) {
-     const FFstrbuf* filename = &data->genConfigPath;
-@@ -889,10 +957,13 @@ static void writeConfigFile(FFdata* data) {
-         }
-     }
- }
-+#endif
- 
- int main(int argc, char** argv) {
-     ffInitInstance();
-+#if !defined(__pyxis__)
-     atexit(ffDestroyInstance);
-+#endif
- 
-     // Data stores things only needed for the configuration of fastfetch
-     FFdata data = {
-@@ -907,11 +978,20 @@ int main(int argc, char** argv) {
-         exit(400);
-     }
- 
-+#if !defined(__pyxis__)
-     if (!data.configLoaded && !getenv("NO_CONFIG")) {
-         parseConfigFiles(&data);
-     }
-+#endif
-     parseArguments(&data, argc, argv, (void*) parseOption);
- 
-+#if defined(__pyxis__)
-+    if (instance.state.dynamicInterval > 0) {
-+        fputs("Dynamic refresh is unsupported on Pyxis\n", stderr);
-+        return 1;
-+    }
-+    run(&data);
-+#else
-     if (__builtin_expect(data.genConfigPath.length == 0, true)) {
-         run(&data);
-     } else {
-@@ -929,10 +1009,15 @@ int main(int argc, char** argv) {
-         }
          writeConfigFile(&data);
      }
-+#endif
  
-     ffStrbufDestroy(&data.structure);
-     ffStrbufDestroy(&data.structureDisabled);
-     yyjson_doc_free(data.configDoc);
-     yyjson_mut_doc_free(data.resultDoc);
-     ffStrbufDestroy(&data.genConfigPath);
-+#if defined(__pyxis__)
-+    ffDestroyInstance();
-+    return 0;
-+#endif
- }
 diff --git a/src/logo/logo.c b/src/logo/logo.c
 index 9a580e4..a5fa4e9 100644
 --- a/src/logo/logo.c
@@ -931,6 +1039,214 @@ index 9d52576..03c1be4 100644
  
          if (cpu.temperature != FF_CPU_TEMP_UNSET) {
              yyjson_mut_obj_add_real(doc, obj, "temperature", cpu.temperature);
+diff --git a/src/modules/disk/disk.c b/src/modules/disk/disk.c
+index c9c42e2..bf75763 100644
+--- a/src/modules/disk/disk.c
++++ b/src/modules/disk/disk.c
+@@ -2,11 +2,13 @@
+ #include "common/jsonconfig.h"
+ #include "common/percent.h"
+ #include "common/size.h"
+-#include "common/time.h"
++#ifndef __pyxis__
++    #include "common/time.h"
++#endif
+ #include "detection/disk/disk.h"
+ #include "modules/disk/disk.h"
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__pyxis__)
+     #include <fnmatch.h>
+ #endif
+ 
+@@ -18,6 +20,7 @@ static void printDisk(FFDiskOptions* options, const FFDisk* disk, uint32_t index
+     if (options->moduleArgs.key.length == 0) {
+         ffStrbufSetF(&key, "%s (%s)", FF_MODULE_GET_DISPLAY_NAME(Disk), disk->mountpoint.chars);
+     } else {
++#ifndef __pyxis__
+         FF_STRBUF_AUTO_DESTROY mountpointLink = ffStrbufCreate();
+         FF_STRBUF_AUTO_DESTROY nameLink = ffStrbufCreate();
+ #ifdef __linux__
+@@ -36,19 +39,92 @@ static void printDisk(FFDiskOptions* options, const FFDisk* disk, uint32_t index
+             ffStrbufSetF(&nameLink, "\e]8;;file://%s\e\\%s\e]8;;\e\\", disk->mountpoint.chars, disk->name.chars);
+         }
+ 
++#endif
++
+         FF_PARSE_FORMAT_STRING_CHECKED(&key, &options->moduleArgs.key, ((FFformatarg[]) {
+                                                                            FF_ARG(disk->mountpoint, "mountpoint"),
+                                                                            FF_ARG(disk->name, "name"),
++#ifdef __pyxis__
++                                                                           { FF_ARG_TYPE_NULL, nullptr, "mount-from" },
++#else
+                                                                            FF_ARG(disk->mountFrom, "mount-from"),
++#endif
+                                                                            FF_ARG(options->moduleArgs.keyIcon, "icon"),
+                                                                            FF_ARG(index, "index"),
+                                                                            FF_ARG(disk->filesystem, "filesystem"),
++#ifdef __pyxis__
++                                                                           { FF_ARG_TYPE_NULL, nullptr, "mountpoint-link" },
++                                                                           { FF_ARG_TYPE_NULL, nullptr, "name-link" },
++#else
+                                                                            FF_ARG(mountpointLink, "mountpoint-link"),
+                                                                            FF_ARG(nameLink, "name-link"),
++#endif
+                                                                            FF_ARG(FF_MODULE_GET_DISPLAY_NAME(Disk), "module-name"),
+                                                                        }));
+     }
+ 
++#ifdef __pyxis__
++    FF_STRBUF_AUTO_DESTROY poolCapacityPretty = ffStrbufCreate();
++    ffSizeAppendNum(disk->poolAllocatableBytes, &poolCapacityPretty);
++    bool isReadOnly = !!(disk->type & FF_DISK_VOLUME_TYPE_READONLY_BIT);
++
++    if (options->moduleArgs.outputFormat.length == 0) {
++        ffPrintLogoAndKey(key.chars, 0, &options->moduleArgs, FF_PRINT_TYPE_NO_CUSTOM_KEY);
++        FF_STRBUF_AUTO_DESTROY str = ffStrbufCreateS(disk->filesystem.chars);
++        if (isReadOnly || disk->gptDegraded || disk->filesystemDegraded) {
++            ffStrbufAppendS(&str, " [");
++            if (isReadOnly) {
++                ffStrbufAppendS(&str, "Read-only, ");
++            }
++            if (disk->gptDegraded) {
++                ffStrbufAppendS(&str, "GPT degraded, ");
++            }
++            if (disk->filesystemDegraded) {
++                ffStrbufAppendS(&str, "Filesystem degraded, ");
++            }
++            ffStrbufSubstrBefore(&str, str.length - 2);
++            ffStrbufAppendC(&str, ']');
++        }
++        ffStrbufAppendF(&str, " - shared pool capacity: %s", poolCapacityPretty.chars);
++        ffStrbufPutTo(&str, stdout);
++    } else {
++        FF_PRINT_FORMAT_CHECKED(key.chars, 0, &options->moduleArgs, FF_PRINT_TYPE_NO_CUSTOM_KEY, ((FFformatarg[]) {
++            { FF_ARG_TYPE_NULL, nullptr, "size-used" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-total" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-percentage" },
++            { FF_ARG_TYPE_NULL, nullptr, "files-used" },
++            { FF_ARG_TYPE_NULL, nullptr, "files-total" },
++            { FF_ARG_TYPE_NULL, nullptr, "files-percentage" },
++            { FF_ARG_TYPE_NULL, nullptr, "is-external" },
++            { FF_ARG_TYPE_NULL, nullptr, "is-hidden" },
++            FF_ARG(disk->filesystem, "filesystem"),
++            FF_ARG(disk->name, "name"),
++            FF_ARG(isReadOnly, "is-readonly"),
++            { FF_ARG_TYPE_NULL, nullptr, "create-time" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-percentage-bar" },
++            { FF_ARG_TYPE_NULL, nullptr, "files-percentage-bar" },
++            { FF_ARG_TYPE_NULL, nullptr, "days" },
++            { FF_ARG_TYPE_NULL, nullptr, "hours" },
++            { FF_ARG_TYPE_NULL, nullptr, "minutes" },
++            { FF_ARG_TYPE_NULL, nullptr, "seconds" },
++            { FF_ARG_TYPE_NULL, nullptr, "milliseconds" },
++            FF_ARG(disk->mountpoint, "mountpoint"),
++            { FF_ARG_TYPE_NULL, nullptr, "mount-from" },
++            { FF_ARG_TYPE_NULL, nullptr, "years" },
++            { FF_ARG_TYPE_NULL, nullptr, "days-of-year" },
++            { FF_ARG_TYPE_NULL, nullptr, "years-fraction" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-free" },
++            { FF_ARG_TYPE_NULL, nullptr, "size-available" },
++            { FF_ARG_TYPE_STRING, disk->poolId, "pool-id" },
++            { FF_ARG_TYPE_STRING, disk->volumeId, "volume-id" },
++            FF_ARG(disk->selectedGeneration, "generation"),
++            FF_ARG(poolCapacityPretty, "pool-capacity"),
++            FF_ARG(disk->poolAllocatableBytes, "pool-capacity-bytes"),
++            FF_ARG(disk->gptDegraded, "is-gpt-degraded"),
++            FF_ARG(disk->filesystemDegraded, "is-filesystem-degraded"),
++        }));
++    }
++#else
+     FF_STRBUF_AUTO_DESTROY usedPretty = ffStrbufCreate();
+     ffSizeAppendNum(disk->bytesUsed, &usedPretty);
+ 
+@@ -181,6 +257,7 @@ static void printDisk(FFDiskOptions* options, const FFDisk* disk, uint32_t index
+                                                                                                      FF_ARG(availPretty, "size-available"),
+                                                                                                  }));
+     }
++#endif
+ }
+ 
+ bool ffPrintDisk(FFDiskOptions* options) {
+@@ -373,10 +450,17 @@ bool ffGenerateDiskJsonResult(FFDiskOptions* options, yyjson_mut_doc* doc, yyjso
+         yyjson_mut_val* obj = yyjson_mut_arr_add_obj(doc, arr);
+ 
+         yyjson_mut_val* bytes = yyjson_mut_obj_add_obj(doc, obj, "bytes");
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, bytes, "available");
++        yyjson_mut_obj_add_null(doc, bytes, "free");
++        yyjson_mut_obj_add_null(doc, bytes, "total");
++        yyjson_mut_obj_add_null(doc, bytes, "used");
++#else
+         yyjson_mut_obj_add_uint(doc, bytes, "available", item->bytesAvailable);
+         yyjson_mut_obj_add_uint(doc, bytes, "free", item->bytesFree);
+         yyjson_mut_obj_add_uint(doc, bytes, "total", item->bytesTotal);
+         yyjson_mut_obj_add_uint(doc, bytes, "used", item->bytesUsed);
++#endif
+ 
+         yyjson_mut_val* files = yyjson_mut_obj_add_obj(doc, obj, "files");
+         if (item->filesTotal == 0 && item->filesUsed == 0) {
+@@ -389,7 +473,11 @@ bool ffGenerateDiskJsonResult(FFDiskOptions* options, yyjson_mut_doc* doc, yyjso
+ 
+         yyjson_mut_obj_add_strbuf(doc, obj, "filesystem", &item->filesystem);
+         yyjson_mut_obj_add_strbuf(doc, obj, "mountpoint", &item->mountpoint);
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, obj, "mountFrom");
++#else
+         yyjson_mut_obj_add_strbuf(doc, obj, "mountFrom", &item->mountFrom);
++#endif
+         yyjson_mut_obj_add_strbuf(doc, obj, "name", &item->name);
+         yyjson_mut_val* typeArr = yyjson_mut_obj_add_arr(doc, obj, "volumeType");
+         if (item->type & FF_DISK_VOLUME_TYPE_REGULAR_BIT) {
+@@ -411,12 +499,23 @@ bool ffGenerateDiskJsonResult(FFDiskOptions* options, yyjson_mut_doc* doc, yyjso
+             yyjson_mut_arr_add_str(doc, typeArr, "Unknown");
+         }
+ 
++#ifdef __pyxis__
++        yyjson_mut_obj_add_null(doc, obj, "createTime");
++        yyjson_mut_val* native = yyjson_mut_obj_add_obj(doc, obj, "native");
++        yyjson_mut_obj_add_strcpy(doc, native, "poolId", item->poolId);
++        yyjson_mut_obj_add_strcpy(doc, native, "volumeId", item->volumeId);
++        yyjson_mut_obj_add_uint(doc, native, "selectedGeneration", item->selectedGeneration);
++        yyjson_mut_obj_add_uint(doc, native, "poolAllocatableBytes", item->poolAllocatableBytes);
++        yyjson_mut_obj_add_bool(doc, native, "gptDegraded", item->gptDegraded);
++        yyjson_mut_obj_add_bool(doc, native, "filesystemDegraded", item->filesystemDegraded);
++#else
+         const char* pstr = ffTimeToFullStr(item->createTime);
+         if (*pstr) {
+             yyjson_mut_obj_add_strcpy(doc, obj, "createTime", pstr);
+         } else {
+             yyjson_mut_obj_add_null(doc, obj, "createTime");
+         }
++#endif
+     }
+ 
+     FF_LIST_FOR_EACH (FFDisk, item, disks) {
+@@ -433,7 +532,7 @@ void ffInitDiskOptions(FFDiskOptions* options) {
+     ffOptionInitModuleArg(&options->moduleArgs, "");
+ 
+     ffStrbufInit(&options->folders);
+-#if _WIN32 || __APPLE__ || __ANDROID__
++#if _WIN32 || __APPLE__ || __ANDROID__ || __pyxis__
+     ffStrbufInit(&options->hideFolders);
+ #else
+     ffStrbufInitS(&options->hideFolders, "/efi:/boot:/boot/*");
+@@ -509,6 +608,15 @@ FFModuleBaseInfo ffDiskModuleInfo = {
+         { "Years fraction after creation", "years-fraction" },
+         { "Size free", "size-free" },
+         { "Size available", "size-available" },
++#ifdef __pyxis__
++        { "Native pool ID (hex bytes in filesystem order)", "pool-id" },
++        { "Native volume ID (hex bytes in filesystem order)", "volume-id" },
++        { "Selected filesystem generation", "generation" },
++        { "Shared pool capacity (formatted)", "pool-capacity" },
++        { "Shared pool allocatable bytes (including metadata/reserves)", "pool-capacity-bytes" },
++        { "True if GPT opening was degraded", "is-gpt-degraded" },
++        { "True if filesystem opening was degraded", "is-filesystem-degraded" },
++#endif
+     })),
+     .defaultOrder = 42,
+ };
 diff --git a/src/modules/kernel/kernel.c b/src/modules/kernel/kernel.c
 index 322b2b4..c15e4a8 100644
 --- a/src/modules/kernel/kernel.c
@@ -1143,7 +1459,7 @@ index 25b8d1f..2d54c34 100644
      return true;
  }
 diff --git a/src/options/general.c b/src/options/general.c
-index 890f38e..d39784b 100644
+index 890f38e..8501347 100644
 --- a/src/options/general.c
 +++ b/src/options/general.c
 @@ -1,6 +1,5 @@
@@ -1158,7 +1474,7 @@ index 890f38e..d39784b 100644
          if (unsafe_yyjson_equals_str(key, "thread")) {
              options->multithreading = yyjson_get_bool(val);
 +#if defined(__pyxis__)
-+            if (options->multithreading) return "Threading is unsupported on Pyxis";
++            if (options->multithreading) return "This Fastfetch build omits threaded detection";
 +#endif
          } else if (unsafe_yyjson_equals_str(key, "processingTimeout")) {
              options->processingTimeout = (int32_t) yyjson_get_int(val);
@@ -1167,7 +1483,7 @@ index 890f38e..d39784b 100644
          } else if (unsafe_yyjson_equals_str(key, "detectVersion")) {
              options->detectVersion = yyjson_get_bool(val);
 +#if defined(__pyxis__)
-+            if (options->detectVersion) return "Executable version detection is unsupported on Pyxis";
++            if (options->detectVersion) return "This Fastfetch build omits executable version detection";
 +#endif
          } else if (unsafe_yyjson_equals_str(key, "playerName")) {
              ffStrbufSetJsonVal(&options->playerName, val);
@@ -1178,7 +1494,7 @@ index 890f38e..d39784b 100644
  
 +#if defined(__pyxis__)
 +    if (options->multithreading || options->detectVersion) {
-+        fputs("Threading and executable version detection are unsupported on Pyxis\n", stderr);
++        fputs("This Fastfetch build omits threaded and executable version detection\n", stderr);
 +        exit(1);
 +    }
 +#endif

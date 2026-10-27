@@ -13,8 +13,6 @@ return {
     "patches/0001-pyxis-build.patch",
     "patches/0002-pyxis-native-adapters.patch",
     "patches/0003-pyxis-logo.patch",
-    "patches/0004-pyxis-disk.patch",
-    "patches/0005-pyxis-battery.patch",
   },
   outputs = {
     executable = "bin/fastfetch.pxe",

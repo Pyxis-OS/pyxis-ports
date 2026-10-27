@@ -27,22 +27,16 @@ by its explicit URI.
 ## Adaptation
 
 Fastfetch 2.69.0 is pinned to `0c3b852bf7bad2837a814c7a31bf332092048a2b`.
-Five ordered patches cover the SDK build, native integration, owner-supplied
-ASCII logo, native Disk consumer and native Battery detection. The build selects
-the portable core and eleven modules, links SDK startup and static libraries with the SDK's compiler runtime (compiler-rt builtins). LLD writes the P1F
-executable directly. No compiler rebuild, host-libc link, fake Unix services or optional graphics/thread/interpreter libraries
-are involved.
+Three ordered patches cover the SDK build, native adapters (including Disk and
+Battery) and the owner's unchanged ASCII logo. The build selects eleven modules
+and links SDK startup/static libraries with compiler-rt builtins. LLD writes the
+P1F executable directly; there is no host-libc link.
 
-| Changed area | Required adaptation |
-| --- | --- |
-| CMake | Pyxis platform/source selection, SDK link and P1F conversion |
-| Platform/detection backends | Native identity, CPU, allocator, clock and console observations |
-| I/O/time declarations and backends | Native file/path access and monotonic timing without Unix-only headers |
-| Initialization and main | Omit unavailable locale, signals, buffering controls and atexit; retain normal lifecycle; explicit URI config loading and one-shot execution |
-| Selected module frontends | Native query errors, unavailable fields, allocator label and Pyxis version name |
-| General/logo options | Disable unavailable thread/process defaults, omit Unix path expansion and command/image helpers |
-| String headers | Direct Pyxis-only includes of existing libc declarations |
-| Logo registry | Owner's compass rose, unchanged bytes |
+Native adapters provide identity, CPU, allocator, clock, console, disk and battery
+observations with existing grants. Unix locale/signals, process helpers, optional
+graphics/interpreter libraries and Fastfetch's threaded detection closure remain
+omitted. Pyxis itself supports threads; that omission describes this port's
+selected dependency closure. Standard libc buffering and atexit are used.
 
 The formatter, string/list containers, module dispatcher, common diagnostic code
 and bundled yyjson are unchanged from upstream. Upstream assertions and allocation
@@ -64,7 +58,9 @@ native/build/logo material is MPL-2.0. See `PORT-NOTICE` and the staged licenses
 | Battery | `system_info` READ power and battery queries |
 | Colors, Break, Separator | Upstream presentation helpers |
 
-The eight data modules run by default; presentation helpers remain selectable.
+The default module order follows upstream. Modules outside the selected closure
+use upstream unsupported-module diagnostics; use `--structure` or configuration
+to select the native modules listed above.
 Battery prints nothing without a battery, as upstream does with errors hidden.
 The built-in `Pyxis`/`Pyxis OS` logo is selected from native OS identity. These
 queries are separate observations, not one atomic snapshot. CPU count is not
@@ -122,15 +118,27 @@ ACPI reports no adapter wattage, which that module prints.
 
 Actual stdout's live descriptor binding controls automatic plain-output mode, separately
 from named console authority. Redirected defaults use plain text; upstream ASCII logo layout may remain
-(`--logo none` suppresses it). TerminalSize can still query its named console. JSON skips terminal setup and
-logo output. No keyboard input or terminal escape-response query is used.
+(`--logo none` suppresses it). TerminalSize can still query its named console.
+JSON follows upstream terminal setup and skips logo output. No keyboard input or terminal escape-response query is used.
 
 ## Configuration and limits
 
-No config is discovered automatically. `--config` accepts one explicit native
-URI ending in `.json` or `.jsonc`, or `none`. JSONC permits comments and trailing
-commas. Reads use ordinary libc/yyjson file APIs with existing caller authority.
-Upstream module order, keys, formats, colors, spacing and CLI overrides remain.
+Configuration follows upstream parsing and precedence. Native relative paths and
+scheme paths reach libc directly; `.json`, `.jsonc`, `.json5`, extension inference,
+`none` and stdin `-` retain upstream behavior. Existing `home://.config/` and
+`home://` directories supply config paths; existing `home://.local/share/` and
+`home://` supply data/preset paths. Missing directories or grants are unavailable.
+Discovery uses those paths without Unix filesystem assumptions. `--list-config-paths`
+and `--list-data-paths` show them. Native recursive preset/logo listing is omitted.
+
+Noninteractive `--gen-config` writes an explicit native/relative file or stdout
+`-`, retaining upstream generation and diagnostics. Its writer creates parent
+directories through native mkdir and abandons a failed provider transaction;
+fclose supplies the real publication result. The interactive termios/poll/signal
+configuration UI remains omitted. Dynamic refresh uses native nanosleep and
+upstream cache invalidation/output behavior.
+
+Upstream module keys, formats, colors, spacing and CLI overrides remain.
 For example:
 
 ```json
@@ -150,9 +158,9 @@ filesystem label `npfs`. Normal text type visibility options and module/key/size
 formatting remain upstream; JSON retains upstream type-filter behavior. No Unix
 folder glob runtime is added.
 
-Automatic discovery, config/cache generation, dynamic refresh, image logos,
-Lua/JS formats, threads, executable helpers and other modules are outside this
-port. Upstream help still lists broader options. Unsupported module/format/logo
+Recursive preset/logo listing, interactive config generation, image logos,
+Lua/JS formats, Fastfetch detection threads, executable helpers and other modules
+are outside this port. Upstream help still lists broader options. Unsupported module/format/logo
 requests follow upstream diagnostics or fallback behavior; the port does not
 prevalidate every option or redefine the process exit status for module errors.
 In particular, a module error does not guarantee a nonzero exit status. Explicit
@@ -165,64 +173,14 @@ makes no guarantee of graceful OOM recovery or terminal restoration after a faul
 
 ## Validation
 
-The Disk recipe passed a fresh standalone fetch/apply/configure/build/stage on
-2026-09-30 with GCC 16.2.0, CMake 4.4.3 and SDK userland `3b9ba3f` from Pyxis
-`98e6557`. All four ordered patches applied to the unchanged upstream pin. The
-build linked the existing SDK libraries and staged the executable/notices. Two
-existing unused-variable/parameter warnings remain in upstream JSON config code.
-This establishes recipe/build behavior; Disk runtime and image integration are
-validated by the parent Pyxis task.
+The patch cleanup passed an ordinary fetch/apply/configure/build/stage with the
+current LLVM 23.1.3 toolchain and SDK. Reconstructed source matched the ordinary
+runner's patched source. The battery adapter retains its `system_info` handle
+through power and per-battery queries, closing it on completion or query refusal.
+Its earlier close-before-query bug is fixed locally. Runtime battery observation,
+changed configuration behavior and dynamic refresh need the parent task's manual
+QEMU/native qualification; the ordinary build does not prove those outcomes.
 
-The earlier reconstructed standalone fetch/apply/configure/build/stage recipe passed
-with GCC 16.2.0, CMake 3.31.8 and SDK userland `c9ed311`. An ordinary Pyxis image
-build passed. Four-CPU nested KVM with the documented QEMU AHCI fix, 256 MiB,
-Fedora OVMF, virtio-net and private virtio-fs ran the staged executable through
-the remote terminal. Native text/logo, JSON, explicit JSONC, optional-field
-conditions and empty calendar fields were exercised. Redirected JSON was parsed
-on the host and contained no escape bytes; it reported four online CPUs and the
-remote console's 100x30 dimensions.
-
-The logo SHA-256 matches the owner's source:
-`657381d8eda6cba5aa5e872a24e283d8dae144e406f160d32363cb0b8d885e1d`.
-Missing-grant paths were reviewed in code; no allocation fault injection or new
-tests were added. Earlier validation of the superseded patch does not establish
-behavior of this reconstruction.
-
-Default-image integration subsequently passed an ordinary image build and
-interactive local 160x48 and remote 100x30/40x12 runs of the packaged command.
-JSONC, file redirection, a cat pipeline and repeated runs worked. A disposable
-launcher omitting system_info, clock and named output grants received six JSON
-module errors and exit status zero, as upstream permits. GDB matched CPU data
-and allocator bytes to native kernel observations and uptime to clock
-nanoseconds divided by one million. The narrow terminal retains upstream
-layout: long logo/data lines may wrap; use `--logo none` and shorter formats.
-No port patches changed for this integration.
-
-On 2026-10-07 the recipe built with Pyxis's LLVM toolchain:
-- Clang/LLD 23.1.3 from `pyxis-llvm` `41ab6043cc4f`;
-- CMake 4.3.0;
-- an LLVM-built SDK.
-
-`fastfetch --structure OS:Kernel:CPU:Memory:Uptime` ran in an all-LLVM image
-(four-CPU nested KVM). Two recipe changes were needed:
-- **Patch 0002:** the Pyxis `main` now returns 0 explicitly. Under
-  the then-freestanding SDK, Clang did not exempt `main` from
-  `-Werror=return-type`. The explicit return remains valid with hosted C.
-- **The CMake link:** it names the SDK's runtime library
-  (`PYXIS_RUNTIME_LIBRARY` from `pyxis.mk`) instead of `gcc`, and CMake no
-  longer receives the SDK's `-MMD -MP`.
-
-Native Disk integration passed an ordinary parent image build and interactive
-four-CPU nested-KVM runs with a read-only virtio-blk image. Local 160x48 and
-remote 100x30 output showed three authorized bindings across two volumes sharing
-one pool; a fourth `--no-info` binding stayed absent while ordinary reads worked.
-Text labeled 67,100,672 bytes as 63.99 MiB shared pool capacity; JSON and GDB
-agreed with host metadata on generation and capacity. Named/numeric formats,
-conditions, custom keys, redirection, a pipeline and repeated JSON worked. Unknown
-usage/time values stayed null or unset and captured output had no escape bytes.
-Folder filters produced the documented module error; filesystem/type filtering
-retained the documented behavior. Separate boots with only a non-observable root
-and with no disk produced empty Disk JSON and the upstream text diagnostic. The
-image hash was unchanged after detachment. Degraded flags and query-failure cleanup
-were source-reviewed; no fault injection or new tests were added. Full evidence
-is in the parent `docs/userland/fastfetch.md` Native Disk validation section.
+Earlier native/Disk runs described in the parent subsystem documentation concern
+the previous profile. No native battery or changed-profile runtime pass is claimed
+here. No new tests or fault injection were added.
