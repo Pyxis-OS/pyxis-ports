@@ -1,5 +1,5 @@
 diff --git a/miscutils/less.c b/miscutils/less.c
-index 0771ff6..64130ad 100644
+index 0771ff6..0676e88 100644
 --- a/miscutils/less.c
 +++ b/miscutils/less.c
 @@ -143,12 +143,9 @@
@@ -66,8 +66,7 @@ index 0771ff6..64130ad 100644
  	set_tty_cooked();
 -	if (!(G.kbd_fd_orig_flags & O_NONBLOCK))
 -		ndelay_off(kbd_fd);
--	clear_line();
-+	pyxis_vi_write(CLEAR, sizeof(CLEAR) - 1);
+ 	clear_line();
 +	fflush_all();
 +	pyxis_vi_terminal_cooked();
  }
@@ -76,7 +75,7 @@ index 0771ff6..64130ad 100644
  {
  	restore_tty();
 -	exit_SUCCESS();
-+	exit(G.eof_error_ok < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
++	exit(EXIT_SUCCESS);
  }
  
  #if (ENABLE_FEATURE_LESS_DASHCMD && ENABLE_FEATURE_LESS_LINENUMS) \
@@ -143,17 +142,7 @@ index 0771ff6..64130ad 100644
  					read_size = 0; // -1 would be seen as UINT_MAX, prevent
  					goto reached_eof;
  				}
-@@ -613,8 +590,7 @@ static void read_lines(void)
- 			max_lineno++;
- 
- 		if (max_fline >= MAXLINES) {
--			G.eof_error_ok = 0; /* Pretend we saw EOF */
--			break;
-+			bb_simple_error_msg_and_die("input exceeds the pager line limit");
- 		}
- 		if (!at_end()) {
- #if !ENABLE_FEATURE_LESS_REGEXP
-@@ -629,10 +605,7 @@ static void read_lines(void)
+@@ -629,10 +606,7 @@ static void read_lines(void)
  #endif
  		}
  		if (G.eof_error_ok <= 0) { /* EOF or error? */
@@ -165,7 +154,7 @@ index 0771ff6..64130ad 100644
  			break;
  		}
  		max_fline++;
-@@ -641,8 +614,6 @@ static void read_lines(void)
+@@ -641,8 +615,6 @@ static void read_lines(void)
  		last_line_pos = 0;
  	} /* end of "read lines until we reach cur_fline" loop */
  
@@ -174,7 +163,7 @@ index 0771ff6..64130ad 100644
  
  	// Will not be seen (overwritten immediately)
  	//if (G.eof_error_ok < 0) { // error?
-@@ -686,11 +657,7 @@ static void update_num_lines(void)
+@@ -686,11 +658,7 @@ static void update_num_lines(void)
  	/* only do this for regular files */
  	if (num_lines == REOPEN_AND_COUNT || num_lines == REOPEN_STDIN) {
  		count = 0;
@@ -187,7 +176,7 @@ index 0771ff6..64130ad 100644
  		if (fd < 0) {
  			/* somebody stole my file! */
  			num_lines = NOT_REGULAR_FILE;
-@@ -700,7 +667,7 @@ static void update_num_lines(void)
+@@ -700,7 +668,7 @@ static void update_num_lines(void)
  			num_lines = NOT_REGULAR_FILE;
  			goto do_close;
  		}
@@ -196,7 +185,7 @@ index 0771ff6..64130ad 100644
  			for (i = 0; i < len; ++i) {
  				if (buf[i] == '\n' && ++count == MAXLINES)
  					goto done;
-@@ -871,7 +838,7 @@ static void print_found(const char *line)
+@@ -871,7 +839,7 @@ static void print_found(const char *line)
  		/* Most of the time doesn't find the regex, optimize for that */
  		match_status = regexec(&pattern, line, 1, &match_structs, eflags);
  		/* if even "" matches, treat it as "not a match" */
@@ -205,7 +194,7 @@ index 0771ff6..64130ad 100644
  			match_status = 1;
  	}
  
-@@ -1068,15 +1035,17 @@ static void buffer_lineno(int lineno)
+@@ -1068,15 +1036,17 @@ static void buffer_lineno(int lineno)
  
  static void open_file_and_read_lines(void)
  {
@@ -227,24 +216,15 @@ index 0771ff6..64130ad 100644
  		/* "less" with no arguments in argv[] */
  		/* For status line only */
  		filename = xstrdup(bb_msg_standard_input);
-@@ -1096,6 +1065,16 @@ static void reinitialize(void)
+@@ -1096,6 +1066,7 @@ static void reinitialize(void)
  {
  	unsigned i;
  
-+#if ENABLE_FEATURE_LESS_REGEXP
-+	free(match_lines);
-+	match_lines = NULL;
-+	num_matches = match_pos = 0;
-+	wanted_match = -1;
-+	if (pattern_valid)
-+		regfree(&pattern);
-+	pattern_valid = 0;
-+#endif
 +
  	if (flines) {
  		for (i = 0; i <= max_fline; i++)
  			free(MEMPTR(flines[i]));
-@@ -1120,67 +1099,20 @@ static void reinitialize(void)
+@@ -1120,67 +1091,20 @@ static void reinitialize(void)
   */
  static int64_t getch_nowait(void)
  {
@@ -318,63 +298,7 @@ index 0771ff6..64130ad 100644
  }
  
  /* Grab a character from input without requiring the return key.
-@@ -1249,10 +1181,12 @@ static void examine_file(void)
- 		free(new_fname);
- 		return;
- 	}
--	if (access(new_fname, R_OK) != 0) {
-+	int fd = open(new_fname, O_RDONLY);
-+	if (fd < 0) {
- 		print_statusline("Cannot read this file");
- 		goto err;
- 	}
-+	close(fd);
- 	free(filename);
- 	filename = new_fname;
- 	/* files start by = argv. why we assume that argv is infinitely long??
-@@ -1579,31 +1513,6 @@ static void show_flag_status(void)
- 
- #endif /* ENABLE_FEATURE_LESS_DASHCMD */
- 
--static void save_input_to_file(void)
--{
--	const char *msg = "";
--	char *current_line;
--	unsigned i;
--	FILE *fp;
--
--	print_statusline("Log file: ");
--	current_line = less_gets(sizeof("Log file: ")-1);
--	if (current_line[0]) {
--		fp = fopen_for_write(current_line);
--		if (!fp) {
--			msg = "Error opening log file";
--			goto ret;
--		}
--		for (i = 0; i <= max_fline; i++)
--			fprintf(fp, "%s\n", flines[i]);
--		fclose(fp);
--		msg = "Done";
--	}
-- ret:
--	print_statusline(msg);
--	free(current_line);
--}
--
- #if ENABLE_FEATURE_LESS_MARKS
- static void add_mark(void)
- {
-@@ -1767,9 +1676,6 @@ static void keypress_process(int keypress)
- 	/*case 'R':
- 		full_repaint();
- 		break;*/
--	case 's':
--		save_input_to_file();
--		break;
- 	case 'E':
- 		examine_file();
- 		break;
-@@ -1822,24 +1728,10 @@ static void keypress_process(int keypress)
+@@ -1822,24 +1746,9 @@ static void keypress_process(int keypress)
  		number_process(keypress);
  }
  
@@ -396,36 +320,19 @@ index 0771ff6..64130ad 100644
  {
 -	char *tty_name;
 -	int tty_fd;
-+	struct stat input_stat;
  
  	INIT_G();
  
-@@ -1852,7 +1744,6 @@ int less_main(int argc, char **argv)
- 	getopt32(argv, "EMmN~IF"
- 		IF_FEATURE_LESS_TRUNCATE("S")
- 		IF_FEATURE_LESS_RAW("R")
--		/*ignored:*/"sX"
- 	);
- 	argv += optind;
- 	num_files = argc - optind;
-@@ -1880,13 +1771,10 @@ int less_main(int argc, char **argv)
+@@ -1880,8 +1789,6 @@ int less_main(int argc, char **argv)
  		}
  	}
  
 -	/* Another popular pager, most, detects when stdout
 -	 * is not a tty and turns into cat. This makes sense. */
--	if (!isatty(STDOUT_FILENO))
--		return bb_cat(argv);
--
- 	if (!num_files) {
--		if (isatty(STDIN_FILENO)) {
-+		if (fstat(STDIN_FILENO, &input_stat) != 0)
-+			bb_simple_error_msg_and_die(strerror(errno));
-+		if (S_ISCHR(input_stat.st_mode)) {
- 			/* Just "less"? No args and no redirection? */
- 			bb_show_usage();
- 		}
-@@ -1897,45 +1785,13 @@ int less_main(int argc, char **argv)
+ 	if (!isatty(STDOUT_FILENO))
+ 		return bb_cat(argv);
+ 
+@@ -1897,45 +1804,13 @@ int less_main(int argc, char **argv)
  	if (option_mask32 & FLAG_TILDE)
  		empty_line_marker = "";
  
@@ -460,12 +367,11 @@ index 0771ff6..64130ad 100644
 -	IF_FEATURE_LESS_ASK_TERMINAL(G.winsize_err =) get_terminal_width_height(tty_fd, &width, &max_displayed_line);
 -	/* 20: two tabstops + 4 */
 -	if (width < 20 || max_displayed_line < 3)
--		return bb_cat(argv);
 +	kbd_fd = STDIN_FILENO; /* safe_read_key uses the named input grant. */
-+	pyxis_vi_terminal_raw();
 +	if (get_terminal_width_height(kbd_fd, &width, &max_displayed_line) != 0
 +	 || width < 20 || max_displayed_line < 3)
-+		bb_simple_error_msg_and_die("terminal is too small for the pager");
+ 		return bb_cat(argv);
++	pyxis_vi_terminal_raw();
  	max_displayed_line -= 2;
 -
 -	/* We want to restore term_orig on exit */
@@ -473,7 +379,7 @@ index 0771ff6..64130ad 100644
 -#if ENABLE_FEATURE_LESS_WINCH
 -	signal(SIGWINCH, sigwinch_handler);
 -#endif
-+	pyxis_vi_write(CLEAR, sizeof(CLEAR) - 1);
++	printf(CLEAR);
  
  	buffer = xmalloc((max_displayed_line+1) * sizeof(char *));
  	reinitialize();

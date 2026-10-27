@@ -9,12 +9,7 @@ int printf_main(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
-  int status = printf_main(argc, argv);
-  if (fflush(stdout) == EOF || ferror(stdout)) {
-    bb_simple_error_msg("cannot write output");
-    return EXIT_FAILURE;
-  }
-  return status;
+  return printf_main(argc, argv);
 }
 
 void bb_error_msg(const char *format, ...)

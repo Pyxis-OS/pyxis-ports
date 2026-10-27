@@ -1,12 +1,17 @@
-/* Pyxis replacement for BusyBox's libbb.h, limited to what editors/vi.c uses.
+/* Selected BusyBox libbb declarations for standalone Pyxis applets.
  * SPDX-License-Identifier: GPL-2.0-only
  *
- * Names and contracts follow BusyBox libbb; busybox_pyxis.c implements them
- * over Pyxis libc and libterm. The pyxis_vi_* functions are called by this
- * recipe's vi.c patch in place of termios, poll and stat. */
+ * Upstream sources implement option, list, numeric and string helpers.
+ * busybox_pyxis.c supplies the native console backend. The pyxis_vi_* hooks
+ * replace termios/poll in the selected editor/pager sources. */
 #ifndef PYXIS_BUSYBOX_LIBBB_H
 #define PYXIS_BUSYBOX_LIBBB_H
 
+#ifdef PYXIS_APPLET_TAR
+#include "tar_support.h"
+#else
+#include <alloca.h>
+#include <stdarg.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -19,6 +24,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "vi_config.h"
@@ -28,6 +34,12 @@
 #define NOINLINE __attribute__((noinline))
 #define NORETURN __attribute__((noreturn))
 #define UNUSED_PARAM __attribute__((unused))
+#define ALIGN_PTR __attribute__((aligned(sizeof(void *))))
+#define ALIGN_SUFFIX __attribute__((aligned(4)))
+#define PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
+#define POP_SAVED_FUNCTION_VISIBILITY
+#define GETOPT_RESET() (optind = 0)
+#define ENABLE_LONG_OPTS 0
 #define ALIGN1 __attribute__((aligned(1)))
 #define MAIN_EXTERNALLY_VISIBLE
 #define ARRAY_SIZE(x) ((unsigned)(sizeof(x) / sizeof((x)[0])))
@@ -69,7 +81,22 @@ typedef struct llist_t {
 } llist_t;
 
 extern const char *applet_name;
-extern int optind;
+extern uint32_t option_mask32;
+void bb_error_msg_and_die(const char *format, ...) NORETURN;
+void llist_add_to(llist_t **list, void *data);
+void llist_add_to_end(llist_t **list, void *data);
+void llist_unlink(llist_t **head, llist_t *elm);
+void llist_free(llist_t *elm, void (*freeit)(void *));
+llist_t *llist_rev(llist_t *list);
+llist_t *llist_find_str(llist_t *list, const char *str);
+unsigned string_array_len(char **argv);
+void overlapping_strcpy(char *dest, const char *source);
+struct suffix_mult {
+  char suffix[4];
+  uint32_t mult;
+};
+#include "xatonum.h"
+int xatoi_positive(const char *text);
 
 /* Allocation failure prints a diagnostic and exits; unsaved edits are lost. */
 void *xmalloc(size_t size);
@@ -86,9 +113,6 @@ char *xasprintf(const char *format, ...) __attribute__((format(printf, 1, 2)));
 } while (0)
 /* NULL on success; otherwise an allocated regerror message for the caller. */
 char *regcomp_or_errmsg(regex_t *pattern, const char *text, int flags);
-/* Read to EOF or *size bytes; *size returns the count. NULL with errno on a
- * read error. The buffer has one spare NUL byte after the data. */
-void *xmalloc_read(int descriptor, size_t *size);
 
 void xfunc_die(void) NORETURN;
 void bb_simple_error_msg_and_die(const char *message) NORETURN;
@@ -98,17 +122,16 @@ void bb_show_usage(void) NORETURN;
 ssize_t full_read(int descriptor, void *buffer, size_t size);
 ssize_t full_write(int descriptor, const void *buffer, size_t size);
 
-/* Options: "x" flag, "x:" argument, "x:*" argument appended to an llist_t.
- * Returns option bits in string order; stops at "--" or the first operand. */
+/* Upstream getopt32, using libc getopt and its process-wide parser state. */
 uint32_t getopt32(char **argv, const char *options, ...);
 
+char *is_prefixed_with(const char *text, const char *prefix);
 int index_in_strings(const char *strings, const char *key);
 char *last_char_is(const char *text, int character);
 void *llist_pop(llist_t **list);
 char *safe_strncpy(char *dest, const char *src, size_t size);
 char *skip_whitespace(const char *text);
 char *skip_non_whitespace(const char *text);
-unsigned bb_strtou(const char *text, char **end, int base);
 
 /* Terminal output is buffered and written to the named output console. */
 void bb_putchar(int character);
@@ -126,13 +149,8 @@ void pyxis_vi_terminal_raw(void);
 void pyxis_vi_terminal_cooked(void);
 /* Wait up to milliseconds for a key, keeping it for safe_read_key. */
 int pyxis_vi_input_pending(int milliseconds);
-/* Whether the path opens with WRITE authority now, without changing it. */
-bool pyxis_vi_writable(const char *path);
-/* True only when opening reports ENOENT; any other result counts as present. */
-bool pyxis_vi_absent(const char *path);
-/* Replace path with the given bytes: write a uniquely named file beside it,
- * sync it and rename it over path. Returns 0, or -1 with errno and the old
- * file untouched; the temporary file is removed on every failure. */
-int pyxis_vi_replace_file(const char *path, const char *bytes, size_t size);
+int bb_cat(char **paths);
+FILE *fopen_for_write(const char *path);
 
+#endif /* PYXIS_APPLET_TAR */
 #endif

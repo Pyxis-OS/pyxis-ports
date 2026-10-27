@@ -14,8 +14,6 @@ return {
     "patches/0002-clear-read-only-file-between-buffers.patch",
     "patches/0003-less-native-console.patch",
     "patches/0004-pyxis-tar-ustar-subset.patch",
-    "patches/0005-vi-replace-file-on-save.patch",
-    "patches/0006-alternate-screen.patch",
     "patches/0007-printf-native-stdio.patch",
   },
   outputs = {

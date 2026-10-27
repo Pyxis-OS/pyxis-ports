@@ -18,7 +18,6 @@ struct globals *ptr_to_globals;
 int less_main(int argc, char **argv);
 const char *applet_name = "less";
 char bb_common_bufsiz1[4096];
-uint32_t option_mask32;
 #define ALLOCATION_ERROR "out of memory"
 #define TERMINAL_WRITE_ERROR "cannot write terminal output"
 #define PASSTHROUGH_ERROR "cannot keep Ctrl+C as pager input"
@@ -28,7 +27,6 @@ const char *applet_name = "vi";
 #define TERMINAL_WRITE_ERROR "cannot write terminal output; unsaved edits are lost"
 #define PASSTHROUGH_ERROR "cannot keep Ctrl+C as editor input"
 #endif
-int optind = 1;
 
 static struct terminal terminal;
 static handle_t passthrough = HANDLE_INVALID;
@@ -62,6 +60,18 @@ void bb_simple_error_msg_and_die(const char *message)
   fail(message);
 }
 
+void bb_error_msg_and_die(const char *format, ...)
+{
+  va_list arguments;
+  write_output();
+  fprintf(stderr, "%s: ", applet_name);
+  va_start(arguments, format);
+  vfprintf(stderr, format, arguments);
+  va_end(arguments);
+  fputc('\n', stderr);
+  exit(EXIT_FAILURE);
+}
+
 void xfunc_die(void)
 {
   write_output();
@@ -78,13 +88,26 @@ void bb_show_usage(void)
   exit(EXIT_FAILURE);
 }
 
+/* BusyBox appletlib.c helper; applet dispatch itself is not built. */
+unsigned FAST_FUNC string_array_len(char **argv)
+{
+	char **start = argv;
+
+	while (*argv)
+		argv++;
+
+	return argv - start;
+}
+
 int main(int argc, char **argv)
 {
   environment_capability(startup_environment_handle(), "input", &terminal.input);
   environment_capability(startup_environment_handle(), "output", &terminal.output);
+#ifndef PYXIS_APPLET_LESS
   if (terminal.input == HANDLE_INVALID || terminal.output == HANDLE_INVALID) {
     fail("input and output console capabilities are required");
   }
+#endif
 
 #ifdef PYXIS_APPLET_LESS
   int status = less_main(argc, argv);
@@ -159,44 +182,6 @@ char *regcomp_or_errmsg(regex_t *pattern, const char *text, int flags)
   return message;
 }
 
-void *xmalloc_read(int descriptor, size_t *size)
-{
-  size_t limit = *size < SIZE_MAX ? *size : SIZE_MAX - 1;
-  size_t length = 0;
-  size_t capacity = 0;
-  char *buffer = NULL;
-
-  for (;;) {
-    if (length == capacity) {
-      if (capacity == limit) {
-        break;
-      }
-      size_t next = capacity ? capacity : 4096;
-      next = next > limit - capacity ? limit : capacity + next;
-      buffer = xrealloc(buffer, next + 1);
-      capacity = next;
-    }
-    ssize_t count = read(descriptor, buffer + length, capacity - length);
-    if (count < 0) {
-      int error = errno;
-      free(buffer);
-      errno = error;
-      return NULL;
-    }
-    if (!count) {
-      break;
-    }
-    length += (size_t)count;
-  }
-
-  if (!buffer) {
-    buffer = xmalloc(1);
-  }
-  buffer[length] = '\0';
-  *size = length;
-  return buffer;
-}
-
 ssize_t full_read(int descriptor, void *buffer, size_t size)
 {
   size_t total = 0;
@@ -224,171 +209,6 @@ ssize_t full_write(int descriptor, const void *buffer, size_t size)
     total += (size_t)count;
   }
   return (ssize_t)total;
-}
-
-static void llist_append(llist_t **list, char *data)
-{
-  while (*list) {
-    list = &(*list)->link;
-  }
-  llist_t *node = xmalloc(sizeof(*node));
-  node->link = NULL;
-  node->data = data;
-  *list = node;
-}
-
-void *llist_pop(llist_t **list)
-{
-  llist_t *node = *list;
-  if (!node) {
-    return NULL;
-  }
-  void *data = node->data;
-  *list = node->link;
-  free(node);
-  return data;
-}
-
-uint32_t getopt32(char **argv, const char *options, ...)
-{
-  enum { OPTION_MAX = 32 };
-  struct {
-    char letter;
-    bool argument, list;
-    void *target;
-  } specs[OPTION_MAX];
-  size_t spec_count = 0;
-  va_list args;
-
-  va_start(args, options);
-  for (const char *p = options; *p; ++p) {
-    if (spec_count == OPTION_MAX) {
-      bb_simple_error_msg_and_die("too many options");
-    }
-    specs[spec_count].letter = *p;
-    specs[spec_count].argument = p[1] == ':';
-    specs[spec_count].list = specs[spec_count].argument && p[2] == '*';
-    specs[spec_count].target =
-        specs[spec_count].argument ? va_arg(args, void *) : NULL;
-    p += specs[spec_count].argument + specs[spec_count].list;
-    ++spec_count;
-  }
-  va_end(args);
-
-  uint32_t found = 0;
-  for (optind = 1; argv[optind]; ++optind) {
-    char *arg = argv[optind];
-    if (!strcmp(arg, "--")) {
-      ++optind;
-      break;
-    }
-    if (arg[0] != '-' || !arg[1]) {
-      break;
-    }
-    for (char *letter = arg + 1; *letter; ++letter) {
-      size_t i = 0;
-      while (i < spec_count && specs[i].letter != *letter) {
-        ++i;
-      }
-      if (i == spec_count) {
-        bb_show_usage();
-      }
-      found |= UINT32_C(1) << i;
-      if (!specs[i].argument) {
-        continue;
-      }
-      char *value = letter[1] ? letter + 1 : argv[++optind];
-      if (!value) {
-        bb_show_usage();
-      }
-      if (specs[i].list) {
-        llist_append(specs[i].target, value);
-      } else {
-        *(char **)specs[i].target = value;
-      }
-      break;
-    }
-  }
-#ifdef PYXIS_APPLET_LESS
-  option_mask32 = found;
-#endif
-  return found;
-}
-
-int index_in_strings(const char *strings, const char *key)
-{
-  for (int index = 0; *strings; ++index) {
-    if (!strcmp(strings, key)) {
-      return index;
-    }
-    strings += strlen(strings) + 1;
-  }
-  return -1;
-}
-
-char *last_char_is(const char *text, int character)
-{
-  if (!text || !*text) {
-    return NULL;
-  }
-  const char *last = text + strlen(text) - 1;
-  return *last == (char)character ? (char *)last : NULL;
-}
-
-char *safe_strncpy(char *dest, const char *src, size_t size)
-{
-  if (!size) {
-    return dest;
-  }
-  size_t length = strnlen(src, size - 1);
-  memcpy(dest, src, length);
-  dest[length] = '\0';
-  return dest;
-}
-
-/* POSIX-locale whitespace, as in libbb: space and \t through \r. */
-static bool is_libbb_space(char character)
-{
-  return character == ' ' || (unsigned char)(character - '\t') <= '\r' - '\t';
-}
-
-char *skip_whitespace(const char *text)
-{
-  while (is_libbb_space(*text)) {
-    ++text;
-  }
-  return (char *)text;
-}
-
-char *skip_non_whitespace(const char *text)
-{
-  while (*text && !is_libbb_space(*text)) {
-    ++text;
-  }
-  return (char *)text;
-}
-
-/* Like libbb: an empty, signed or trailing-garbage number is an error. */
-unsigned bb_strtou(const char *text, char **end, int base)
-{
-  char *stop;
-  if (!isalnum((unsigned char)text[0])) {
-    errno = ERANGE;
-    return UINT_MAX;
-  }
-  errno = 0;
-  unsigned long value = strtoul(text, &stop, base);
-  if (end) {
-    *end = stop;
-  }
-  if (errno || value > UINT_MAX || (*stop && isalnum((unsigned char)*stop))) {
-    errno = ERANGE;
-    return UINT_MAX;
-  }
-  if (*stop) {
-    errno = EINVAL;
-  }
-  return (unsigned)value;
 }
 
 void pyxis_vi_write(const char *bytes, size_t size)
@@ -528,93 +348,41 @@ int64_t safe_read_key(int descriptor, char *buffer, int timeout)
   return pending_key;
 }
 
-bool pyxis_vi_writable(const char *path)
+#ifdef PYXIS_APPLET_LESS
+int bb_cat(char **paths)
 {
-  int descriptor = open(path, O_WRONLY);
-  if (descriptor < 0) {
-    return false;
-  }
-  close(descriptor);
-  return true;
-}
-
-bool pyxis_vi_absent(const char *path)
-{
-  int descriptor = open(path, O_RDONLY);
-  if (descriptor >= 0) {
-    close(descriptor);
-    return false;
-  }
-  return errno == ENOENT;
-}
-
-#define REPLACE_SUFFIX ".XXXXXX"
-
-/* mkstemp reserves the name with native exclusive creation. The rename replaces
- * the file atomically on one volume, and the filesystem flushes the moved file
- * first. Libc has no directory sync, so after a crash the old contents or the
- * new ones remain, but the new name itself may not have reached the disk. A
- * crash before the rename leaves the temporary file behind. */
-int pyxis_vi_replace_file(const char *path, const char *bytes, size_t size)
-{
-  size_t length = strlen(path);
-  char *temporary = malloc(length + sizeof(REPLACE_SUFFIX));
-  if (!temporary) {
-    return -1;
-  }
-  memcpy(temporary, path, length);
-  memcpy(temporary + length, REPLACE_SUFFIX, sizeof(REPLACE_SUFFIX));
-
-  int descriptor = mkstemp(temporary);
-  if (descriptor < 0) {
-    free(temporary);
-    return -1;
-  }
-  int error = 0;
-  size_t done = 0;
-  while (!error && done < size) {
-    ssize_t count = write(descriptor, bytes + done, size - done);
-    if (count < 0) {
-      error = errno;
-    } else if (count == 0) {
-      error = EIO;
+  int result = EXIT_SUCCESS;
+  do {
+    int fd = *paths && strcmp(*paths, "-") ? open(*paths, O_RDONLY) : STDIN_FILENO;
+    if (fd < 0) {
+      result = EXIT_FAILURE;
     } else {
-      done += (size_t)count;
+      char bytes[4096];
+      ssize_t count;
+      while ((count = read(fd, bytes, sizeof(bytes))) > 0) {
+        if (full_write(STDOUT_FILENO, bytes, (size_t)count) != count) {
+          result = EXIT_FAILURE;
+          break;
+        }
+      }
+      if (count < 0)
+        result = EXIT_FAILURE;
+      if (fd != STDIN_FILENO)
+        close(fd);
     }
-  }
-  if (!error && fsync(descriptor) != 0) {
-    error = errno;
-  }
-  if (close(descriptor) != 0 && !error) {
-    error = errno;
-  }
-  if (!error && rename(temporary, path) != 0) {
-    error = errno;
-  }
-  if (error) {
-    unlink(temporary);
-  }
-  free(temporary);
-  if (error) {
-    errno = error;
-    return -1;
-  }
-  return 0;
+    if (*paths)
+      paths++;
+  } while (*paths);
+  return result;
 }
+
+FILE *fopen_for_write(const char *path)
+{
+  return fopen(path, "w");
+}
+#endif
 
 #ifdef PYXIS_APPLET_LESS
-void *bb_realloc_vector(void *pointer, size_t element, unsigned shift, unsigned index)
-{
-  size_t block = (size_t)1 << shift;
-  if (index % block == 0) {
-    if ((size_t)index > SIZE_MAX - block || element > SIZE_MAX / (index + block)) {
-      bb_simple_error_msg_and_die("pager line count is too large");
-    }
-    pointer = xrealloc(pointer, ((size_t)index + block) * element);
-  }
-  return pointer;
-}
-
 int bb_console_printf(const char *format, ...)
 {
   char *text;

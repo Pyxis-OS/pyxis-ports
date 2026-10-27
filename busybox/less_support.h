@@ -12,8 +12,8 @@ extern char bb_common_bufsiz1[COMMON_BUFSIZE];
 extern uint32_t option_mask32;
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define xrealloc_vector(pointer, shift, index) \
-  bb_realloc_vector((pointer), sizeof(*(pointer)), (shift), (index))
-void *bb_realloc_vector(void *pointer, size_t element, unsigned shift, unsigned index);
+  xrealloc_vector_helper((pointer), (sizeof(*(pointer)) << 8) + (shift), (index))
+void *xrealloc_vector_helper(void *pointer, unsigned sizeof_and_shift, int index);
 int bb_console_printf(const char *format, ...) __attribute__((format(printf, 1, 2)));
 int bb_console_puts(const char *text);
 

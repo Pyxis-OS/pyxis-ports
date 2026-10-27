@@ -1,64 +1,69 @@
 # BusyBox tar adaptation
 
-The tar executable uses the same pinned BusyBox source and GPL license as vi:
-`f96d33d28a1f70fda5f27d221d5012b1ac0b7dad` (1.39.0.git).
-Patch `0004-pyxis-tar-ustar-subset.patch` selects upstream `archival/tar.c`,
-`archival/libarchive/get_header_tar.c` and
-`archival/chksum_and_xwrite_tar_header.c`. Upstream header serialization,
-octal fields, header checksums, member data padding and archive terminators
-remain the tar implementation. `tar_support.h` supplies their selected libbb
-interfaces and the header layout from upstream `include/bb_archive.h`;
-`tar_pyxis.c` supplies the command interface, snapshots and native filesystem I/O.
+The tar executable uses pinned BusyBox commit
+`f96d33d28a1f70fda5f27d221d5012b1ac0b7dad` (1.39.0.git), retaining its GPL
+license. Patch `0004-pyxis-tar-ustar-subset.patch` selects upstream tar creation,
+header reading/writing and unsafe-prefix stripping. The native support header
+provides the selected libbb interfaces and archive fields;
+`tar_pyxis.c` supplies the standalone entry and native filesystem callbacks.
+The CLI, option parsing, recursion, member selection, listing and archive-stream
+control use upstream BusyBox code. `libbb/getopt32.c` uses libc getopt; no
+replacement parser or competing optind is linked.
 
 ```text
 tar tf boot://share/manuals.tar
 tar xf boot://share/manuals.tar
-tar cf tmp://tree.tar tmp://tree
+tar cvf tmp://tree.tar tmp://tree
 ```
 
-A leading dash on `tf`, `xf` or `cf` is accepted. Extraction uses the inherited
-working directory. There is no `-C`, compression, archive stdin/stdout, member
-selection or other tar option. Archive files and creation sources use libc
-scheme-path resolution and the caller's existing grants. A scheme creation
-operand stores its path after `://`: `tmp://tree/file` becomes `tree/file`.
-Name a file or directory beneath a scheme root; a bare `tmp://` operand is refused.
+Upstream short-option handling accepts the optional leading dash, `c`/`t`/`x`,
+`-f ARCHIVE`, `-C DIR`, `-v`, `-O`, `-k` and member operands. Archive `-` uses
+stdin/stdout. Compression, include/exclude files and long options remain
+unselected. Extraction uses the inherited working directory or `-C DIR`.
+Creation operands use libc scheme-path lookup and existing grants. A scheme
+operand stores the part after `://`: `tmp://tree/file` becomes `tree/file`.
+Traversal is the upstream recursive walker over native libc stat/opendir.
 
-## Archive validation and metadata
+## Formats, paths and metadata
 
-Only strict POSIX ustar (`ustar`, NUL, `00`) is accepted. The reader accepts the
-ustar prefix field. The writer supports member names up to 99 bytes, plus the
-trailing slash it adds to directory headers. Only regular files and directories
-are supported. Links, devices, FIFOs, GNU/PAX extensions, sparse files, absolute
-member paths, scheme-qualified member names and `..` path components are refused.
-Malformed octal fields, incorrect header checksums, truncated data/padding,
-missing terminator blocks and nonzero trailing archive blocks fail too.
+The selected reader accepts upstream `ustar` magic and numeric-field parsing,
+including its base-256 representation. It accepts the ustar prefix field.
+Upstream empty-header termination and trailing-data behavior apply; there is no
+extra all-zero-block or exact-magic/version validation. Bad checksums and short member reads follow upstream error handling. The writer retains upstream GNU-compatible ustar magic
+and its 99-byte member-name limit: overlong names are diagnosed and skipped.
 
-The complete archive is read into memory and all members are validated before
-listing or extraction. Canonical relative member names also reveal conflicts
-between files, directories and their descendants before extraction writes.
-Extraction uses that same immutable byte snapshot, so modifying the archive
-path after validation does not replace the bytes being extracted.
+Regular files (including the archive's contiguous-file type), directories and
+hardlinks are supported. Symlinks, devices and FIFOs cannot be created on native
+filesystems. GNU extensions remain disabled; the upstream reader skips PAX
+metadata under this profile rather than applying extended fields. Directory size and otherwise unused metadata follow
+upstream handling. Extraction ignores owner, group, mode and timestamps; native
+mutation authority comes from grants. Created headers use uid/gid zero, mode
+0644/0755 and empty owner/group names, since native files have no Unix owner or
+permission metadata. A valid nonnegative native mtime supplies the header time;
+otherwise the header uses zero. File creation uses libc's supported 0666 mode.
 
-Extracted owner, group, permissions and timestamps are ignored. Created headers
-use uid/gid zero, mode 0644 for regular files or 0755 for directories, and mtime
-zero; owner/group names are empty. Native object authority continues to come
-from grants, with file creation using libc's supported 0666 policy argument.
+Upstream removes absolute and parent-containing unsafe name prefixes. The
+native confinement check then rejects a remaining scheme-qualified name,
+absolute name, empty name or `..` component before filesystem mutation. Native
+lookup does not follow symlinks. Extraction remains under the inherited working
+root and cannot acquire new root authority from archive bytes.
 
-## Writes and limits
+## I/O and limits
 
-Creation walks native directories and reads all source file contents before
-opening the output archive. Unsupported or unreadable sources therefore fail
-before output creation/truncation. Source bytes stay captured even if the output
-path aliases a source. Directory enumeration is live: a detected concurrent
-change fails with libc's error; this is not a filesystem-wide atomic snapshot.
+Listing and extraction stream one owned archive descriptor through upstream
+header/action callbacks. There is no whole-input snapshot or conflict preflight:
+an error in a later member can leave earlier extracted files, and malformed
+input can leave a partially written current file. Extraction creates missing
+parents and uses upstream default unlink/create replacement (parent REMOVE and
+CREATE authority); `-k` keeps existing names. `-O` streams member contents to stdout. There is
+no archive-wide rollback or transactional output publication.
 
-Extraction creates missing parent directories and overwrites existing regular
-files, matching ordinary tar behavior. Extracting into a read-only working root
-fails on the first required mutation without creating partial files. There is
-no archive-wide rollback: a later storage error or differing authority in a
-nested destination can leave previously extracted entries or a partially written
-file. Output archive writes are also not atomic. Diagnostics and nonzero status
-report read, write, allocation, enumeration and close failures.
-
-Memory must hold the whole input archive, or all creation file contents, plus
-member/path bookkeeping. Directory traversal is recursive. Larger archive streaming or transactional extraction requires a separate design.
+Creation opens each regular source and streams its recorded size through an
+owned descriptor and a bounded copy buffer. The upstream walker discovers entries as it recurses. Changes after discovery
+follow the upstream exact-size copy behavior; an early EOF fails and can leave
+partial output. The upstream self-archive check compares the held output
+descriptor's fstat identity against each source only when both native identity
+fields are valid. Hardlink tracking likewise requires valid identity and link
+count; unknown metadata never becomes a fabricated zero identity. This does not
+provide a snapshot or pre-truncation alias guarantee: use a separate output path. Directory enumeration is live, and creation uses
+recursive traversal.

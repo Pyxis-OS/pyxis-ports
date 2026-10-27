@@ -23,19 +23,21 @@ session, so the shell cannot terminate it and discard unsaved edits.
 
 ## vi build
 
-BusyBox's Kconfig and libbb are not built. The recipe replaces them:
+The recipe builds selected upstream applet/libbb sources without Kconfig or the
+multicall dispatcher:
 
 - `vi_config.h` selects colon commands, yank/marks, BRE search, dot repeat,
   read-only mode, `:set` options, undo with its queue, verbose status and
   screen-size queries. Signals, the cursor-position size probe, `:!` and 8-bit
-  display stay off: Pyxis has no signals, shell command execution or non-ASCII
-  renderer for them.
+  display stay off: signal delivery, a POSIX shell interface and a non-ASCII
+  renderer are unavailable to these applets.
 - `libbb.h` declares the libbb helpers vi references.
-- `busybox_pyxis.c` supplies `main` and those helpers over libc and libterm.
+- `busybox_pyxis.c` supplies the standalone entry and console adapter. Option,
+  list, numeric, string and vector helpers use their upstream sources.
 
 ## Patch 0001
 
-The patch replaces termios, poll and stat:
+The patch replaces termios, poll and Unix permission checks:
 
 - **Raw mode.** It holds libterm Ctrl+C passthrough instead of switching
   termios. Console input is already raw and unechoed. Backspace accepts BS and
@@ -46,12 +48,12 @@ The patch replaces termios, poll and stat:
   sequences are dropped.
 - **Output.** Screen output is buffered and written to the output console
   before vi waits for input.
-- **Loading.** Files are read to EOF instead of sized with `fstat`. Opening a
-  directory fails with the native error.
-- **Read-only marker.** A file is marked `[Readonly]` when it cannot be opened
-  for WRITE now. That probe replaces `access` and mode bits.
-- **`:w NAME`.** It refuses to replace another file unless opening NAME reports
-  that it does not exist; `:w!` overrides.
+- **Loading.** Upstream `fstat` validates a regular file and sizes its read;
+  the current SDK supplies its type and size.
+- **Read-only marker.** Upstream `access(W_OK)` queries native WRITE authority;
+  there are no Unix mode bits to inspect.
+- **`:w NAME`.** The upstream `stat` check refuses an existing different file;
+  `:w!` overrides.
 - **`~/.exrc`.** It is not read, because its safety check needs Unix owners
   and modes. `EXINIT` still supplies startup commands.
 - **Regex.** GNU `re_compile_pattern`/`re_search` and `REG_STARTEND` are replaced
@@ -59,8 +61,8 @@ The patch replaces termios, poll and stat:
   search chooses the first match; backward search retains the last eligible
   match, including overlaps. Substitution captures remain byte offsets into
   the original line. Compile errors use `regerror`, preserve the cursor and
-  never free an unsuccessfully compiled pattern. Global substitutions preserve
-  line anchors and advance after empty matches, including one final empty match.
+  never free an unsuccessfully compiled pattern. Substitution progression
+  otherwise follows upstream.
 
 ## Patch 0002
 
@@ -71,25 +73,17 @@ every later file opened with `:n` or `:e` also showed `[Readonly]` and refused
 
 ## Alternate screen
 
-Patch `0006-alternate-screen.patch` restores upstream vi's `CSI ? 1049 h/l`,
-which 0001 had replaced with clearing the screen, and makes less page on the
-alternate screen too. Both now leave the shell's screen and cursor as they
-found them, in a framebuffer tab and in a multiplexer pane.
+vi retains upstream's `CSI ? 1049 h/l` alternate-screen sequences. less retains
+upstream's clear-screen and status-line cleanup behavior.
 
 ## Saves
 
-Patch `0005-vi-replace-file-on-save.patch` replaces upstream's in-place write
-and `ftruncate` in `file_write`, which serves `:w`, `:w NAME`, `:wq`, `:x` and
-`ZZ`. `pyxis_vi_replace_file` in the adapter reserves a random `NAME.XXXXXX`
-beside the target with `mkstemp` (native exclusive creation), writes the whole
-buffer, `fsync`s, closes and renames it over the target. A failed write, sync,
-close or rename removes the temporary file, leaves the old file untouched and
-reports the error; a short write is never reported as success. Rename replaces
-atomically on one volume, but libc has no directory sync, so a crash can lose
-the new name (the old contents remain) or leave a stray temporary file.
-Saving needs CREATE and REMOVE on the directory, not only WRITE on the file,
-and there is no in-place fallback. `home://` persists on installed systems and
-is RAM on live boots.
+vi retains upstream's in-place `file_write`: open with `O_WRONLY | O_CREAT`,
+write the selected bytes, then `ftruncate` to the number written. Existing
+files need their native WRITE authority; no temporary-file CREATE/REMOVE or
+rename authority is added. New files need parent CREATE. There is no atomic
+replacement or rollback: a short write can leave partial contents. `home://`
+persists on installed systems and is RAM on live boots.
 
 ## Limits
 
@@ -112,11 +106,14 @@ positions, multiple files, `-I` ASCII case folding, `-N` line numbers and
 `-m`/`-M` status. Patch `0003-less-native-console.patch` adapts upstream
 `miscutils/less.c`: keys and drawing use the same libterm console adapter as vi,
 while content uses a separate libc descriptor. It normalizes Enter as CR or LF,
-retains upstream regex matching and clears matches and compiled patterns when
-changing files. Its highlight loop checks match status before reading offsets.
+retains upstream regex matching and file-change state. The small highlight-loop
+fix checks match status before reading unspecified offsets after a failed match;
+this is a generic correction, separate from native console support.
 Output is buffered before each key read. Ctrl+C passthrough stays
 held until exit. Marks, bracket matching, raw escapes,
-shell commands, log saving, signals and automatic resizing are disabled.
+shell commands, signals and automatic resizing are disabled. Upstream `s` log
+saving and ignored `-s`/`-X` options are retained. Redirected output and a
+console too small for paging use the upstream-style plain-copy fallback.
 
 ```text
 less boot://share/hwdata/pci.ids
@@ -135,19 +132,21 @@ Content reads block when more data is needed to fill a page or find a match.
 Cached navigation does not fetch further input. There is no live refresh or
 nonblocking pipe readiness; a stalled producer can delay key handling during a
 refill. Read lines stay in memory for backward paging, up to the selected
-9,999,999-line limit; exceeding it fails instead of silently truncating input.
+9,999,999-line limit; the upstream limit behaves as end of input.
 The screen size is measured at startup. The renderer is ASCII; regex uses libc's
 ASCII-only classes/folding and pinned back-reference limits. The added named-input grant does not apply to downstream intermediate stages or
-file/pipe stdin with non-console stdout; those pager forms fail explicitly. The
-first stage's original console-input rule remains intact, and drawing always uses
-the named output console, independently of stdout.
+file/pipe stdin with non-console stdout; redirected output uses the plain-copy
+fallback without console grants. The first stage's original console-input rule
+remains intact, and interactive drawing uses the named output console.
 
 ## tar
 
 Patch 0004 retains the upstream ustar header, checksum, padding and creation
-algorithms, with a tar-specific libbb subset and libc snapshot adapter. It builds
-`archival/tar.c`, `archival/libarchive/get_header_tar.c` and
-`archival/chksum_and_xwrite_tar_header.c`. See [the tar notes](TAR.md) for exact
+algorithms, with a tar-specific libbb subset and native I/O adapter. It builds
+the upstream `tar_main`, recursive walker, header reader/writer,
+member filters and listing helpers. The selected vi/less/tar applets all use
+upstream `libbb/getopt32.c` over libc getopt; the port defines no option-parser
+globals. See [the tar notes](TAR.md) for exact
 validation, path/metadata behavior and memory/write limits. less and tar use only
 the inherited working directory, scheme roots and explicit shell grants.
 
@@ -157,8 +156,8 @@ Patch 0007 selects upstream `coreutils/printf.c`, escape decoding and numeric
 conversion helpers with `printf_support.h`. The standalone entry point and
 remaining libbb helpers use libc; no terminal, HTTP or request-control grant is
 needed. The shell supplies ordinary stdout and stderr, including redirected
-files and pipes. Output errors, formatting failures and the final stdout flush
-make the applet exit unsuccessfully.
+files and pipes. The standalone entry returns the upstream applet result; output finalization
+follows the SDK stdio policy without a port-specific diagnostic or status rewrite.
 
 ```text
 printf '{}'
@@ -169,5 +168,4 @@ printf '%b' 'first\nsecond\n' > tmp://lines.txt
 Upstream string, integer and floating formats, `%b`, escapes, optional `--` and
 format reuse are retained. Invalid formats or numeric arguments print a diagnostic
 and return failure. The embedded-shell `fcntl(F_GETFL)` check is removed:
-this applet owns its libc stream lifetime, and its entry point checks the actual
-stdio error and flush result before exit.
+this standalone applet uses the normal libc stream lifetime.
