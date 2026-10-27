@@ -12,4 +12,3 @@ set(SYSTEM_PLATFORM_SOURCES
     ${SOURCE_DIR}/sys/con_passive.c)
 # The adapters use the engine's own platform declarations.
 include_directories(${PYXIS_PORT_DIR} ${SOURCE_DIR}/sys ${SOURCE_DIR}/qcommon)
-add_compile_options(-include ${PYXIS_PORT_DIR}/pyxis_config.h)

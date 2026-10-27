@@ -18,7 +18,7 @@ The client links one OpenGL 1 renderer and runs the QVM interpreter. All native
 QVM compilers are excluded. It does not load shared renderer/game libraries or
 use fork, POSIX signal handlers or BSD sockets. Networking is unavailable;
 engine loopback remains. SDL2 supplies native input, video, sound and timers.
-The default 320 by 240 software canvas is an ordinary r_mode default.
+The ordinary upstream r_mode default selects the desktop resolution.
 
 SDL2, its native MPL-2.0 backend, Mesa softpipe and the SDK's C++ runtime are
 statically linked. Their complete license/notice directories accompany the

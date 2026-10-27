@@ -90,19 +90,10 @@ index ffff762..7c3b258 100644
  //===========================================================================
  //
 diff --git a/code/botlib/l_precomp.c b/code/botlib/l_precomp.c
-index 2e59d99..bc243db 100644
+index 2e59d99..ca93819 100644
 --- a/code/botlib/l_precomp.c
 +++ b/code/botlib/l_precomp.c
-@@ -739,11 +739,15 @@ int PC_ExpandBuiltinDefine(source_t *source, token_t *deftoken, define_t *define
- 		{
- 			t = time(NULL);
- 			curtime = ctime(&t);
-+			if (!curtime) {
-+				SourceError(source, "calendar time unavailable for builtin define");
-+				PC_FreeToken(token);
-+				return qfalse;
-+			}
- 			strcpy(token->string, "\"");
+@@ -743,7 +743,6 @@ int PC_ExpandBuiltinDefine(source_t *source, token_t *deftoken, define_t *define
  			strncat(token->string, curtime+4, 7);
  			strncat(token->string+7, curtime+20, 4);
  			strcat(token->string, "\"");
@@ -110,15 +101,7 @@ index 2e59d99..bc243db 100644
  			token->type = TT_NAME;
  			token->subtype = strlen(token->string);
  			*firsttoken = token;
-@@ -754,10 +758,14 @@ int PC_ExpandBuiltinDefine(source_t *source, token_t *deftoken, define_t *define
- 		{
- 			t = time(NULL);
- 			curtime = ctime(&t);
-+			if (!curtime) {
-+				SourceError(source, "calendar time unavailable for builtin define");
-+				PC_FreeToken(token);
-+				return qfalse;
-+			}
+@@ -757,7 +756,6 @@ int PC_ExpandBuiltinDefine(source_t *source, token_t *deftoken, define_t *define
  			strcpy(token->string, "\"");
  			strncat(token->string, curtime+11, 8);
  			strcat(token->string, "\"");
@@ -127,7 +110,7 @@ index 2e59d99..bc243db 100644
  			token->subtype = strlen(token->string);
  			*firsttoken = token;
 diff --git a/code/qcommon/common.c b/code/qcommon/common.c
-index d97312c..997318d 100644
+index d97312c..a11ebc0 100644
 --- a/code/qcommon/common.c
 +++ b/code/qcommon/common.c
 @@ -25,7 +25,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
@@ -140,17 +123,7 @@ index d97312c..997318d 100644
  #include <sys/stat.h> // umask
  #else
  #include <winsock.h>
-@@ -209,7 +211,8 @@ void QDECL Com_Printf( const char *fmt, ... ) {
- 			
- 			if(logfile)
- 			{
--				Com_Printf( "logfile opened on %s\n", asctime( newtime ) );
-+				const char *timestamp = newtime ? asctime(newtime) : NULL;
-+				Com_Printf( "logfile opened on %s\n", timestamp ? timestamp : "(calendar time unavailable)" );
- 			
- 				if ( com_logfile->integer > 1 )
- 				{
-@@ -2534,7 +2537,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
+@@ -2534,7 +2536,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
  	fileHandle_t	f;
  	char			fbuffer[MAX_OSPATH];
  	char			key[17];
@@ -159,7 +132,7 @@ index d97312c..997318d 100644
  	mode_t			savedumask;
  #endif
  
-@@ -2548,7 +2551,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
+@@ -2548,7 +2550,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
  		return;
  	}
  
@@ -168,7 +141,7 @@ index d97312c..997318d 100644
  	savedumask = umask(0077);
  #endif
  	f = FS_BaseDir_FOpenFileWrite_HomeState( fbuffer );
-@@ -2567,7 +2570,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
+@@ -2567,7 +2569,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
  
  	FS_FCloseFile( f );
  out:
@@ -209,22 +182,6 @@ index 960f844..c6f5815 100644
  //================================================================= LINUX ===
  
  #if defined(__linux__) || defined(__FreeBSD_kernel__) || defined(__GNU__)
-diff --git a/code/renderergl1/tr_init.c b/code/renderergl1/tr_init.c
-index b2bc990..618517b 100644
---- a/code/renderergl1/tr_init.c
-+++ b/code/renderergl1/tr_init.c
-@@ -1040,7 +1040,11 @@ void R_Register( void )
- 	ri.Cvar_CheckRange( r_ext_multisample, 0, 4, qtrue );
- 	r_overBrightBits = ri.Cvar_Get ("r_overBrightBits", "1", CVAR_ARCHIVE | CVAR_LATCH );
- 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH);
-+#ifdef __pyxis__
-+	r_mode = ri.Cvar_Get( "r_mode", Q3_DEFAULT_MODE, CVAR_ARCHIVE | CVAR_LATCH );
-+#else
- 	r_mode = ri.Cvar_Get( "r_mode", "-2", CVAR_ARCHIVE | CVAR_LATCH );
-+#endif
- 	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "1", CVAR_ARCHIVE );
- 	r_noborder = ri.Cvar_Get("r_noborder", "0", CVAR_ARCHIVE | CVAR_LATCH);
- 	r_customwidth = ri.Cvar_Get( "r_customwidth", "1600", CVAR_ARCHIVE | CVAR_LATCH );
 diff --git a/code/thirdparty/libvorbis-1.3.7/lib/os.h b/code/thirdparty/libvorbis-1.3.7/lib/os.h
 index 9ded735..26aa4d1 100644
 --- a/code/thirdparty/libvorbis-1.3.7/lib/os.h
