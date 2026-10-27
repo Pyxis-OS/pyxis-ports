@@ -11,7 +11,9 @@ lua build.lua kilo --sdk /path/to/build/sdk
 
 Run `kilo filename` from the Pyxis shell. Relative paths use the inherited
 working directory. The process needs console input/output, memory and directory
-startup grants, plus a clock with precise READ authority.
+startup grants, plus a clock with precise READ authority. Its inherited stdin
+and stdout must be consoles; there is no named-console fallback for redirected
+streams.
 
 Ctrl-S saves, Ctrl-Q quits with repeated confirmation for unsaved edits, and
 Ctrl-F searches. Arrow keys and Page Up/Down use upstream navigation. Home/End
@@ -19,18 +21,21 @@ and Delete keep upstream bindings. The port preserves upstream byte insertion,
 syntax highlighting, line reading and descriptor saving. Creation requests use
 native mode 0666; authority comes from the supplied filesystem grants.
 
-The single patch supplies native libterm input/output, viewport size, typed
-resize events, Ctrl+C passthrough and alternate-screen ownership. It preserves
-the logical cursor and search prompt across resize. A viewport below two columns
-or three rows is refused. Decoder state survives resize; native special keys do
-not enter byte insertion or ctype calls. The margin adjustment avoids erasing
-the last printed cell under Pyxis terminal semantics.
+The single patch keeps upstream termios raw setup and restoration, including
+TCSAFLUSH, the byte escape parser and ioctl window sizing. The SDK supplies the
+raw byte profile and its 100 ms read timeout. A small native wait hook handles
+resize alongside input while SIGWINCH remains unavailable; it keeps the same
+Escape timeout budget across resize. Pyxis Enter's LF byte is mapped to CR for
+the upstream editor. The port preserves logical file coordinates across resize
+and refuses a viewport below two columns or three rows. The margin adjustment
+avoids erasing the last printed cell under Pyxis terminal semantics.
 
-Ordinary status messages expire after five monotonic seconds, including while
-idle, using libterm's deadline wait. Search prompts remain visible. Ctrl+C stays
-editor input and is ignored as upstream does; use Ctrl-Q to exit. Terminal EOF
-exits cleanly if unmodified and reports lost edits otherwise. Ctrl-D remains an
-ordinary byte. Exit restores the shell screen, cursor and style.
+Status messages use upstream expiry on the next keypress. Ctrl+C stays editor
+input and is ignored as upstream does; use Ctrl-Q to exit. Terminal EOF exits
+cleanly if unmodified and reports lost edits otherwise. Ordinary input errors
+follow upstream failure behavior; Ctrl-D remains an ordinary byte. The editor
+owns an alternate screen, and normal exit restores raw state, the shell screen,
+cursor and style.
 
 Saves truncate and write the existing object; failures can leave partial
 contents. There is no atomic replacement or autosave. `home://` persists on

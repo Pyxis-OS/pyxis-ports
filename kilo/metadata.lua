@@ -7,7 +7,7 @@ return {
   license = "BSD-2-Clause",
   dependencies = {
     host = { "make" },
-    pyxis = { "libc", "libterm", "libpyxis" },
+    pyxis = { "libc", "libpyxis" },
   },
   patches = { "patches/0001-pyxis-terminal-and-file-access.patch" },
   outputs = {
