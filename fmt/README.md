@@ -15,21 +15,10 @@ settings. `FMT_OS` is off: `fmt/os.h` wraps POSIX descriptors and processes,
 which Pyxis libc does not provide. Shared libraries, modules, documentation and
 upstream tests are not built.
 
-The SDK's libc++ is built without localization or wide characters. Two patches
-make fmt follow libc++'s own feature macros, so the library and its consumers
-agree without extra flags:
-
-- `0001` sets `FMT_USE_LOCALE` to 0 when libc++ has no localization. The `L`
-  specifier then follows upstream's fallback: integers stay ungrouped, while
-  floating-point values use `.` and group thousands with `,`
-  (`{:L}` gives `1234567` and `1,234.5`).
-- `0002` omits `utf8_to_utf16::str()`, a Windows helper returning
-  `std::wstring`, when libc++ has no wide characters.
-
-`args.h`, `base.h`, `color.h`, `compile.h`, `core.h`, `format.h` and `ranges.h`
-are usable. `chrono.h`, `ostream.h`, `std.h` and `xchar.h` need `std::locale`,
-`printf.h` needs `std::wstring`, and `os.h` needs `FMT_OS`; including any of
-them fails to compile. Formatting errors throw `fmt::format_error`.
+The SDK's libc++ provides localization and wide characters. The source is
+unpatched and uses upstream's locale and wide-character support; locale
+behavior follows the SDK's C locale. `os.h` needs the omitted `FMT_OS`
+implementation. Formatting errors throw `fmt::format_error`.
 
 The Pyxis console shows the 16 standard colors and reverse video only. Use
 `fmt::terminal_color` with `fg`/`bg` from `color.h`: named `fmt::color` values

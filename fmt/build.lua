@@ -16,7 +16,7 @@ return function(ctx)
   for _, patch in ipairs(ctx.metadata.patches) do
     assert(provenance:write("patch=" .. patch .. "\n"))
   end
-  assert(provenance:write("profile=static formatting library, FMT_USE_LOCALE 0\n",
+  assert(provenance:write("profile=static formatting library; upstream locale and wide-character support\n",
     "omitted=os.h file/process helpers (FMT_OS), modules, shared library, tests\n"))
   assert(provenance:close())
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/fmt.pc",

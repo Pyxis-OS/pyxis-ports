@@ -10,10 +10,7 @@ return {
     host = { "make", "cmake" },
     pyxis = { "libc", "libc++" },
   },
-  patches = {
-    "patches/0001-disable-locale-without-libcxx-localization.patch",
-    "patches/0002-omit-wstring-without-libcxx-wide-characters.patch",
-  },
+  patches = {},
   outputs = {
     dev_pyxis_license = "dev/share/licenses/fmt/MPL-2.0",
     dev_licensing = "dev/share/licenses/fmt/LICENSING.md",
