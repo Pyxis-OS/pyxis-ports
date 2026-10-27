@@ -12,7 +12,6 @@ return {
   patches = {
     "patches/0001-pyxis-runtime-boundary.patch",
     "patches/0002-demo-name-lifetime-and-error-exit.patch",
-    "patches/0003-save-games.patch",
   },
   outputs = {
     executable = "bin/doom.pxb/app/bin/doom.pxe",

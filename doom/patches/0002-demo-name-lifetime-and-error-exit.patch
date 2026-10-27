@@ -14,16 +14,15 @@ index 9012e5f..9d459bb 100644
      int numiwadlumps;
  #endif
 diff --git a/doomgeneric/i_system.c b/doomgeneric/i_system.c
-index b1fc815..7bb3125 100644
+index 6bbe7e4..295ee33 100644
 --- a/doomgeneric/i_system.c
 +++ b/doomgeneric/i_system.c
-@@ -278,9 +278,7 @@ void I_Error (char *error, ...)
+@@ -368,7 +368,7 @@ void I_Error (char *error, ...)
      if (already_quitting)
      {
          fprintf(stderr, "Warning: recursive call to I_Error detected.\n");
 -#if ORIGCODE
++#if ORIGCODE || defined(__pyxis__)
          exit(-1);
--#endif
+ #endif
      }
-     else
-     {

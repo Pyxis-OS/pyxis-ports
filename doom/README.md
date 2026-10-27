@@ -31,11 +31,9 @@ modifiers shared by left/right keys. Returning to graphics requires fresh presse
 The default IWAD path is `pkg://doom/DOOM.WAD`; `-iwad` overrides it.
 `-playdemo path` plays a demo and returns to the shell when it finishes.
 
-The ordered runtime patch removes unused Unix headers and desktop error-dialog
-launching, uses fixed-width integer headers and existing integer/float parsers,
-and makes normal quit actually exit. It drains key releases to support focus
-resets. Upstream's generic configuration persistence remains disabled; this
-save/load adaptation uses native directory creation and libc atomic rename.
+The first runtime patch keeps native quit, focus-reset release draining, native
+save-directory selection and `home://`/`tmp://` routing. Engine headers,
+parsers, load/save menus and normal error handling remain upstream.
 
 `-timedemo demo1` plays a demo as fast as possible and exits with upstream's
 report, `timed N gametics in M realtics (F fps)`, on stderr. Realtics are
@@ -49,23 +47,21 @@ A second patch gives the deferred demo name static storage: the generic entry
 point returns while playback still borrows that name. It also restores immediate
 exit on a recursive error rather than recursing through shutdown callbacks.
 
-A third patch restores save/load menus and engine dispatch. F2/F3 save/load;
+F2/F3 save/load;
 F6 selects a quicksave slot on first use, then F6/F9 confirm quicksave/quickload.
 `-loadgame N` loads slot N (0–5). Saves live in
-`home://doom/saves/<iwad-name>/`: `doom1.wad` for shareware, `doom.wad` for
-registered/Ultimate Doom, and upstream's canonical mission name otherwise.
-This uses the detected game mode, not the input filename. Directories are
-created on the first save, independently of disabled configuration persistence.
+`home://doom/saves/<iwad-name>/`, using upstream's canonical mission name.
+Shareware and registered Doom now both use `doom.wad/`; existing saves under
+`doom1.wad/` need a manual move if present. No migration is performed. Directories are
+created at startup, independently of disabled configuration persistence.
 Installed systems keep saves across reboots; on live boots `home://` is RAM and
 they last until reboot.
 
-Each save exclusively reserves a temporary name, checks writes and close, then
-atomically replaces the slot. Failure reports an error and retains the previous
-save; simultaneous successful saves to one slot use last-replacement-wins.
-An interrupted save can leave a `temp-*.dsg` file; later saves skip it. Load
-errors stop on short reads, and menu descriptions are bounded. The upstream
-save format still assumes trusted, matching game data; this is not a hardened
-save-file parser or isolation between different PWADs on the same IWAD.
+Saving uses upstream's `temp.dsg` path within the selected directory and its
+ordinary write, close and remove/rename behavior. No port-owned reservation API,
+per-attempt filename, checked-write/close or previous-slot preservation policy
+is added. The native home base is unchanged. The format retains upstream's
+trusted-file assumptions and error handling.
 
 Upstream compiler warnings remain visible; no broad cleanup or warning blanket
 is applied to the vendored engine.
