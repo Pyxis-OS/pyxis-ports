@@ -1,0 +1,16 @@
+diff --git a/util.h b/util.h
+index 6b6a084..00c653a 100644
+--- a/util.h
++++ b/util.h
+@@ -50,9 +50,11 @@ int confirm(const char*, ...);
+ 
+ double estrtod(const char *);
+ 
++#ifndef __pyxis__
+ #undef strcasestr
+ #define strcasestr xstrcasestr
+ char *strcasestr(const char *, const char *);
++#endif
+ 
+ #undef strlcat
+ #define strlcat xstrlcat

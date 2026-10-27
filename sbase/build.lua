@@ -20,6 +20,8 @@ return function(ctx)
     ctx.stage .. "/" .. ctx.metadata.outputs.grep })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/LICENSE",
     ctx.stage .. "/" .. ctx.metadata.outputs.license })
+  ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/libutil/sha256.c",
+    ctx.stage .. "/" .. ctx.metadata.outputs.sha256_notice })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/arg.h",
     ctx.stage .. "/" .. ctx.metadata.outputs.argument_notice })
   ctx.run({ "install", "-D", "-m", "644", ctx.source .. "/libutil/strtonum.c",
