@@ -71,7 +71,7 @@
      ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
      platform_io.Platform_SetClipboardTextFn = ImGui_ImplSDL2_SetClipboardText;
      platform_io.Platform_GetClipboardTextFn = ImGui_ImplSDL2_GetClipboardText;
-@@ -553,13 +566,20 @@
+@@ -553,13 +566,16 @@
      platform_io.Platform_OpenInShellFn = [](ImGuiContext*, const char* url) { return SDL_OpenURL(url) == 0; };
  #endif
  
@@ -81,18 +81,14 @@
      ImGui_ImplSDL2_UpdateMonitors();
  
      // Gamepad handling
-+#ifdef __pyxis__
-+    bd->GamepadMode = ImGui_ImplSDL2_GamepadMode_Manual;
-+#else
      bd->GamepadMode = ImGui_ImplSDL2_GamepadMode_AutoFirst;
-+#endif
      bd->WantUpdateGamepadsList = true;
  
 +#ifndef __pyxis__
      // Load mouse cursors
      bd->MouseCursors[ImGuiMouseCursor_Arrow] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
      bd->MouseCursors[ImGuiMouseCursor_TextInput] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_IBEAM);
-@@ -572,6 +592,8 @@
+@@ -572,6 +588,8 @@
      bd->MouseCursors[ImGuiMouseCursor_Wait] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAIT);
      bd->MouseCursors[ImGuiMouseCursor_Progress] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAITARROW);
      bd->MouseCursors[ImGuiMouseCursor_NotAllowed] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NO);
@@ -101,7 +97,7 @@
  
      // Set platform dependent data in viewport
      // Our mouse update function expect PlatformHandle to be filled for the main viewport
-@@ -969,7 +991,8 @@
+@@ -969,7 +987,8 @@
          io.BackendFlags &= ~ImGuiBackendFlags_HasMouseHoveredViewport;
  
      ImGui_ImplSDL2_UpdateMouseData();

@@ -9,6 +9,6 @@ Original Pyxis port files: MPL-2.0; upstream patches retain upstream terms, see 
 Configuration is part of the library ABI: ImTextureID=void*, math operators,
 default shell helpers disabled. Built-in SDL2/OpenGL3 backends are separate
 static archives. OpenGL uses the official custom-loader mode and static Mesa.
-SDL2 uses one owned window; no gamepad auto-discovery, global mouse capture,
-system cursor shapes, URL opener or native system clipboard claim. ImGui's
+SDL2 uses one owned window and upstream gamepad discovery; no global mouse
+capture, system cursor shapes, URL opener or native system clipboard claim. ImGui's
 context-local clipboard buffer remains available. No OS API success stubs.

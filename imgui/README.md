@@ -19,8 +19,9 @@ symbols, without `dlopen` or an extra loader library. No third-party extensions
 are bundled.
 
 The native SDL profile owns one window. Multi-viewports are refused at init;
-gamepad auto-discovery, global mouse capture and unsupported system cursor
-shapes are not advertised. Ordinary keyboard text, pointer events and native
+global mouse capture and unsupported system cursor shapes are not advertised.
+Gamepad discovery uses the upstream AutoFirst default unless the consumer selects
+a different mode. Ordinary keyboard text, pointer events and native
 window resize remain enabled. Deferred ImGui clipboard actions use ImGui's
 context-local buffer, not Pyxis's gesture-bound system clipboard. URL opening
 and native IME are outside this profile. Consumers opt into only the runtime
