@@ -9,16 +9,7 @@ return {
     host = { "make" },
     pyxis = { "libc", "libterm", "libpyxis" },
   },
-  patches = {
-    "patches/0001-pyxis-terminal-and-file-access.patch",
-    "patches/0002-editor-allocation-and-bounds.patch",
-    "patches/0003-monotonic-status-expiry.patch",
-    "patches/0004-terminal-eof.patch",
-    "patches/0005-page-navigation-bounds.patch",
-    "patches/0006-ctrl-c-passthrough.patch",
-    "patches/0007-terminal-resize.patch",
-    "patches/0008-alternate-screen.patch",
-  },
+  patches = { "patches/0001-pyxis-terminal-and-file-access.patch" },
   outputs = {
     executable = "bin/kilo.pxe",
     license = "share/licenses/kilo/LICENSE",

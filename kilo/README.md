@@ -5,66 +5,35 @@
 The recipe stages `bin/kilo.pxe` and `share/licenses/kilo/LICENSE` together;
 retain the license when distributing the executable.
 
-Run `kilo filename` from the Pyxis shell after packaging the executable in
-`boot://`. Relative paths use the inherited working directory. The process
-needs the usual console input/output, memory and directory startup grants,
-plus a `clock` grant with READ authority.
+```sh
+lua build.lua kilo --sdk /path/to/build/sdk
+```
 
-- Ctrl-S saves; Ctrl-Q quits, with repeated confirmation for unsaved edits.
-- Ctrl-F searches; arrows choose matches, Enter accepts, Escape cancels.
-- Arrows, Home, End, Page Up, Page Down, Backspace and Delete navigate/edit.
+Run `kilo filename` from the Pyxis shell. Relative paths use the inherited
+working directory. The process needs console input/output, memory and directory
+startup grants, plus a clock with precise READ authority.
 
-`0001` replaces POSIX terminal and descriptor operations with libterm and
-Pyxis libc streams. It retains syntax highlighting and search, uses startup
-console grants and native terminal dimensions, and restores the cursor/style
-on normal exit or reported errors.
+Ctrl-S saves, Ctrl-Q quits with repeated confirmation for unsaved edits, and
+Ctrl-F searches. Arrow keys and Page Up/Down use upstream navigation. Home/End
+and Delete keep upstream bindings. The port preserves upstream byte insertion,
+syntax highlighting, line reading and descriptor saving. Creation requests use
+native mode 0666; authority comes from the supplied filesystem grants.
 
-`0002` checks allocation failures and size arithmetic, bounds syntax scanning,
-replaces recursive comment propagation so stack use does not grow with the
-number of lines in a file. It corrects row indices,
-deletion updates, tab/cursor/search alignment and margin rendering. Upstream
-formatting and editor structure are retained.
+The single patch supplies native libterm input/output, viewport size, typed
+resize events, Ctrl+C passthrough and alternate-screen ownership. It preserves
+the logical cursor and search prompt across resize. A viewport below two columns
+or three rows is refused. Decoder state survives resize; native special keys do
+not enter byte insertion or ctype calls. The margin adjustment avoids erasing
+the last printed cell under Pyxis terminal semantics.
 
-`0003` uses the native monotonic clock to expire ordinary status messages after
-five seconds, including while idle. It waits for input with libterm's timed
-key-read helper until the deadline, redraws on expiry, then blocks indefinitely
-again. Escape-sequence decoding can finish after that deadline. Search prompts
-stay visible until the search ends. No calendar clock or polling loop is needed.
+Ordinary status messages expire after five monotonic seconds, including while
+idle, using libterm's deadline wait. Search prompts remain visible. Ctrl+C stays
+editor input and is ignored as upstream does; use Ctrl-Q to exit. Terminal EOF
+exits cleanly if unmodified and reports lost edits otherwise. Ctrl-D remains an
+ordinary byte. Exit restores the shell screen, cursor and style.
 
-`0004` handles terminal input EOF explicitly, including inside search prompts.
-It exits cleanly when there are no unsaved edits; otherwise it reports their loss
-and exits unsuccessfully. It never treats EOF as a key or retries it indefinitely.
-Ctrl-D remains an ordinary input byte, not terminal closure.
-
-`0005` bounds Page Up/Down navigation at the EOF row, including when a file is
-shorter than the screen. Left-arrow row lookup also checks this bound before
-reading the previous row.
-
-`0006` requests Ctrl+C passthrough on the editor's input for the whole session.
-An armed Pyxis shell would otherwise terminate a foreground Kilo on Ctrl+C and
-discard unsaved edits. Kilo's own Ctrl+C handling is unchanged: it ignores the
-key. The request is made before any file is loaded. If it fails, Kilo exits
-with a diagnostic rather than edit unprotected, and process exit withdraws it.
-While Kilo runs, Ctrl+C cannot end it; use Ctrl-Q. `term_passthrough` comes
-from libterm, so the editor needs the matching SDK.
-
-`0007` waits for typed libterm resize events while idle and in search prompts,
-re-queries the viewport and redraws without a keypress. File text, logical cursor,
-search text/highlighting and the original five-second message deadline survive.
-Partial Escape/CSI sequences retain their decoder state and byte deadline across
-resize redraws. The existing minimum of two columns and three rows still applies;
-smaller dimensions report an error rather than continuing with an invalid layout.
-
-`0008` edits on the alternate screen through libterm's `term_alternate_screen`,
-instead of clearing the screen at start and exit, so quitting returns to the
-shell's screen and cursor as they were. It needs the matching SDK.
-
-This is an ASCII text editor. It reads LF and CRLF, rejects NUL bytes, and
-saves LF with a final newline for each row. Saves use create/truncate/write;
-an error can leave a partial file. Read-only files can be viewed but not saved.
-Allocation failure exits with a diagnostic and loses unsaved edits. There is
-no autosave or atomic replacement. `home://` persists on
-installed systems and is RAM on live boots.
-
-Pyxis supplies a guarded 1 MiB initial userspace stack. The earlier 4 KiB
-stack cannot accommodate file loading and its nested library calls.
+Saves truncate and write the existing object; failures can leave partial
+contents. There is no atomic replacement or autosave. `home://` persists on
+installed systems and is RAM on live boots. Generic allocation, syntax, tab,
+cursor, search and paging fixes are left to upstream. The guarded 1 MiB initial
+userspace stack is supplied by the current SDK.
