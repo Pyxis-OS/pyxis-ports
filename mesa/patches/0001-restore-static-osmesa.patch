@@ -411,10 +411,9 @@ index 0000000..fb0f55c
 +)
 diff --git a/src/gallium/frontends/osmesa/osmesa.c b/src/gallium/frontends/osmesa/osmesa.c
 new file mode 100644
-index 0000000..9f10777
 --- /dev/null
 +++ b/src/gallium/frontends/osmesa/osmesa.c
-@@ -0,0 +1,1027 @@
+@@ -0,0 +1,1034 @@
 +/*
 + * Copyright (c) 2013  Brian Paul   All Rights Reserved.
 + *
@@ -490,6 +489,9 @@ index 0000000..9f10777
 +#include "util/u_atomic.h"
 +#include "util/box.h"
 +#include "util/u_debug.h"
++#if DETECT_OS_PYXIS
++#include "util/os_misc.h"
++#endif
 +#include "util/format/u_format.h"
 +#include "util/u_inlines.h"
 +#include "util/u_memory.h"
@@ -969,6 +971,10 @@ index 0000000..9f10777
 +GLAPI OSMesaContext GLAPIENTRY
 +OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
 +{
++#if DETECT_OS_PYXIS
++   if (!strcmp(debug_get_option("GALLIUM_DRIVER", ""), "llvmpipe") && !os_jit_allowed())
++      return NULL;
++#endif
 +   OSMesaContext osmesa;
 +   struct st_context *st_shared;
 +   enum st_context_error st_error = 0;

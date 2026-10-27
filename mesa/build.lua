@@ -1,18 +1,23 @@
 return function(ctx)
   ctx.run({ "make", "-f", ctx.recipe .. "/Makefile",
     "SDK=" .. ctx.sdk, "SOURCE=" .. ctx.source, "BUILD=" .. ctx.build,
-    "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile })
+    "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile,
+    "LLVM_DEVELOPMENT=" .. ctx.llvm_development })
   local function install(from, to)
     ctx.run({ "install", "-D", "-m", "644", from, ctx.stage .. "/" .. to })
   end
   local out = ctx.metadata.outputs
-  install(ctx.build .. "/mesa/src/gallium/targets/osmesa/libOSMesa.a", out.library)
+  install(ctx.build .. "/libOSMesa.a", out.library)
   ctx.run({ "make", "-f", ctx.recipe .. "/Makefile", "strip-library",
     "SDK=" .. ctx.sdk, "CROSS_COMPILE=" .. ctx.cross_compile,
     "STAGED_LIBRARY=" .. ctx.stage .. "/" .. out.library })
   for _, file in ipairs({ "GL/gl.h", "GL/glext.h", "GL/glcorearb.h", "GL/osmesa.h", "KHR/khrplatform.h" }) do
     install(ctx.source .. "/include/" .. file, "dev/include/" .. file)
   end
+  ctx.run({ "mkdir", "-p", ctx.stage .. "/dev/share/licenses/mesa/llvm-development" })
+  ctx.run({ "cp", "-R", ctx.llvm_development .. "/share/pyxis-llvm-development/.",
+    ctx.stage .. "/dev/share/licenses/mesa/llvm-development/" })
+  install(ctx.build .. "/llvm-archives.json", out.llvm_archives)
   install(ctx.recipe .. "/osmesa.pc", out.pc)
   install(ctx.recipe .. "/PORT-NOTICE", out.notice)
   install(ctx.recipe .. "/notices/GPL-3.0-or-later", out.bison_gpl)
@@ -35,7 +40,10 @@ return function(ctx)
     "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
     "osmesa-source=https://archive.mesa3d.org/mesa-25.0.7.tar.xz\n",
     "osmesa-sha256=592272df3cf01e85e7db300c449df5061092574d099da275d19e97ef0510f8a6\n",
-    "profile=static softpipe, OpenGL, native C11 synchronization, no JIT/LLVM\n",
+    "profile=static softpipe+llvmpipe, OpenGL, native C11 synchronization, LLVM MCJIT\n",
+    "llvm-prefix=" .. ctx.llvm_development:match("([^/]+)$") .. "\n",
+    "llvm-provenance=../licenses/mesa/llvm-development/build.json\n",
+    "llvm-archives=llvm-archives.json\n",
     "omitted=OSMesaPostprocess, GPU, window systems, GLES, disk cache, DRM descriptor sharing\n"))
   for _, patch in ipairs(ctx.metadata.patches) do assert(f:write("patch=" .. patch .. "\n")) end
   assert(f:close())

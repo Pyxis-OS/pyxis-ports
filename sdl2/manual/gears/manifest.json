@@ -11,6 +11,7 @@
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
     {"name": "display", "resource": "display", "rights": ["draw"], "required": true},
     {"name": "keyboard", "resource": "keyboard", "rights": ["input"], "required": true},
-    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false}
+    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false},
+    {"name": "jit", "resource": "jit", "rights": ["manage"], "required": false}
   ]
 }

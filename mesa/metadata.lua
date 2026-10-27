@@ -8,7 +8,7 @@ return {
     },
   },
   version = "26.2.5",
-  license = "MIT, Apache-2.0, BSL-1.0, SGI-B-2.0, BSD-2-Clause; generated Bison code carries its GPL-3.0-or-later parser exception",
+  license = "LLVM Apache-2.0 with LLVM exceptions and embedded third-party terms; Mesa MIT, Apache-2.0, BSL-1.0, SGI-B-2.0, BSD-2-Clause; generated Bison code carries its GPL-3.0-or-later parser exception",
   dependencies = {
     host = { "make", "curl", "sha256sum", "tar", "xz", "install", "python3", "meson", "ninja", "flex", "bison", "pkg-config" },
     pyxis = { "libc", "libpyxis", "libc++", "libc++abi", "libunwind" },
@@ -16,6 +16,12 @@ return {
   patches = { "patches/0001-restore-static-osmesa.patch", "patches/0002-pyxis-native-profile.patch" },
   outputs = {
     library = "dev/lib/libOSMesa.a",
+    llvm_license = "dev/share/licenses/mesa/llvm-development/LICENSE.TXT",
+    llvm_build = "dev/share/licenses/mesa/llvm-development/build.json",
+    llvm_inventory = "dev/share/licenses/mesa/llvm-development/inventory.json",
+    llvm_sdk_input = "dev/share/licenses/mesa/llvm-development/sdk-input.json",
+    llvm_target_cmake = "dev/share/licenses/mesa/llvm-development/target-cmake.json",
+    llvm_archives = "dev/share/mesa/llvm-archives.json",
     gl_header = "dev/include/GL/gl.h",
     glext_header = "dev/include/GL/glext.h",
     core_header = "dev/include/GL/glcorearb.h",

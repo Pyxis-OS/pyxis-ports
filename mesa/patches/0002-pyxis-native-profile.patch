@@ -317,21 +317,24 @@ index 7d99383..f9b79ea 100644
  os_dupfd_cloexec(int fd)
  {
 diff --git a/src/util/os_misc.c b/src/util/os_misc.c
-index 16dd51b..c5713ca 100644
 --- a/src/util/os_misc.c
 +++ b/src/util/os_misc.c
-@@ -55,7 +55,9 @@
+@@ -55,7 +55,13 @@
  #endif
  
  
 -#if DETECT_OS_ANDROID
 +#if DETECT_OS_PYXIS
 +#  include <abi/memory.h>
++#  include <abi/jit.h>
++#  include <environment.h>
++#  include <handle.h>
++#  include <startup.h>
 +#elif DETECT_OS_ANDROID
  #  define LOG_TAG "MESA"
  #  include <unistd.h>
  #  include <android/log.h>
-@@ -359,7 +361,7 @@ os_set_option(const char *name, const char *value, bool override)
+@@ -359,7 +365,7 @@
  bool
  os_get_total_physical_memory(uint64_t *size)
  {
@@ -340,7 +343,7 @@ index 16dd51b..c5713ca 100644
     const long phys_pages = sysconf(_SC_PHYS_PAGES);
     const long page_size = sysconf(_SC_PAGESIZE);
  
-@@ -408,7 +410,9 @@ os_get_total_physical_memory(uint64_t *size)
+@@ -408,7 +414,9 @@
     *size = zx_system_get_physmem();
     return true;
  #else
@@ -350,7 +353,7 @@ index 16dd51b..c5713ca 100644
     return false;
  #endif
  }
-@@ -487,7 +491,10 @@ os_get_available_system_memory(uint64_t *size)
+@@ -487,7 +495,10 @@
  bool
  os_get_page_size(uint64_t *size)
  {
@@ -362,6 +365,25 @@ index 16dd51b..c5713ca 100644
     const long page_size = sysconf(_SC_PAGESIZE);
  
     if (page_size <= 0)
+@@ -545,7 +556,17 @@
+ bool
+ os_jit_allowed(void)
+ {
+-#if DETECT_OS_APPLE
++#if DETECT_OS_PYXIS
++   handle_t jit = HANDLE_INVALID;
++   struct handle_info info;
++   if (environment_capability(startup_environment_handle(), "jit", &jit) != CALL_OK)
++      return false;
++   bool allowed = handle_query(jit, &info) == CALL_OK &&
++                  info.kind == HANDLE_KIND_NATIVE && info.protocol == PROTOCOL_JIT &&
++                  !info.transport && (info.rights & JIT_RIGHT_MANAGE);
++   handle_close(jit);
++   return allowed;
++#elif DETECT_OS_APPLE
+    static util_once_flag once = UTIL_ONCE_FLAG_INIT;
+ 
+    util_call_once(&once, os_probe_jit_allowed);
 diff --git a/src/util/os_time.c b/src/util/os_time.c
 index 71fc7e3..69aa881 100644
 --- a/src/util/os_time.c
@@ -402,31 +424,6 @@ index f97a829..7a03d42 100644
  #include <pthread.h>
  #endif
  
-diff --git a/src/util/u_cpu_detect.c b/src/util/u_cpu_detect.c
-index 451881d..573407d 100644
---- a/src/util/u_cpu_detect.c
-+++ b/src/util/u_cpu_detect.c
-@@ -73,7 +73,7 @@
- #include <elf.h>
- #endif
- 
--#if DETECT_OS_POSIX
-+#if DETECT_OS_POSIX || DETECT_OS_PYXIS
- #include <unistd.h>
- #endif
- 
-@@ -773,7 +773,10 @@ _util_cpu_detect_once(void)
-    memset(&util_cpu_caps, 0, sizeof util_cpu_caps);
- 
-    /* Count the number of CPUs in system */
--#if DETECT_OS_WINDOWS
-+#if DETECT_OS_PYXIS
-+   available_cpus = sysconf(_SC_NPROCESSORS_ONLN);
-+   total_cpus = sysconf(_SC_NPROCESSORS_CONF);
-+#elif DETECT_OS_WINDOWS
-    {
-       SYSTEM_INFO system_info;
-       GetSystemInfo(&system_info);
 diff --git a/src/util/u_debug.c b/src/util/u_debug.c
 index 45ea231..e5289d6 100644
 --- a/src/util/u_debug.c
@@ -455,3 +452,96 @@ index 2e4d5e3..59a2752 100644
     return true;
  #else
     return geteuid() == getuid() && getegid() == getgid();
+diff --git a/src/util/u_cpu_detect.c b/src/util/u_cpu_detect.c
+--- a/src/util/u_cpu_detect.c
++++ b/src/util/u_cpu_detect.c
+@@ -73,7 +73,7 @@
+ #include <elf.h>
+ #endif
+ 
+-#if DETECT_OS_POSIX
++#if DETECT_OS_POSIX || DETECT_OS_PYXIS
+ #include <unistd.h>
+ #endif
+ 
+@@ -779,6 +779,9 @@
+       GetSystemInfo(&system_info);
+       available_cpus = MAX2(1, system_info.dwNumberOfProcessors);
+    }
++#elif DETECT_OS_PYXIS
++   available_cpus = sysconf(_SC_NPROCESSORS_ONLN);
++   total_cpus = sysconf(_SC_NPROCESSORS_CONF);
+ #elif DETECT_OS_POSIX
+ #  if defined(HAS_SCHED_GETAFFINITY)
+    {
+diff --git a/src/gallium/drivers/llvmpipe/lp_screen.c b/src/gallium/drivers/llvmpipe/lp_screen.c
+--- a/src/gallium/drivers/llvmpipe/lp_screen.c
++++ b/src/gallium/drivers/llvmpipe/lp_screen.c
+@@ -320,7 +320,7 @@
+    }
+ 
+    caps->uma = true;
+-   caps->query_memory_info = true;
++   caps->query_memory_info = !DETECT_OS_PYXIS;
+    caps->clip_halfz = true;
+    caps->polygon_offset_clamp = true;
+    caps->texture_float_linear = true;
+diff --git a/src/gallium/drivers/llvmpipe/lp_texture.c b/src/gallium/drivers/llvmpipe/lp_texture.c
+--- a/src/gallium/drivers/llvmpipe/lp_texture.c
++++ b/src/gallium/drivers/llvmpipe/lp_texture.c
+@@ -61,7 +61,7 @@
+ #include "frontend/sw_winsys.h"
+ #include "git_sha1.h"
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !DETECT_OS_PYXIS
+ #include "drm-uapi/drm_fourcc.h"
+ #endif
+ 
+@@ -1813,7 +1813,7 @@
+    case PIPE_RESOURCE_PARAM_LAYER_STRIDE:
+       *value = lpr->img_stride[level];
+       return true;
+-#ifndef _WIN32
++#if !defined(_WIN32) && !DETECT_OS_PYXIS
+    case PIPE_RESOURCE_PARAM_MODIFIER:
+       *value = lpr->dmabuf ? DRM_FORMAT_MOD_LINEAR : DRM_FORMAT_MOD_INVALID;
+       return true;
+diff --git a/src/gallium/auxiliary/draw/draw_context.c b/src/gallium/auxiliary/draw/draw_context.c
+--- a/src/gallium/auxiliary/draw/draw_context.c
++++ b/src/gallium/auxiliary/draw/draw_context.c
+@@ -45,6 +45,9 @@
+ #include "draw_gs.h"
+ #include "draw_tess.h"
+ #include "draw_mesh.h"
++#if DETECT_OS_PYXIS
++#include "util/os_misc.h"
++#endif
+ 
+ #if DRAW_LLVM_AVAILABLE
+ #include "gallivm/lp_bld_init.h"
+@@ -56,6 +59,10 @@
+ bool
+ draw_get_option_use_llvm(void)
+ {
++#if DETECT_OS_PYXIS
++   if (!os_jit_allowed())
++      return false;
++#endif
+ #if DRAW_LLVM_AVAILABLE
+    return debug_get_bool_option("DRAW_USE_LLVM", true);
+ #else
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -1964,6 +1964,10 @@
+ 
+ llvm_modules = ['bitwriter', 'engine', 'mcdisassembler', 'core', 'executionengine', 'scalaropts', 'transformutils', 'instcombine']
+ llvm_optional_modules = ['coroutines']
++if host_machine.system() == 'pyxis'
++  # The static prefix provides the pass-builder C API without libLTO.
++  llvm_modules += 'passes'
++endif
+ if with_amd_vk or with_gallium_radeonsi
+   llvm_modules += ['amdgpu', 'bitreader', 'ipo']
+ endif

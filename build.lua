@@ -78,6 +78,7 @@ local function main()
   if arg[1] == "--help" or not arg[1] then
     print("Usage: lua build.lua PORT --sdk PATH [--work PATH] [--cross-prefix PREFIX]")
     print("The work directory must not exist; default: build/PORT.")
+    print("Mesa requires --llvm-development PATH to the pinned static LLVM development prefix.")
     print("SDL2 requires --mesa PATH to its staged development prefix; it builds both static profiles.")
     print("Libpng also requires --zlib PATH to its development prefix.")
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
@@ -96,7 +97,7 @@ local function main()
   local name, options = arg[1], {}
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
-    ["--dependencies"] = name == "libultraship",
+    ["--dependencies"] = name == "libultraship", ["--llvm-development"] = name == "mesa",
     ["--rust"] = name == "hexyl", ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--sdl2-osmesa"] = name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
@@ -192,6 +193,16 @@ local function main()
     require_file(rust .. "/share/pyxis-rust/fork-installation.json")
     require_file(rust .. "/share/pyxis-rust/pyxis-link.py")
     require_file(rust .. "/share/pyxis-rust/link-flags.mk")
+  end
+  local llvm_development
+  if name == "mesa" then
+    assert(options["--llvm-development"], "Mesa needs --llvm-development PATH to its static LLVM development prefix")
+    llvm_development = make_path(capture({ "realpath", "-e", "--", options["--llvm-development"] }))
+    require_file(llvm_development .. "/bin/llvm-config")
+    require_file(llvm_development .. "/include/llvm/Config/llvm-config.h")
+    require_file(llvm_development .. "/share/pyxis-llvm-development/build.json")
+    assert(work ~= llvm_development and work:sub(1, #llvm_development + 1) ~= llvm_development .. "/",
+      "work must be outside the consumed LLVM prefix")
   end
   local mesa
   if name == "sdl2" or name == "ioquake3" or name == "blurgtext" or name == "imgui" then
@@ -364,7 +375,7 @@ local function main()
   local build_port = dofile(recipe .. "/build.lua")
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
-    metadata = metadata, run = run, prefixes = prefixes, ogg = ogg, opus = opus, spdlog = spdlog, go = go, rust = rust, mesa = mesa, zlib = zlib,
+    metadata = metadata, run = run, prefixes = prefixes, llvm_development = llvm_development, ogg = ogg, opus = opus, spdlog = spdlog, go = go, rust = rust, mesa = mesa, zlib = zlib,
     libpng = libpng, fmt = fmt, sdl2 = sdl2, sdl2_osmesa = sdl2_osmesa, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do

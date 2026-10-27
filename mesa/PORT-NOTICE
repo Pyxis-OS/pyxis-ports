@@ -9,11 +9,14 @@ OSMESA_DOUBLEBUFFER attribute and OSMesaSwapBuffers extension add real off-scree
 front/back resource exchange and CPU front-image readback; upstream defaults
 remain single-buffered.
 
-The selected profile is static softpipe OpenGL, no LLVM/JIT, GPU, DRM frontend,
+The selected profile is static softpipe/llvmpipe OpenGL with LLVM MCJIT, no GPU, DRM frontend,
 GLX/EGL/GBM, GLES, dynamic loader or disk shader cache. Native integration uses
 Pyxis's existing C11 synchronization and monotonic clock/sleep; it does not
 identify Pyxis as POSIX or invent Unix process/file metadata. Unknown physical
-memory/available CPU values remain unavailable. No formal API-conformance claim.
+memory remains unavailable; usable CPUs come from the native startup allowance.
+JIT requires an optional declared grant; without it Mesa selects softpipe.
+Selected LLVM archives retain Apache-2.0 WITH LLVM-exception notices and source
+provenance in the accompanying llvm-development directory. No formal API-conformance claim.
 
 Original Pyxis recipe, configuration, manual program and documentation are
 MPL-2.0. Patches retain the licenses of the upstream files they modify.

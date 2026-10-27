@@ -39,7 +39,7 @@ for file in sorted(paths):
         name = ('source/' if root == source else 'generated/') + str(file.relative_to(root))
         blocks.setdefault(notice, []).append(name)
 with a.output.open('w') as out:
-    out.write('Selected static Mesa softpipe source/header notices.\n'
+    out.write('Selected static Mesa softpipe/llvmpipe source/header notices.\n'
               'Original embedded notices follow verbatim; identical notices are grouped.\n'
               'Complete standard licence texts accompany this file.\n'
               'Source and generated paths identify attribution, not installed runtime paths.\n\n')

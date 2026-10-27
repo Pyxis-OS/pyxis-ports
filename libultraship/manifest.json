@@ -88,6 +88,14 @@
         "create"
       ],
       "required": true
+    },
+    {
+      "name": "jit",
+      "resource": "jit",
+      "rights": [
+        "manage"
+      ],
+      "required": false
     }
   ],
   "stack_bytes": 8388608

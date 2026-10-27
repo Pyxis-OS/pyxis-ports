@@ -65,6 +65,14 @@
         "create"
       ],
       "required": false
+    },
+    {
+      "name": "jit",
+      "resource": "jit",
+      "rights": [
+        "manage"
+      ],
+      "required": false
     }
   ],
   "packages": [

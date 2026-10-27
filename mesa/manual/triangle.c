@@ -21,7 +21,7 @@ int main(int argc, char **argv)
   }
   OSMesaPixelStore(OSMESA_Y_UP, 0);
   const char *renderer = (const char *)glGetString(GL_RENDERER);
-  if (!renderer || !strstr(renderer, "softpipe") ||
+  if (!renderer || (!strstr(renderer, "softpipe") && !strstr(renderer, "llvmpipe")) ||
       !OSMesaGetProcAddress("glClear") || OSMesaGetProcAddress("OSMesaPostprocess")) {
     fputs("mesa-triangle: renderer or procedure profile mismatch\n", stderr);
     OSMesaDestroyContext(context);
@@ -57,6 +57,6 @@ int main(int argc, char **argv)
     fputs("mesa-triangle: render or output failed\n", stderr);
     return 1;
   }
-  puts("MESA_TRIANGLE COMPLETE width=256 height=256 postprocess=UNAVAILABLE jit=NONE");
+  puts("MESA_TRIANGLE COMPLETE width=256 height=256 postprocess=UNAVAILABLE");
   return 0;
 }

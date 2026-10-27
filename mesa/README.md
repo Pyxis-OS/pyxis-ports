@@ -1,13 +1,19 @@
-# Mesa softpipe
+# Mesa software OpenGL
 
 Build Mesa 26.2.5 with the restored 25.0.7 OSMesa context/render frontend:
 
 ```sh
-lua build.lua mesa --sdk /absolute/path/to/pyxis/build/sdk --work /absolute/path/to/mesa-work
+lua build.lua mesa --sdk /absolute/path/to/pyxis/build/sdk --work /absolute/path/to/mesa-work \
+  --llvm-development /absolute/path/to/llvm-development-prefix
 ```
 
 The host needs Meson 1.4+, Ninja, Python Mako/PyYAML/packaging, flex, bison,
 pkg-config and the matching SDK compiler. Only the pinned mirror is downloaded.
+The explicit LLVM development prefix comes from Pyxis's pinned
+`toolchain/build-llvm-development.sh`; it is separate from the installed compiler.
+Mesa selects static LLVM MCJIT. The recipe embeds the selected LLVM dependency
+archives in `libOSMesa.a`, preserving its single-archive link interface, and
+stages the prefix's full notices/provenance plus the selected archive hashes.
 `stage/dev` holds the desktop OpenGL headers, static `libOSMesa.a`, SDK-view
 pkg-config metadata, original source/header notices and licence texts. Debug
 sections are stripped from the staged archive; the build archive retains them.
@@ -18,9 +24,23 @@ flags and upstream floating-point policy are preserved. Target C is hosted,
 with libc/startup implementation exceptions supplied by the SDK.
 
 Copy `stage/manual/mesa-triangle.pxb` into an ordinary writable capability root
-and run it with a writable output path. It reports softpipe and writes a
-256x256 PPM. It requires declared memory, threads and monotonic clock/sleep,
-with no display or JIT grant. This is an opt-in manual program, not an image app.
+and run it with a writable output path. It reports the selected renderer and
+writes a 256x256 PPM. It requires declared memory, threads and monotonic
+clock/sleep, with optional JIT and no display grant. This is a manual program,
+not an image app.
+
+The native `os_jit_allowed()` checks the held `jit/manage` grant. Mesa's upstream
+selection tries llvmpipe when authorized, then softpipe when JIT is unavailable.
+An explicit `GALLIUM_DRIVER=llvmpipe` refuses without that authority, rather than
+silently selecting another driver. The manual triangle, SDL gears, ImGui,
+ioquake3 and LibUltraShip demo manifests declare optional JIT; the space still
+has to opt in. LLVM SectionMemoryManager alone uses native JIT allocation.
+Ordinary mapped allocations retain MEMORY authority, with no RWX mappings.
+
+Worker selection remains Mesa's upstream default and cap, based on the process's
+grant-free usable CPU count. `LP_NUM_THREADS` retains its upstream override.
+AVX/AVX2 selection retains Mesa's CPUID/OSXSAVE/XCR0 checks; no global AVX2 flag
+or additional XCR0 state is enabled by the recipe.
 
 The Pyxis OSMesa extension accepts `OSMESA_DOUBLEBUFFER` (`0x38`) with
 `GL_TRUE` in `OSMesaCreateContextAttribs`. It creates distinct front/back
@@ -35,15 +55,13 @@ front without exchanging resources. The new function is also available through
 `OSMesaGetProcAddress`. Allocation or binding failures in `OSMesaMakeCurrent`
 return `GL_FALSE` while preserving the previous current binding.
 
-The profile has no LLVM/JIT, GPU, GLX/EGL/GBM, GLES, shared objects or disk cache.
+The profile has no GPU, GLX/EGL/GBM, GLES, shared objects or disk cache.
 The optional SSE runtime vertex translator uses the generic C fallback instead;
-executable allocation is unavailable. OSMesaPostprocess is absent and its lookup
-returns NULL. CPU availability uses libc `sysconf(_SC_NPROCESSORS_ONLN)` and
-`_SC_NPROCESSORS_CONF`, reporting the process's usable logical CPU allowance at
-startup without a system-info grant. Physical memory remains unknown, with no
-memory-info capability advertised; CPU-only `sysconf` support does not enable
-physical-memory queries. No Unix PID/mode/DRM metadata or success is fabricated.
-Automatic log filenames are unsupported; an explicit native MESA_LOG_FILE works through normal FILE grants.
+OSMesaPostprocess is absent and its lookup returns NULL. CPU availability uses
+the native startup allowance through libc sysconf. Physical memory is unknown,
+with no memory-info capability advertised. No Unix
+PID/mode/DRM metadata or success is fabricated. Automatic log filenames are
+unsupported; an explicit native MESA_LOG_FILE works through normal FILE grants.
 
 The static closure also links with every archive member retained and section
 collection disabled, so unused disabled-feature objects do not hide missing

@@ -2,7 +2,7 @@ libdir=sdk://lib
 includedir=sdk://include
 
 Name: OSMesa
-Description: Static Mesa softpipe off-screen OpenGL
+Description: Static Mesa softpipe/llvmpipe off-screen OpenGL
 Version: 26.2.5
 Libs: -L${libdir} -lOSMesa
 Requires.private: libcxx
