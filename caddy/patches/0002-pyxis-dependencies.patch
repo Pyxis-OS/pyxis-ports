@@ -108,7 +108,7 @@ diff --git a/vendor/github.com/chzyer/readline/term_pyxis.go b/vendor/github.com
 new file mode 100644
 --- /dev/null
 +++ b/vendor/github.com/chzyer/readline/term_pyxis.go
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,48 @@
 +// Copyright 2026 PyxisOS contributors. All rights reserved.
 +// Use of this source code is governed by the MIT license
 +// that can be found in the LICENSE file.
@@ -122,18 +122,28 @@ new file mode 100644
 +	"syscall"
 +)
 +
-+// This dependency's interactive editor is outside the Caddy server profile.
-+// Its caller selects plain input when DefaultIsTerminal is false.
++// Editor state operations remain unsupported by this dependency adapter.
 +type State struct{}
 +
-+func IsTerminal(int) bool                  { return false }
-+func DefaultIsTerminal() bool              { return false }
-+func MakeRaw(int) (*State, error)          { return nil, syscall.ENOSYS }
-+func GetState(int) (*State, error)         { return nil, syscall.ENOSYS }
-+func restoreTerm(int, *State) error        { return syscall.ENOSYS }
-+func ReadPassword(int) ([]byte, error)     { return nil, syscall.ENOSYS }
-+func GetStdin() int                        { return int(os.Stdin.Fd()) }
-+func GetScreenWidth() int                  { return -1 }
++func IsTerminal(fd int) bool { return syscall.TerminalIsTerminal(fd) }
++func DefaultIsTerminal() bool {
++	return IsTerminal(int(os.Stdin.Fd())) && (IsTerminal(int(os.Stdout.Fd())) || IsTerminal(int(os.Stderr.Fd())))
++}
++func MakeRaw(int) (*State, error)      { return nil, syscall.ENOSYS }
++func GetState(int) (*State, error)     { return nil, syscall.ENOSYS }
++func restoreTerm(int, *State) error    { return syscall.ENOSYS }
++func ReadPassword(int) ([]byte, error) { return nil, syscall.ENOSYS }
++func GetStdin() int                    { return int(os.Stdin.Fd()) }
++func GetScreenWidth() int {
++	columns, _, _, err := syscall.TerminalSize(int(os.Stdout.Fd()))
++	if err != nil {
++		columns, _, _, err = syscall.TerminalSize(int(os.Stderr.Fd()))
++	}
++	if err != nil {
++		return -1
++	}
++	return columns
++}
 +func DefaultOnWidthChanged(func())         {}
 +func ClearScreen(w io.Writer) (int, error) { return w.Write([]byte("\033[H")) }
 +func SuspendMe()                           { panic("readline: process suspension is unsupported on Pyxis") }

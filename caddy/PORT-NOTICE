@@ -11,8 +11,8 @@ Local changes:
 - Select Caddy's existing non-POSIX signal path; os.Interrupt graceful shutdown
   remains in the upstream common path. No Unix signals are invented.
 - Logrus uses native console detection. gRPC uses portable disconnect labels.
-- readline is a nonterminal/plain-input dependency profile: raw mode, password
-  capture and suspension are unsupported, and resize callbacks are not delivered.
+- readline uses native console detection and width. Raw mode, password capture
+  and suspension remain unsupported, and resize callbacks are not delivered.
 - Tailscale state permissions and certificate-transparency platform root loading
   return explicit unsupported errors. Provided CT roots retain the pure-Go
   verifier. Normal Go TLS uses the native pinned boot CA bundle.
