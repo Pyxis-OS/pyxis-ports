@@ -93,10 +93,10 @@ to empty units.
   fetching it again. Aliases do not keep bodies alive indefinitely: after the
   body is evicted, opening a requested URL fetches a new response. Native files
   and ordinary provider FILEs have no navigation prefix and retain their behavior.
-- **0006 Alternate screen.** Pyxis terminals have the alternate screen and saved
+- **0001 Alternate screen.** Pyxis terminals have the alternate screen and saved
   cursor, so Links uses upstream's xterm path whatever `TERM` says: it enters the
   alternate screen at startup and leaves it on exit, restoring the shell's
-  screen. Patch 0001's override of the exit sequence is removed.
+  screen.
 - **Downloads.** Patch 0001 no longer defines an unsupported `O_EXCL`: libc
   now has exclusive creation, so Links' download path works. The save dialog
   takes any path the program's roots allow, relative to the inherited working

@@ -12,24 +12,24 @@ index 0d15ba3..4ef803b 100644
  	fflush(stdout);
  	fflush(stderr);
 diff --git a/kbd.c b/kbd.c
-index c7c1ee3..bb1c348 100644
+index c7c1ee3..5fe4a2a 100644
 --- a/kbd.c
 +++ b/kbd.c
-@@ -130,7 +130,13 @@ unsigned char init_seq[] = "\033)0\0337";
- unsigned char init_seq_x_mouse[] = "\033[?1000h\033[?1002h\033[?1005l\033[?1015l\033[?1006h\033[?2004h";
- unsigned char init_seq_tw_mouse[] = "\033[?9h";
- unsigned char init_seq_xterm[] = "\033[?1049h";
+@@ -137,8 +137,13 @@ unsigned char term_seq_xterm[] = "\033[?1049l";
+ 
+ static int use_xterm_save_restore(void)
+ {
 +#ifdef PYXIS
-+/* Pyxis terminals have no saved cursor, so leave the cleared screen with the
-+   cursor at the top for the shell. */
-+unsigned char term_seq[] = "\033[2J\033[H";
++	/* Pyxis terminals have the alternate screen, whatever TERM says. */
++	return 1;
 +#else
- unsigned char term_seq[] = "\033[2J\0338\r \b";
+ 	unsigned char *e;
+ 	return (e = cast_uchar getenv("TERM")) && !casecmp(e, cast_uchar "xterm", 5);
 +#endif
- unsigned char term_seq_x_mouse[] = "\033[?1000l\r       \r\033[?1002l\r       \r\033[?1006l\r       \r\033[?2004l\r       \r";
- unsigned char term_seq_tw_mouse[] = "\033[?9l";
- unsigned char term_seq_xterm[] = "\033[?1049l";
-@@ -148,7 +154,7 @@ static void send_init_sequence(int h, int flags)
+ }
+ 
+ static void send_init_sequence(int h, int flags)
+@@ -148,7 +153,7 @@ static void send_init_sequence(int h, int flags)
  	if (use_xterm_save_restore())
  		hard_write(h, init_seq_xterm, (int)strlen(cast_const_char init_seq_xterm));
  	hard_write(h, init_seq, (int)strlen(cast_const_char init_seq));
@@ -38,7 +38,7 @@ index c7c1ee3..bb1c348 100644
  	if (flags & USE_TWIN_MOUSE) {
  		hard_write(h, init_seq_tw_mouse, (int)strlen(cast_const_char init_seq_tw_mouse));
  	} else {
-@@ -161,7 +167,7 @@ static void send_init_sequence(int h, int flags)
+@@ -161,7 +166,7 @@ static void send_init_sequence(int h, int flags)
  static void send_term_sequence(int h, int flags)
  {
  	want_draw();
