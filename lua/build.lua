@@ -33,9 +33,9 @@ return function(ctx)
   for _, patch in ipairs(ctx.metadata.patches) do
     assert(provenance:write("patch=" .. patch .. "\n"))
   end
-  assert(provenance:write("profile=static Lua core and selected standard libraries\n",
+  assert(provenance:write("profile=static Lua core and upstream standard libraries\n",
     "configuration=share/sources/lua/config.h\n",
-    "omitted=math,debug,stock all-libraries initializer,interpreter native module/jobs\n"))
+    "omitted=interpreter native module/jobs from development archive\n"))
   assert(provenance:close())
 
   for _, entry in ipairs({

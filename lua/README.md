@@ -12,18 +12,16 @@ lua build.lua lua --sdk /path/to/pyxis/build/sdk
 
 The recipe also exports `stage/dev/lib/liblua.a` and public headers under
 `stage/dev/include`. The archive contains the pinned core, auxiliary library and
-selected base/coroutine/table/string/UTF-8/io/os/package libraries, without
+all upstream standard libraries and their initializer, without
 the CLI's `main` or its native `pyxis` bridge.
-Embeddings call `lua_pyxis_io_shutdown(state, normal, &failed)` immediately
-before `lua_close(state)` to choose normal completion or error abandonment and
-receive recorded cleanup failures. The `failed` pointer remains borrowed until
-`lua_close` returns. Without the hook, finalizers abandon pending transactions;
+Embeddings call `lua_pyxis_io_shutdown(state, normal)` immediately before
+`lua_close(state)` to choose normal completion or error abandonment. No caller
+pointer is borrowed. Without the hook, finalizers abandon pending transactions;
 the hook is harmless when the embedding has not opened `io`.
 Consumers choose which libraries to open. `lua.h` retains the MIT notice.
 Pyxis stages these build inputs separately at `build/ports-dev/lua`; they are
 included in the ports bundle but excluded from the boot archive. Link with the
-same SDK used to build the archive. This does not provide `luaL_openlibs`,
-debug or the full math library. The standalone interpreter additionally links
+same SDK used to build the archive. It provides upstream `luaL_openlibs`, debug and math. The standalone interpreter additionally links
 the SDK's shared SHA-256 library for its native helper; liblua itself does not
 link crypto.
 
@@ -52,25 +50,22 @@ lua -e 'print("Hello from Lua", 2 ^ 0.5)'
 lua -e 'local t = {3, 1, 2}; table.sort(t); print(table.concat(t, ","))'
 ```
 
-`lua -e 'code'` executes one text chunk. `lua file.lua [args...]` loads a
+`lua -e 'code'` executes a text chunk; repeated `-e`/`-l` options run in order.
+`-l [global=]module` requires a module, `-v` prints the version, `-i` enters the
+upstream REPL after execution, `-W` enables warnings and `-E` ignores Lua startup
+environment variables. `lua file.lua [args...]` loads a
 script, and `lua -- file.lua [args...]` permits filenames beginning with `-`.
 Success returns zero; usage, file, allocation, compilation and execution errors
 return one. Runtime errors include a Lua traceback. Script and `-e` chunk return
 values are discarded; use `print` for output.
 
-With no arguments, `lua` opens a libterm REPL. Expressions print their results;
-statements execute normally, and globals persist between chunks. As in Lua's
-CLI, locals belong to a single chunk. Incomplete statements use a `>> ` prompt
-until Lua can compile them. Syntax/runtime errors, including errors in the global
-`print` function, are reported before returning to the primary `> ` prompt.
-
-Ctrl+C discards the whole pending chunk. Ctrl+D on an empty line exits zero,
-including at the continuation prompt; with text on the line it is ignored.
-The editor supports insertion, deletion and cursor movement, without history.
-Each line is limited to 1023 bytes and the visible terminal capacity. Rejected
-input or input loss discards the pending chunk instead of executing partial
-source. Multiline source grows on Lua's heap. Allocation and terminal failures
-exit nonzero. Prompts are fixed; `_PROMPT`/`_PROMPT2` overrides are not supported.
+With no script or expression, real terminal stdin selects upstream's plain
+stdio REPL; redirected stdin is executed as a script. The pinned upstream
+argument parser, expression/continuation handling, `_PROMPT`/`_PROMPT2`, stdin
+reader and error flow are used. There is no readline/libterm editor or custom
+line limit. Native console bytes follow current libc; editable terminal input,
+signal-driven cancellation and history are not promised. Upstream's signal()
+calls reach libc's honest SIG_ERR/ENOTSUP implementation, which installs nothing.
 
 Script paths use the shared libc working directory or an explicit Pyxis URI;
 the interpreter retains its native directory grants. Module search is separate from script loading.
@@ -80,26 +75,29 @@ indices contain its arguments, and negative indices contain preceding interprete
 arguments. The script also receives its arguments through `...`. With `-e`,
 `arg[0]` names the interpreter and positive indices contain `-e` and the chunk.
 
-`loadfile(filename[, mode[, environment]])` and `dofile(filename)` use the same
-path rules and require a filename. `loadfile` retains its function-or-nil/error
-result; `dofile` executes the chunk and returns its results. Lua's text/binary
-modes, UTF-8 BOM handling and initial `#` line skipping are retained. File streams
-are closed after loading, including syntax/read failures. Omitting a filename
-or using nil is an argument error; stdin scripts are not supported. A bare `-`
-is not a stdin selector (`lua -- -` can open a file literally named `-`).
+`loadfile([filename[, mode[, environment]]])` and `dofile([filename])` use the
+same path rules. Omitting the filename or passing nil reads stdin. `loadfile`
+retains its function-or-nil/error result; `dofile` executes and returns results.
+Text/binary modes, UTF-8 BOM and initial `#` line skipping are retained. The CLI
+`-` selects stdin; `lua -- -` opens a file literally named `-`. Files opened by
+the loader are closed after loading, including syntax/read failures.
 
-Direct shebang launches remain deferred: the Pyxis launcher passes an open
-`script` file capability, which must eventually be consumed as that exact object.
-The driver currently rejects this handoff explicitly instead of reopening its
-diagnostic filename. Run `lua file.lua` for this milestone.
+A direct shebang launch consumes the actual handed `script` file object through
+a native descriptor/FILE owner. It uses the existing upstream BOM/shebang and
+byte-reader logic and closes that owned FILE after loading; the diagnostic
+filename is not reopened. Normal loadfile calls and LUA_INIT do not consume the
+handed main-script object.
 
-The driver registers base, coroutine, table, string, UTF-8, io, bounded os and
-pure-Lua package libraries. `require` searches preloads and Lua files only.
-An exact `LUA_PATH` value overrides all defaults, even if empty; versioned
-variables and `;;` expansion are not used. Otherwise `?.lua` and `?/init.lua`
-are searched in the script's directory, then `boot://share/lua/`. The REPL and
-`-e` use inherited cwd before boot modules. Dots in module names become `/`.
-No environment startup chunks or dynamic modules are loaded.
+Upstream's standard initializer opens the libraries, including debug and math.
+A small interpreter-only hook registers the existing native `pyxis` module.
+`require` keeps upstream preload, Lua and C searchers;
+C loading selects the upstream explicit unsupported implementation. Native
+`package.cpath` defaults to empty. `LUA_PATH_5_5` takes precedence over `LUA_PATH`;
+`;;` inserts the native default `?.lua;?/init.lua;boot://share/lua/?.lua;boot://share/lua/?/init.lua`.
+Relative templates use inherited cwd. The driver does not replace the selected
+path with the script's directory. `LUA_INIT_5_5`/`LUA_INIT` run startup file or
+text chunks; `-E` suppresses them and package environment selection. Dots in
+module names become `/`. Dynamic modules remain unavailable.
 
 The global/preloaded `pyxis` table provides `run` (dense argv list, launch/wait,
 actual signed exit status), `dir` (array of name/kind entries) and `sha256`
@@ -151,17 +149,15 @@ A successful lexical-scope close of a Lua 5.5 to-be-closed file also uses normal
 close; a real close failure raises a Lua error. During error unwinding,
 `__close` abandons a pending transaction without submission and preserves the
 original Lua error. Ordinary garbage collection also abandons pending requests.
-Successful intentional abandonment is not an error. Abort/release failures
-emit a bounded diagnostic to delegated stderr and remain recorded in that Lua
-state, making the standalone interpreter's otherwise successful exit fail.
+Successful intentional abandonment is not an error. Automatic cleanup preserves
+the original error without adding diagnostics or aggregating failures into the
+Lua exit status. Explicit flush/close results remain available to callers.
 
 Before destroying its Lua state, the standalone interpreter selects normal
 close after successful execution and abandonment after an unhandled Lua error.
-`os.exit(status, true)` is explicit normal termination, including a nonzero
-requested status; it closes normally and changes only a zero status when cleanup
-fails. Without the close flag, `os.exit` still honors earlier GC cleanup
-failures before ordinary C exit finalization. An already committed request is
-never submitted again by either path.
+`os.exit(status, true)` selects normal close, including a nonzero requested
+status; without the close flag it follows upstream C process exit. An already
+committed request is never submitted again by either path.
 A FILE error still blocks normal commit. Lua exceptions and requested nonzero
 statuses alone do not mark a FILE as failed.
 
@@ -344,38 +340,30 @@ libc's `strcoll`, which compares in byte order in the only, C, locale.
 authority permit it. Replacement requires matching kinds and an empty directory
 victim; directory moves require RAM or writable npfs.
 
-Absent functions are `file:setvbuf`, `io.popen`, `os.execute`, `os.clock`,
-`os.setlocale`, `package.loadlib`, C-module searchers, debug and full math.
+Absent functions are `os.execute` and `os.clock`. `os.setlocale` and numeric
+locale handling use the real fixed-C libc API; other locale names return nil. `file:setvbuf` uses current libc. `io.popen` and dynamic C loading retain
+upstream explicit unsupported behavior instead of disappearing from their tables.
 The base library's in-memory `load`, string `dump` and normal integer/double
 arithmetic remain available.
 
 ## Adaptations
 
-- `0001` carries the production changes from upstream GC fix
-  `0b29f408433e92953cc72b1d3e06c7ac8139e439`, avoiding a negative left shift when
-  evaluating the major-to-minor collection threshold. Upstream tests are not
-  imported.
-- `0002` removes locale header dependencies, requires explicit filenames and
-  uses a port-owned 512-byte file read buffer. Files open in binary mode from
-  the start; Pyxis's identical text/binary stream behavior makes the upstream
-  `freopen` cycle unnecessary. The patch also removes unsupported io/os
-  entries and dynamic loading paths, retaining pure-Lua package searchers.
-  Failed clock/strftime calls report errors instead of formatting fake time.
-  Calendar tables keep upstream's `mktime` path.
-- `0003` gives ordinary IO files separate normal-close and abandonment paths,
-  records cleanup failures per Lua state, and exposes the shutdown hook used by
-  the CLI and `os.exit(..., true)`. It preserves standard-file close protection.
-- `config.h` selects Lua's existing hooks for an integer hook flag (no signals),
-  decimal point `.`, reentrant calendar conversion
+- `0002` omits unavailable OS operations and adapts handed script ownership. File
+  loading uses upstream stdin and BUFSIZ sizing, opening named files in binary
+  mode before parsing, without the unavailable `freopen` cycle. Module paths,
+  environment selection and unsupported loader behavior follow upstream.
+  Calendar conversion and date/time error policy follow the pinned source.
+- `0003` separates ordinary FILE close from native abandonment, preserves
+  foreign callbacks and standard-file protection, and exposes the two-argument
+  shutdown hook. It adds no automatic cleanup diagnostics or exit aggregation.
+- `config.h` selects Lua's existing hooks for
+  actual stdin terminal detection, reentrant calendar conversion
   and libc mkstemp-backed reserved names. There is no fake locale or
   signal implementation, and Lua's numeric types/recursion limits are unchanged.
-- `main.c` embeds the upstream core through its public API instead of building
-  the upstream CLI and all standard libraries. Its message handler and REPL
-  compilation flow follow upstream `lua.c` under the same MIT notice.
-  Library initialization, compilation
-  and execution are protected against Lua errors, including argument-table
-  construction and file loading; the state is closed before process exit. The
-  SDK supplies allocation, stdio and the core math subset.
+- The pinned upstream `lua.c` is compiled as the interpreter, with only native
+  script-object, module registration and final IO-ownership hooks. Its parser,
+  checks, signal calls, handlers and stdio REPL are unchanged. The SDK supplies
+  allocation, stdio and math. No handwritten interpreter driver is built.
 
 The process has the general 1 MiB eager native stack and an unmapped guard page;
 Lua's value stacks live on the heap. Native parser/callback and pattern recursion
@@ -383,9 +371,7 @@ retain upstream's limits. These limits are not a proof against every possible
 combination exhausting the fixed native stack; automatic growth is deferred.
 Lua bytecode calls ordinarily use the VM loop rather than one C frame per Lua
 call. There is no signal-driven cooperative interruption: the parent shell can
-terminate Lua while a chunk runs, while REPL line cancellation applies only
-while reading input. Session configuration
-is evaluated by the separate userland launcher, using the exported Lua library.
+terminate Lua while a chunk runs. Session configuration is evaluated by the separate userland launcher, using the exported Lua library.
 
 `pyxis.monotonic_ns()` reads the declared CLOCK READ grant and returns an exact
 Lua integer for absolute monotonic deadlines. Missing authority or an unrepresentable

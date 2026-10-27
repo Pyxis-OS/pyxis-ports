@@ -2,10 +2,9 @@ Lua 5.5.1 development library for Pyxis
 
 The upstream MIT notice is retained in lua.h. source.txt records the exact
 upstream commit and ordered patches. The archive contains Lua's core and the
-selected standard libraries; math, debug and the stock all-libraries initializer
-are omitted. The interpreter's native Pyxis module and job helpers are separate
-objects and are not part of liblua.a. Its Mbed TLS dependency therefore does not
-apply to this development library.
+upstream standard libraries, including math, debug and the stock initializer. The interpreter's native Pyxis module and job helpers are separate
+objects and are not part of liblua.a. The interpreter's SHA-256 helper therefore does not
+add a crypto dependency to this development library.
 
 Upstream-derived patches retain Lua's MIT terms. The forced-include config.h,
 recipe and packaging metadata are original Pyxis material under MPL-2.0.

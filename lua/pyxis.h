@@ -4,6 +4,6 @@
 #include "lua.h"
 
 int luaopen_pyxis(lua_State *state);
-/* Call after lua_close so all per-call hash operations have been released. */
+int lua_pyxis_loadscript(lua_State *state, const char *filename);
 
 #endif

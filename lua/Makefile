@@ -1,7 +1,7 @@
 include $(SDK)/share/pyxis.mk
 SHA256_LIBRARY := $(PYXIS_SYSROOT)/usr/lib/libsha256.a
 
-SOURCES := lapi.c lcode.c lctype.c ldebug.c ldo.c ldump.c lfunc.c lgc.c \
+SOURCES := lapi.c lcode.c lctype.c ldebug.c ldblib.c ldo.c ldump.c lfunc.c lgc.c linit.c lmathlib.c \
            llex.c lmem.c lobject.c lopcodes.c lparser.c lstate.c lstring.c \
            ltable.c ltm.c lundump.c lvm.c lzio.c lauxlib.c lbaselib.c \
            lcorolib.c ltablib.c lstrlib.c lutf8lib.c liolib.c loslib.c loadlib.c
@@ -13,8 +13,8 @@ all: $(BUILD)/lua.pxe $(BUILD)/liblua.a
 $(BUILD)/%.o: $(SOURCE)/%.c $(RECIPE)/config.h $(RECIPE)/Makefile
 	$(CC) $(PYXIS_CPPFLAGS) $(PYXIS_CFLAGS) -include $(RECIPE)/config.h -c $< -o $@
 
-$(BUILD)/main.o: $(RECIPE)/main.c $(RECIPE)/Makefile
-	$(CC) $(PYXIS_CPPFLAGS) $(PYXIS_CFLAGS) -I$(SOURCE) -c $< -o $@
+$(BUILD)/main.o: $(SOURCE)/lua.c $(RECIPE)/pyxis.h $(RECIPE)/Makefile
+	$(CC) $(PYXIS_CPPFLAGS) $(PYXIS_CFLAGS) -include $(RECIPE)/config.h -I$(SOURCE) -I$(RECIPE) -c $< -o $@
 
 $(BUILD)/pyxis.o: $(RECIPE)/pyxis.c $(RECIPE)/pyxis.h $(RECIPE)/Makefile
 	$(CC) $(PYXIS_CPPFLAGS) $(PYXIS_CFLAGS) -I$(SOURCE) -c $< -o $@
