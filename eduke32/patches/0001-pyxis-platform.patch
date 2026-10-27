@@ -145,13 +145,13 @@ index d1fa14e..aade838 100644
  void maybe_redirect_outputs(void)
  {
 -#if !(defined __APPLE__ && defined __BIG_ENDIAN__)
-+    // Pyxis libc has no freopen or setvbuf; use the shell's redirection.
++    // Pyxis libc has no freopen; use the shell's redirection.
 +#if !(defined __APPLE__ && defined __BIG_ENDIAN__) && !defined __pyxis__
      char *argp;
  
      // pipe standard outputs to files
 diff --git a/source/build/src/compat.cpp b/source/build/src/compat.cpp
-index 8d24342..50ce820 100644
+index 8d24342..4a2888a 100644
 --- a/source/build/src/compat.cpp
 +++ b/source/build/src/compat.cpp
 @@ -24,6 +24,9 @@
@@ -169,7 +169,7 @@ index 8d24342..50ce820 100644
          dirr->info.mode = st.st_mode;
          dirr->info.size = st.st_size;
 +#if defined(__pyxis__)
-+        dirr->info.mtime = 0; // Pyxis stat has no modification time.
++        dirr->info.mtime = st.st_valid & STAT_MTIME_VALID ? st.st_mtim.tv_sec : 0;
 +#else
          dirr->info.mtime = st.st_mtime;
 +#endif
@@ -238,7 +238,7 @@ index dd826ac..cd58be0 100644
 +
 +#endif // __pyxis__
 diff --git a/source/build/src/sdlayer.cpp b/source/build/src/sdlayer.cpp
-index cd06163..cb55835 100644
+index cd06163..63ce5df 100644
 --- a/source/build/src/sdlayer.cpp
 +++ b/source/build/src/sdlayer.cpp
 @@ -1,7 +1,9 @@
@@ -277,20 +277,6 @@ index cd06163..cb55835 100644
      signal(SIGSEGV, sighandler);
      signal(SIGILL, sighandler);  /* clang -fcatch-undefined-behavior uses an ill. insn */
      signal(SIGABRT, sighandler);
-@@ -1756,6 +1758,13 @@ int setvideomode_sdlcommonpost(int32_t x, int32_t y, int32_t c, int32_t fs, int3
-         }
-     }
- 
-+#if defined __pyxis__
-+    // Pyxis displays report no refresh rate, which SDL gives as 0. The default
-+    // frame limit divides by it, so pace frames at 60 Hz instead.
-+    if (refreshfreq <= 0)
-+        refreshfreq = 60.0;
-+#endif
-+
-     static double lastrefreshfreq;
- 
-     if (refreshfreq != lastrefreshfreq)
 diff --git a/source/build/src/smmalloc_generic.cpp b/source/build/src/smmalloc_generic.cpp
 index 367422a..048bef7 100644
 --- a/source/build/src/smmalloc_generic.cpp
@@ -318,7 +304,7 @@ index a3f46b5..634963a 100644
  # endif
  #endif /* _WIN32 */
 diff --git a/source/duke3d/src/grpscan.cpp b/source/duke3d/src/grpscan.cpp
-index e052e0e..046107c 100644
+index e052e0e..b1a6fee 100644
 --- a/source/duke3d/src/grpscan.cpp
 +++ b/source/duke3d/src/grpscan.cpp
 @@ -397,7 +397,12 @@ static void ProcessGroups(BUILDVFS_FIND_REC *srch, native_t maxsize)
@@ -326,8 +312,8 @@ index e052e0e..046107c 100644
              } // failed to stat the file
              Xfree(fn);
 +#if defined(__pyxis__)
-+            // Pyxis stat has no modification time: the cache matches on size.
-+            if (st.st_size && fg->size == (int32_t)st.st_size && fg->mtime == 0)
++            if ((st.st_valid & STAT_MTIME_VALID) && st.st_size
++                && fg->size == (int32_t)st.st_size && fg->mtime == (int32_t)st.st_mtim.tv_sec)
 +#else
              if (st.st_size && fg->size == (int32_t)st.st_size && fg->mtime == (int32_t)st.st_mtime)
 +#endif
@@ -343,70 +329,37 @@ index e052e0e..046107c 100644
                  if (b > 0) crcval = Bcrc32((uint8_t *)buf, b, crcval);
              }
              while (b == ReadSize);
-@@ -455,7 +460,11 @@ static void ProcessGroups(BUILDVFS_FIND_REC *srch, native_t maxsize)
+@@ -452,10 +457,18 @@ static void ProcessGroups(BUILDVFS_FIND_REC *srch, native_t maxsize)
+                 foundgrps = grp;
+             }
+ 
++#if defined(__pyxis__)
++            if (!(st.st_valid & STAT_MTIME_VALID))
++                continue;
++#endif
              fgg = (struct grpcache *)Xcalloc(1, sizeof(struct grpcache));
              Bstrncpyz(fgg->name, sidx->name, BMAX_PATH);
              fgg->size = st.st_size;
 +#if defined(__pyxis__)
-+            fgg->mtime = 0; // Pyxis stat has no modification time.
++            fgg->mtime = st.st_mtim.tv_sec;
 +#else
              fgg->mtime = st.st_mtime;
 +#endif
              fgg->crcval = crcval;
              fgg->next = usedgrpcache;
              usedgrpcache = fgg;
-diff --git a/source/duke3d/src/sounds.cpp b/source/duke3d/src/sounds.cpp
-index d6a4f2a..a3c3dad 100644
---- a/source/duke3d/src/sounds.cpp
-+++ b/source/duke3d/src/sounds.cpp
-@@ -40,6 +40,12 @@ int32_t MusicVoice = -1;
- static bool MusicPaused;
- static bool SoundPaused;
- 
-+#if defined __pyxis__
-+// The Pyxis SDL2 port has no audio, so sound startup fails. Playing then fails
-+// too, and upstream logs every attempt; skip playback instead.
-+static bool SoundStarted;
-+#endif
-+
- static uint32_t localQueueIndex;
- static uint32_t freeSlotQueue[MAXVOICES];
- #ifndef NDEBUG
-@@ -91,6 +97,10 @@ void S_SoundStartup(void)
-         return;
+@@ -517,7 +530,11 @@ int32_t ScanGroups(void)
+         grp = grp->next;
      }
  
-+#if defined __pyxis__
-+    SoundStarted = true;
++#if defined(__pyxis__)
++    if (usedgrpcache || foundgrps)
++#else
+     if (usedgrpcache)
 +#endif
-+
-     freeSlotReadIndex = freeSlotWriteIndex = localQueueIndex = 0;
- #ifndef NDEBUG
-     freeSlotPendingCnt = 0;
-@@ -828,6 +838,11 @@ int S_PlaySound3D(int num, int spriteNum, const vec3_t& pos)
-     if ((sndNum == -1 && num != -1) || !ud.config.SoundToggle || (unsigned)spriteNum >= MAXSPRITES) // check that the user returned -1, but only if -1 wasn't playing already (in which case, warn)
-         return -1;
- 
-+#if defined __pyxis__
-+    if (!SoundStarted)
-+        return -1;
-+#endif
-+
-     if ((unsigned)sndNum < (unsigned)g_highestSoundIdx && g_sounds[sndNum]->ptr == nullptr && g_sounds[sndNum]->filename)
      {
-         LOG_F(WARNING, "Sound #%d (%s) not precached!", sndNum, g_sounds[sndNum]->filename);
-@@ -951,6 +966,11 @@ int S_PlaySound(int num)
-     if ((sndnum == -1 && num != -1) || !ud.config.SoundToggle) // check that the user returned -1, but only if -1 wasn't playing already (in which case, warn)
-         return -1;
- 
-+#if defined __pyxis__
-+    if (!SoundStarted)
-+        return -1;
-+#endif
-+
-     if ((unsigned)sndnum < (unsigned)g_highestSoundIdx && g_sounds[sndnum]->ptr == nullptr && g_sounds[sndnum]->filename)
-     {
-         LOG_F(WARNING, "Sound #%d (%s) not precached!", sndnum, g_sounds[sndnum]->filename);
+         buildvfs_FILE fp = buildvfs_fopen_write(GRPCACHEFILE);
+         if (fp)
 diff --git a/source/imgui/include/imconfig.h b/source/imgui/include/imconfig.h
 index 322e5b8..030fd9c 100644
 --- a/source/imgui/include/imconfig.h

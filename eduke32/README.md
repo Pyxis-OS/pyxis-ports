@@ -55,18 +55,15 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
      only with OpenGL, and three standard includes upstream gets transitively
      elsewhere.
    - **Files:** `BS_IREAD` and `BS_IWRITE` together make the 0666 libc's
-     `open` accepts for creation. The data checksum cache matches on size
-     alone, and output redirection to `stdout.txt` is off.
+     `open` accepts for creation. The data checksum cache matches size and a
+     valid native modification time; unknown time forces CRC scanning without
+     cache admission. Output redirection to `stdout.txt` is off.
    - **Whole reads:** `Bread` loops until it has the count, end of file or an
      error, and the data checksum uses it (see the libc gaps).
    - **System:** the page size comes from `MEMORY_PAGE_SIZE`; there are no
      signal handlers or stack traces; the log uses libc's working-directory
      description.
-   - **Refresh rate:** Pyxis displays report none, which SDL gives as 0.
-     Upstream's default frame limit divides by it and hangs in its catch-up
-     loop, so Pyxis uses 60 Hz.
-   - **Sound:** after sound startup fails, playing a sound returns at once.
-     Upstream tries each sound and logs every failure.
+   - **Sound:** startup and playback retain upstream failure handling and diagnostics.
 2. **Thread limits.** SDL's audio callback thread mixes sound beside the
    game's thread, so upstream's thread-local state, loguru's mutex and the
    audio library's lock stay as upstream has them. The patch leaves out only
@@ -88,22 +85,22 @@ EDuke32's `log.h`, `keyboard.h` and others share names with Pyxis headers.
    - **Pyxis roots:** `Bcorrectfilename` keeps `boot://` and similar roots
      whole instead of collapsing the double slash.
    - **Home:** `Bgethomedir` returns `home://`.
-4. **Frame sleep.** Upstream checks the clock in a loop until the next frame
-   is due, keeping one CPU busy. On Pyxis the frame limiter sleeps through the
-   rest of the frame with `nanosleep`. Frames are paced as before; demo
-   profiling renders its extra frames inside a paced iteration and is
-   unaffected.
+Frame limiting and unknown-refresh behavior follow upstream; the port adds no
+refresh-rate fallback or sleep between frame attempts.
 
 ## Libc gaps
 
-The port works around these instead of adding them to libc, as accepted for
-this task; each needs a design decision first:
+Remaining library gaps and native metadata mappings:
 - **Whole reads:** libc `read` returns one native transfer, under 4 KiB from
-  a file, so it can stop short of the count before the end. EDuke32 expects
-  POSIX's whole reads from regular files.
-- **File metadata:** `stat` reports no modification time.
+  a file, so it can stop short of the count before the end. The engine
+  expects its read buffers to be filled and the adapter assembles transfers.
+- **File metadata:** when `STAT_MTIME_VALID` is set, directory entries and the
+  GRP cache use libc's actual `st_mtim.tv_sec`. Unknown modification times do
+  not match or create cache entries; the ordinary CRC scan still identifies
+  game data. The cache format remains upstream. The directory-entry scalar
+  remains zero when its optional time is unavailable.
 - **Absent:** `getuid` and `getpwuid`, `sysconf`, signals, `ioctl`,
-  `freopen` and `setvbuf`. Upstream's `fopenfrompath`, which only the
+  `freopen`. Libc supplies `setvbuf`. Upstream's `fopenfrompath`, which only the
   Mapster32 editor uses, builds with libc's `fdopen`.
 
 ## Memory

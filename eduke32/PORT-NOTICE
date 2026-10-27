@@ -2,7 +2,7 @@ EDuke32 for Pyxis: personal use only
 Upstream: https://voidpoint.io/terminx/eduke32.git
 Revision: ec5824db81817866f70da326d3811bb0f52b3517 (master, 2026-08-07)
 Patches: 0001-pyxis-platform.patch, 0002-pyxis-thread-limits.patch,
-         0003-pyxis-paths.patch, 0004-pyxis-frame-sleep.patch
+         0003-pyxis-paths.patch
 
 EDuke32's game code is under the GNU General Public License, version 2, in
 gpl-2.0.txt. Its Build engine is under Ken Silverman's Build licence, in

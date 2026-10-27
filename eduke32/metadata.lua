@@ -15,7 +15,6 @@ return {
     "patches/0001-pyxis-platform.patch",
     "patches/0002-pyxis-thread-limits.patch",
     "patches/0003-pyxis-paths.patch",
-    "patches/0004-pyxis-frame-sleep.patch",
   },
   outputs = {
     sdl2_yuv_license = "share/licenses/eduke32/SDL2-yuv2rgb-LICENSE",
