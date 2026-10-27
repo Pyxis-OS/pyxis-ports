@@ -18,7 +18,6 @@ return {
     "patches/0001-native-file-paths-and-metadata.patch",
     "patches/0002-pyxis-sdl-software-platform.patch",
     "patches/0003-pyxis-sdl-audio.patch",
-    "patches/0004-native-parent-path-and-root-directory-errors.patch",
   },
   outputs = {
     dev_pyxis_license = "dev/share/licenses/raylib/MPL-2.0",

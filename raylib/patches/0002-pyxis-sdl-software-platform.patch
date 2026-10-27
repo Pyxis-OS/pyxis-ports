@@ -1,40 +1,8 @@
---- a/src/rcore.c
-+++ b/src/rcore.c
-@@ -1666,6 +1666,22 @@
- // REF: http://www.geisswerks.com/ryan/FAQS/timing.html --> All about timing on Win32!
- void WaitTime(double seconds)
- {
-+#if defined(__pyxis__)
-+    if (seconds == 0.0) return;
-+    if (!(seconds > 0.0) || !isfinite(seconds) || (seconds >= (double)INT64_MAX))
-+    {
-+        TRACELOG(LOG_WARNING, "TIMER: Invalid sleep duration");
-+        return;
-+    }
-+    struct timespec delay = { .tv_sec = (time_t)seconds,
-+        .tv_nsec = (long)((seconds - (time_t)seconds)*1000000000.0) };
-+    if (nanosleep(&delay, NULL) != 0)
-+    {
-+        TRACELOG(LOG_WARNING, "TIMER: Sleep failed (errno %i)", errno);
-+        CORE.Window.shouldClose = true;
-+    }
-+    return;
-+#endif
-     if (seconds < 0) return;    // Security check
- 
- #if SUPPORT_BUSY_WAIT_LOOP || SUPPORT_PARTIALBUSY_WAIT_LOOP
-@@ -2877,7 +2893,7 @@
-     if (length >= MAX_FILEPATH_LENGTH) { errno = ENAMETOOLONG; return -1; }
-     const char *root = GetNativeRootEnd(dirPath);
-     size_t start = root? (size_t)(root - dirPath) : 0;
--    if (!start && (dirPath[0] == '/' || strchr(dirPath, ':'))) { errno = EINVAL; return -1; }
-+    if (!start && (dirPath[0] == '/' || strstr(dirPath, "://"))) { errno = EINVAL; return -1; }
-     if (IsPathDirectory(dirPath)) return 0;
-     if (start == length) return -1; // Missing roots are not directories to create.
-     char *copy = RL_MALLOC(length + 1);
+diff --git a/src/platforms/rcore_desktop_sdl.c b/src/platforms/rcore_desktop_sdl.c
+index 46963bd..57b30e2 100644
 --- a/src/platforms/rcore_desktop_sdl.c
 +++ b/src/platforms/rcore_desktop_sdl.c
-@@ -108,6 +108,10 @@
+@@ -108,6 +108,10 @@ typedef struct {
      SDL_GameController *gamepad[MAX_GAMEPADS];
      SDL_JoystickID gamepadId[MAX_GAMEPADS]; // Joystick instance ids, they do not start from 0
      SDL_Cursor *cursor;
@@ -45,11 +13,10 @@
  
  #if defined(__linux__)
      // Local storage for the window handle (X11)
-@@ -123,6 +127,112 @@
- extern CoreData CORE;                   // Global CORE state context
+@@ -124,6 +128,112 @@ extern CoreData CORE;                   // Global CORE state context
  
  static PlatformData platform = { 0 };   // Platform specific data
-+
+ 
 +
 +#if defined(__pyxis__)
 +static bool PyxisUpdateOutput(void)
@@ -155,10 +122,11 @@
 +    CORE.Input.Mouse.cursorHidden = locked || (SDL_ShowCursor(SDL_QUERY) == SDL_DISABLE);
 +}
 +#endif
- 
++
  static const KeyboardKey mapScancodeToKey[SCANCODE_MAPPED_NUM] = {
      KEY_NULL,           // SDL_SCANCODE_UNKNOWN
-@@ -469,6 +579,9 @@
+     0,
+@@ -469,6 +579,9 @@ bool WindowShouldClose(void)
  // Toggle fullscreen mode
  void ToggleFullscreen(void)
  {
@@ -168,7 +136,7 @@
      const int monitor = SDL_GetWindowDisplayIndex(platform.window);
  
  #if defined(USING_VERSION_SDL3) // SDL3 Migration: Monitor is an id instead of index now, returns 0 on failure
-@@ -489,11 +602,15 @@
+@@ -489,11 +602,15 @@ void ToggleFullscreen(void)
          }
      }
      else TRACELOG(LOG_WARNING, "SDL: Failed to find selected monitor");
@@ -184,7 +152,7 @@
      const int monitor = SDL_GetWindowDisplayIndex(platform.window);
  
  #if defined(USING_VERSION_SDL3) // SDL3 Migration: Monitor is an id instead of index now, returns 0 on failure
-@@ -514,32 +631,50 @@
+@@ -514,32 +631,50 @@ void ToggleBorderlessWindowed(void)
          }
      }
      else TRACELOG(LOG_WARNING, "SDL: Failed to find selected monitor");
@@ -235,7 +203,7 @@
      if (!CORE.Window.ready) TRACELOG(LOG_WARNING, "WINDOW: SetWindowState does nothing before window initialization, Use \"SetConfigFlags\" instead");
  
      FLAG_SET(CORE.Window.flags, flags);
-@@ -632,11 +767,17 @@
+@@ -632,11 +767,17 @@ void SetWindowState(unsigned int flags)
      {
          TRACELOG(LOG_WARNING, "SetWindowState() - FLAG_INTERLACED_HINT is not supported on PLATFORM_DESKTOP_SDL");
      }
@@ -253,7 +221,7 @@
      FLAG_CLEAR(CORE.Window.flags, flags);
  
      if (FLAG_IS_SET(flags, FLAG_VSYNC_HINT))
-@@ -703,11 +844,16 @@
+@@ -703,11 +844,16 @@ void ClearWindowState(unsigned int flags)
      {
          TRACELOG(LOG_WARNING, "ClearWindowState() - FLAG_INTERLACED_HINT is not supported on PLATFORM_DESKTOP_SDL");
      }
@@ -270,7 +238,7 @@
      SDL_Surface *iconSurface = NULL;
  
      unsigned int rmask = 0, gmask = 0, bmask = 0, amask = 0;
-@@ -805,6 +951,7 @@
+@@ -805,6 +951,7 @@ void SetWindowIcon(Image image)
          SDL_SetWindowIcon(platform.window, iconSurface);
          SDL_FreeSurface(iconSurface);
      }
@@ -278,7 +246,7 @@
  }
  
  // Set icon for window
-@@ -816,23 +963,37 @@
+@@ -816,23 +963,37 @@ void SetWindowIcons(Image *images, int count)
  // Set title for window
  void SetWindowTitle(const char *title)
  {
@@ -316,7 +284,7 @@
  #if defined(USING_VERSION_SDL3) // SDL3 Migration: Monitor is an id instead of index now, returns 0 on failure
      if (SDL_GetDisplayProperties(monitor) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
  #else
-@@ -884,48 +1045,73 @@
+@@ -884,48 +1045,73 @@ void SetWindowMonitor(int monitor)
          else TRACELOG(LOG_WARNING, "SDL: Failed to get selected display usable bounds");
      }
      else TRACELOG(LOG_WARNING, "SDL: Failed to find selected monitor");
@@ -390,7 +358,7 @@
  }
  
  // Get native window handle
-@@ -1270,7 +1456,11 @@
+@@ -1270,7 +1456,11 @@ void ShowCursor(void)
  #else
      SDL_ShowCursor(SDL_ENABLE);
  #endif
@@ -402,7 +370,7 @@
  }
  
  // Hide mouse cursor
-@@ -1281,31 +1471,73 @@
+@@ -1281,31 +1471,73 @@ void HideCursor(void)
  #else
      SDL_ShowCursor(SDL_DISABLE);
  #endif
@@ -477,7 +445,7 @@
      // NOTE: Using a preprocessor condition here because rlCopyFramebuffer() is only declared for software rendering
      SDL_Surface *surface = SDL_GetWindowSurface(platform.window);
      rlCopyFramebuffer(0, 0, CORE.Window.render.width, CORE.Window.render.height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, surface->pixels);
-@@ -1393,18 +1625,59 @@
+@@ -1393,18 +1625,54 @@ void SetGamepadVibration(int gamepad, float leftMotor, float rightMotor, float d
  // Set mouse position XY
  void SetMousePosition(int x, int y)
  {
@@ -505,11 +473,6 @@
  void SetMouseCursor(int cursor)
  {
 +#if defined(__pyxis__)
-+    if ((cursor < 0) || ((size_t)cursor >= sizeof(CursorsLUT)/sizeof(CursorsLUT[0])))
-+    {
-+        TRACELOG(LOG_WARNING, "INPUT: Invalid cursor identifier");
-+        return;
-+    }
 +    SDL_Cursor *next = SDL_CreateSystemCursor(CursorsLUT[cursor]);
 +    if (next == NULL)
 +    {
@@ -537,7 +500,7 @@
  }
  
  // Get physical key name
-@@ -1426,6 +1699,9 @@
+@@ -1426,6 +1694,9 @@ void PollInputEvents(void)
      CORE.Input.Keyboard.keyPressedQueueCount = 0;
      CORE.Input.Keyboard.charPressedQueueCount = 0;
  
@@ -547,7 +510,7 @@
      // Reset mouse wheel
      CORE.Input.Mouse.currentWheelMove.x = 0;
      CORE.Input.Mouse.currentWheelMove.y = 0;
-@@ -1489,6 +1765,9 @@
+@@ -1489,6 +1760,9 @@ void PollInputEvents(void)
      SDL_Event event = { 0 };
      while (SDL_PollEvent(&event) != 0)
      {
@@ -557,7 +520,7 @@
          // All input events can be processed after polling
          switch (event.type)
          {
-@@ -1541,6 +1820,15 @@
+@@ -1541,6 +1815,15 @@ void PollInputEvents(void)
                      case SDL_WINDOWEVENT_RESIZED:
                      case SDL_WINDOWEVENT_SIZE_CHANGED:
                      {
@@ -573,7 +536,7 @@
                          const int width = event.window.data1;
                          const int height = event.window.data2;
                          SetupViewport(width, height);
-@@ -1580,10 +1868,26 @@
+@@ -1580,10 +1863,26 @@ void PollInputEvents(void)
                          #if defined(GRAPHICS_API_OPENGL_SOFTWARE)
                          swResize(width, height);
                          #endif
@@ -602,7 +565,7 @@
  
                      case SDL_WINDOWEVENT_MINIMIZED:
                      {
-@@ -1620,10 +1924,24 @@
+@@ -1620,10 +1919,24 @@ void PollInputEvents(void)
                      case SDL_WINDOWEVENT_FOCUS_GAINED:
                      {
                          if (FLAG_IS_SET(CORE.Window.flags, FLAG_WINDOW_UNFOCUSED)) FLAG_CLEAR(CORE.Window.flags, FLAG_WINDOW_UNFOCUSED);
@@ -627,7 +590,7 @@
                      } break;
  
              #ifndef USING_VERSION_SDL3
-@@ -1699,8 +2017,16 @@
+@@ -1699,8 +2012,16 @@ void PollInputEvents(void)
                  if (btn == 2) btn = 1;
                  else if (btn == 1) btn = 2;
  
@@ -644,7 +607,7 @@
  
                  touchAction = 1;
              } break;
-@@ -1712,14 +2038,24 @@
+@@ -1712,14 +2033,24 @@ void PollInputEvents(void)
                  if (btn == 2) btn = 1;
                  else if (btn == 1) btn = 2;
  
@@ -670,7 +633,7 @@
                  CORE.Input.Mouse.currentWheelMove.x = event.wheel.x;
                  CORE.Input.Mouse.currentWheelMove.y = event.wheel.y;
  #else
-@@ -1731,13 +2067,22 @@
+@@ -1731,13 +2062,22 @@ void PollInputEvents(void)
              {
                  if (CORE.Input.Mouse.cursorLocked)
                  {
@@ -693,7 +656,7 @@
                  }
  
                  CORE.Input.Touch.position[0] = CORE.Input.Mouse.currentPosition;
-@@ -1986,6 +2331,9 @@
+@@ -1986,6 +2326,9 @@ void PollInputEvents(void)
          }
  #endif
      }
@@ -703,7 +666,7 @@
      //-----------------------------------------------------------------------------
  }
  
-@@ -1996,10 +2344,32 @@
+@@ -1996,6 +2339,19 @@ void PollInputEvents(void)
  // Initialize platform: graphics, inputs and more
  int InitPlatform(void)
  {
@@ -723,20 +686,7 @@
      // Initialize SDL internal global state, only required systems
      // NOTE: Not all systems need to be initialized, SDL_INIT_AUDIO is not required, managed by miniaudio
      int result = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
-+#if defined(__pyxis__)
-+    if (result < 0)
-+    {
-+        TRACELOG(LOG_WARNING, "SDL: Failed to initialize SDL: %s", SDL_GetError());
-+        SDL_Quit();
-+        return -1;
-+    }
-+#else
-     if (result < 0) { TRACELOG(LOG_WARNING, "SDL: Failed to initialize SDL"); return -1; }
-+#endif
- 
-     // Initialize graphic device: display/window and graphic context
-     //----------------------------------------------------------------------------
-@@ -2101,6 +2471,19 @@
+@@ -2101,6 +2457,19 @@ int InitPlatform(void)
  
      if ((platform.window != NULL) && ((rlGetVersion() == RL_OPENGL_SOFTWARE) || (platform.glContext != NULL)))
      {
@@ -756,19 +706,7 @@
          CORE.Window.ready = true;
  
          SDL_DisplayMode displayMode = { 0 };
-@@ -2132,6 +2515,11 @@
-     }
-     else
-     {
-+#if defined(__pyxis__)
-+        TRACELOG(LOG_WARNING, "PLATFORM: Failed to initialize graphics device: %s", SDL_GetError());
-+        SDL_Quit();
-+        return -1;
-+#endif
-         TRACELOG(LOG_FATAL, "PLATFORM: Failed to initialize graphics device");
-         return -1;
-     }
-@@ -2217,6 +2605,10 @@
+@@ -2217,6 +2586,10 @@ int InitPlatform(void)
  // Close platform
  void ClosePlatform(void)
  {

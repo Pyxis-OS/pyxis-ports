@@ -48,7 +48,9 @@ it never attempts to create a scheme root. Missing
 modification metadata is refused with `ENOTSUP`; `GetApplicationDirectory()` has
 no native executable-directory authority and returns the upstream empty result.
 Assets need an explicit delegated root such as `app://`. Lexical path helpers do
-not prove resource existence. `IsPathDirectory` requires a successful native stat.
+not prove resource existence. `IsPathDirectory` retains upstream classification;
+the native directory-creation path separately checks actual stat results before
+reporting an existing directory.
 
 The cached release archive, hash, ordered patches and profile are recorded in
 `share/raylib/source.txt`. See `PORT-NOTICE` and `THIRD-PARTY-LICENSES`; the reached
@@ -64,7 +66,8 @@ letterbox. Pointer coordinates use the inverse transform; the letterbox is outsi
 the canvas. Missing optional pointer authority still permits drawing/keyboard use.
 Native focus resets held input. Cursor lock/warp refusals do not synthesize success,
 and focus loss never relocks automatically. Frame pacing really sleeps; it does
-not busy-wait or promise vsync/scanout completion.
+not busy-wait or promise vsync/scanout completion. Sleep refusal follows upstream
+policy; it does not add logging or force application shutdown.
 
 The canvas stays fixed until `CloseWindow`; `SetWindowSize` warns and preserves
 it because upstream renderer resize does not expose allocation failure safely.
@@ -109,3 +112,8 @@ still stop/unload their sounds/streams and call `CloseAudioDevice()` to join
 callbacks and release resources. Close joins before destroying mixer state;
 reopen creates a fresh session. SDL's documented queue/pause latency remains.
 The shapes example still requests no audio/thread grants and stays silent.
+
+The patch cleanup folds final path corrections into the original core patch and
+removes generic startup/audio cleanup and cursor/duration guards. Ordinary build
+and the existing shapes consumer link qualify source integration; earlier runtime
+checks above concern the previous profile, not these changed paths.

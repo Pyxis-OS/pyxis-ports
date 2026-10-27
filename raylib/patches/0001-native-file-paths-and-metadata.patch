@@ -1,12 +1,15 @@
+diff --git a/src/rcore.c b/src/rcore.c
+index b5875c6..6ee8b5f 100644
 --- a/src/rcore.c
 +++ b/src/rcore.c
-@@ -151,6 +151,24 @@
+@@ -151,6 +151,31 @@
      #include "external/rprand.h"
  #endif
  
 +#if defined(__pyxis__)
 +#include <errno.h>
 +#include <environment.h>
++#include <sys/stat.h>
 +// Lexical scheme boundary only; this does not look up or prove a resource.
 +static const char *GetNativeRootEnd(const char *path)
 +{
@@ -20,12 +23,31 @@
 +    memcpy(name, path, length);
 +    return environment_name(checked, name)? end + 3 : NULL;
 +}
++
++static bool NativeDirectoryExists(const char *path)
++{
++    struct stat info = { 0 };
++    return (stat(path, &info) == 0) && S_ISDIR(info.st_mode);
++}
 +#endif
 +
  // Platform specific defines to handle GetApplicationDirectory()
  #if defined(_WIN32)
      #if !defined(MAX_PATH)
-@@ -2485,8 +2503,17 @@
+@@ -1649,6 +1674,12 @@ float GetFrameTime(void)
+ void WaitTime(double seconds)
+ {
+     if (seconds < 0) return;    // Security check
++#if defined(__pyxis__)
++    struct timespec delay = { .tv_sec = (time_t)seconds,
++        .tv_nsec = (long)((seconds - (time_t)seconds)*1000000000.0) };
++    nanosleep(&delay, NULL);
++    return;
++#endif
+ 
+ #if SUPPORT_BUSY_WAIT_LOOP || SUPPORT_PARTIALBUSY_WAIT_LOOP
+     double destinationTime = GetTime() + seconds;
+@@ -2485,8 +2516,17 @@ long GetFileModTime(const char *fileName)
  
      if (stat(fileName, &result) == 0)
      {
@@ -43,7 +65,7 @@
      }
  
      return modTime;
-@@ -2555,6 +2582,22 @@
+@@ -2555,6 +2595,22 @@ const char *GetFileNameWithoutExt(const char *filePath)
  // Get directory for a provided filePath
  const char *GetDirectoryPath(const char *filePath)
  {
@@ -66,7 +88,7 @@
      /*
      // NOTE: Directory separator is different in Windows and other platforms,
      // fortunately, Windows also support the '/' separator, that's the one should be used
-@@ -2597,11 +2640,28 @@
+@@ -2597,11 +2653,34 @@ const char *GetDirectoryPath(const char *filePath)
      }
  
      return dirPath;
@@ -84,6 +106,12 @@
 +    if (length >= sizeof(previous)) { errno = ENAMETOOLONG; return previous; }
 +    const char *root = GetNativeRootEnd(dirPath);
 +    size_t minimum = root? (size_t)(root - dirPath) : 0;
++    if (IsPathFile(dirPath))
++    {
++        while ((length > minimum) && (dirPath[length - 1] == '/')) length--;
++        while ((length > minimum) && (dirPath[length - 1] != '/')) length--;
++        while ((length > minimum) && (dirPath[length - 1] == '/')) length--;
++    }
 +    while ((length > minimum) && (dirPath[length - 1] == '/')) length--;
 +    while ((length > minimum) && (dirPath[length - 1] != '/')) length--;
 +    while ((length > minimum) && (dirPath[length - 1] == '/')) length--;
@@ -95,7 +123,7 @@
      static char prevDirPath[MAX_FILEPATH_LENGTH] = { 0 };
      memset(prevDirPath, 0, MAX_FILEPATH_LENGTH);
  
-@@ -2629,6 +2689,7 @@
+@@ -2629,6 +2708,7 @@ const char *GetPrevDirectoryPath(const char *dirPath)
      }
  
      return prevDirPath;
@@ -103,7 +131,7 @@
  }
  
  // Get current working directory
-@@ -2810,6 +2871,34 @@
+@@ -2810,6 +2890,41 @@ void UnloadDirectoryFiles(FilePathList files)
  // Create directories (including full path requested), returns 0 on success
  int MakeDirectory(const char *dirPath)
  {
@@ -113,9 +141,16 @@
 +    if (length >= MAX_FILEPATH_LENGTH) { errno = ENAMETOOLONG; return -1; }
 +    const char *root = GetNativeRootEnd(dirPath);
 +    size_t start = root? (size_t)(root - dirPath) : 0;
-+    if (!start && (dirPath[0] == '/' || strchr(dirPath, ':'))) { errno = EINVAL; return -1; }
-+    if (IsPathDirectory(dirPath)) return 0;
-+    if (start == length) return -1; // Missing roots are not directories to create.
++    if (!start && (dirPath[0] == '/' || strstr(dirPath, "://"))) { errno = EINVAL; return -1; }
++    if (start == length)
++    {
++        struct stat rootInfo = { 0 };
++        if (stat(dirPath, &rootInfo) != 0) return -1;
++        if (S_ISDIR(rootInfo.st_mode)) return 0;
++        errno = ENOTDIR;
++        return -1;
++    }
++    if (NativeDirectoryExists(dirPath)) return 0;
 +    char *copy = RL_MALLOC(length + 1);
 +    if (!copy) { errno = ENOMEM; return -1; }
 +    memcpy(copy, dirPath, length + 1);
@@ -125,7 +160,7 @@
 +        if (i == start || (i && copy[i - 1] == '/')) continue;
 +        char saved = copy[i];
 +        copy[i] = '\0';
-+        if ((mkdir(copy, 0777) != 0) && ((errno != EEXIST) || !IsPathDirectory(copy)))
++        if ((mkdir(copy, 0777) != 0) && ((errno != EEXIST) || !NativeDirectoryExists(copy)))
 +        {
 +            RL_FREE(copy);
 +            return -1;
@@ -138,7 +173,7 @@
      if ((dirPath == NULL) || (dirPath[0] == '\0')) return -1; // Path is not valid
      if (DirectoryExists(dirPath)) return 0; // Path already exists (is valid)
  
-@@ -2842,6 +2931,7 @@
+@@ -2842,6 +2957,7 @@ int MakeDirectory(const char *dirPath)
      if (!DirectoryExists(dirPath)) return -1;
  
      return 0;
@@ -146,20 +181,7 @@
  }
  
  // Change working directory, returns true on success
-@@ -2875,7 +2965,12 @@
- {
-     bool result = false;
- 
-+#if defined(__pyxis__)
-+    struct stat info = { 0 };
-+    result = (stat(path, &info) == 0) && S_ISDIR(info.st_mode);
-+#else
-     if (!IsPathFile(path)) result = true;
-+#endif
- 
-     return result;
- }
-@@ -2894,8 +2989,12 @@
+@@ -2894,8 +3010,12 @@ bool IsPathAbsolute(const char *path)
          else if ((((path[0] >= 'A') && (path[0] <= 'Z')) || ((path[0] >= 'a') && (path[0] <= 'z'))) &&
                   (path[1] != '\0') && (path[1] == ':') && (path[2] != '\0') && ((path[2] == '\\') || (path[2] == '/'))) result = true;
  #else
