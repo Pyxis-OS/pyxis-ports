@@ -20,12 +20,17 @@ failures remain errors. Mode snapshots retain storage, not a raw grant.
   cooked mode, hardware speed, signal queue flushing, flow control or tty ioctls.
 - SIZE/RESIZED drives KEY_RESIZE without SIGWINCH. Partial Escape input retains
   its original ambiguity deadline across resize, without consuming a key.
+- Explicit input flush drains currently available bytes until native EAGAIN,
+  without an added byte-budget policy.
 - Native try-write plus readiness handles backpressure. Uncertain/failed writes
   latch an error; updates and endwin report it rather than claiming a redraw.
 - Only the embedded `pyxis` terminfo entry is supported. No TERMINFO/HOME lookup,
   queries, mouse protocol, unsupported xterm controls or Unicode width claim.
-  The profile uses 16/default colours and the existing single-cell repertoire;
-  libc's C-locale printable classification is ASCII.
+  The profile exposes 16 colours and restores default colours through its SGR
+  39/49 `op` capability; the native driver accepts that capability for
+  `use_default_colors`. SCREEN owns a copied fallback termtype, so destruction
+  releases its arrays without freeing the embedded static entry. The existing single-cell repertoire and libc's ASCII C-locale
+  printable classification are unchanged.
 
 `ncurses-demo` shows dimensions and keys. `r` switches raw/cbreak, `e` leaves and
 re-enters curses, and `q` quits. `--cooperate` opts into first-press notification

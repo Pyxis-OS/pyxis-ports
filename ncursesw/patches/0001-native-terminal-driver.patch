@@ -1,6 +1,6 @@
 --- a/config.sub
 +++ b/config.sub
-@@ -2010,6 +2010,7 @@
+@@ -2010,6 +2010,7 @@ case $os in
  	| emscripten* \
  	| emx* \
  	| es* \
@@ -10,7 +10,7 @@
  	| fuchsia* \
 --- a/configure
 +++ b/configure
-@@ -29141,7 +29141,7 @@
+@@ -29141,7 +29141,7 @@ case "x${ac_cv_header_termios_h}${ac_cv_header_termio_h}${ac_cv_header_sgtty_h}$
  	;;
  (*)
  	case "$cf_cv_system_name" in
@@ -21,7 +21,7 @@
  		{ { echo "$as_me:29147: error: No termio/termios/sgtty found" >&5
 --- a/configure.in
 +++ b/configure.in
-@@ -1146,7 +1146,7 @@
+@@ -1146,7 +1146,7 @@ AC_SUBST(NCURSES_SP_FUNCS)
  AC_SUBST(GENERATED_SP_FUNCS)
  
  case "$cf_cv_system_name" in
@@ -32,7 +32,7 @@
  (*)
 --- a/include/MKkey_defs.sh
 +++ b/include/MKkey_defs.sh
-@@ -146,7 +146,7 @@
+@@ -146,7 +146,7 @@ $5 != "-" && $6 != "-" {
  			if (index($7,"NCURSES_") == 1) {
  				ifdef = 1;
  				printf "\n";
@@ -43,7 +43,7 @@
  				printf "#define "
 --- a/include/MKterm.h.awk.in
 +++ b/include/MKterm.h.awk.in
-@@ -145,6 +145,9 @@
+@@ -145,6 +145,9 @@ BEGIN {
  	print  "#include <nc_win32.h>"
  	print  "#define TTY ConsoleMode"
  	print  ""
@@ -53,7 +53,7 @@
  	print  "#elif @HAVE_SGTTY_H@	/* HAVE_SGTTY_H */"
  	print  ""
  	print  "#undef TERMIOS"
-@@ -165,6 +168,9 @@
+@@ -165,6 +168,9 @@ BEGIN {
  	print  "#elif defined(_WIN32) || defined(_WIN64)"
  	print  "#define GET_TTY(fd, buf) _nc_console_getmode(_nc_console_fd2handle(fd),buf)"
  	print  "#define SET_TTY(fd, buf) _nc_console_setmode(_nc_console_fd2handle(fd),buf)"
@@ -80,15 +80,7 @@
 +#endif
 --- a/ncurses/base/lib_getch.c
 +++ b/ncurses/base/lib_getch.c
-@@ -144,7 +144,6 @@
- 
- #if USE_TERM_DRIVER
-     TERMINAL_CONTROL_BLOCK *TCB = TCBOf(sp);
--    rc = TCBOf(sp)->drv->td_testmouse(TCBOf(sp), delay EVENTLIST_2nd(evl));
- # if USE_NAMED_PIPES || defined(_NC_WINDOWS_NATIVE)
-     /* if we emulate terminfo on console, we have to use the console routine */
-     if (IsTermInfoOnConsole(sp)) {
-@@ -220,6 +219,8 @@
+@@ -220,6 +220,8 @@ fifo_pull(SCREEN *sp)
      return ch;
  }
  
@@ -97,7 +89,7 @@
  static NCURSES_INLINE int
  fifo_push(SCREEN *sp EVENTLIST_2nd(_nc_eventlist * evl))
  {
-@@ -321,6 +322,15 @@
+@@ -321,6 +323,15 @@ fifo_push(SCREEN *sp EVENTLIST_2nd(_nc_eventlist * evl))
  #endif /* USE_TERM_DRIVER */
      }
  
@@ -113,7 +105,7 @@
      if ((n == -1) || (n == 0)) {
  	TR(TRACE_IEVENT, ("read(%d,&ch,1)=%d, errno=%d", sp->_ifd, n, errno));
  	ch = ERR;
-@@ -350,7 +360,7 @@
+@@ -350,7 +361,7 @@ fifo_clear(SCREEN *sp)
      tail = peek = 0;
  }
  
@@ -122,7 +114,7 @@
  
  static void
  recur_wrefresh(WINDOW *win)
-@@ -537,7 +547,7 @@
+@@ -537,7 +548,7 @@ _nc_wgetch(WINDOW *win,
  	int runcount = 0;
  
  	do {
@@ -131,7 +123,7 @@
  	    if (ch == KEY_MOUSE) {
  		++runcount;
  		if (sp->_mouse_inline(sp))
-@@ -588,8 +598,10 @@
+@@ -588,8 +599,10 @@ _nc_wgetch(WINDOW *win,
  		 * Get the ERR from queue -- it is from WINCH,
  		 * so we should take it out, the "error" is handled.
  		 */
@@ -142,7 +134,7 @@
  		returnCode(*result >= KEY_MIN ? KEY_CODE_YES : OK);
  	    }
  	}
-@@ -692,12 +704,13 @@
+@@ -692,12 +705,13 @@ wgetch(WINDOW *win)
  */
  
  static int
@@ -157,7 +149,7 @@
      TR(TRACE_IEVENT, ("kgetch() called"));
  
      ptr = sp->_keytry;
-@@ -749,6 +762,9 @@
+@@ -749,6 +763,9 @@ kgetch(SCREEN *sp, bool forever EVENTLIST_2nd(_nc_eventlist * evl))
  	    } else {
  		head = peek;
  	    }
@@ -167,7 +159,7 @@
  	    return (ptr->value);
  	}
  
-@@ -758,7 +774,23 @@
+@@ -758,7 +775,23 @@ kgetch(SCREEN *sp, bool forever EVENTLIST_2nd(_nc_eventlist * evl))
  	    int rc;
  
  	    TR(TRACE_IEVENT, ("waiting for rest of sequence"));
@@ -192,7 +184,7 @@
  #ifdef NCURSES_WGETCH_EVENTS
  	    if (rc & TW_EVENT) {
  		TR(TRACE_IEVENT, ("interrupted by a user event"));
-@@ -767,7 +799,13 @@
+@@ -767,7 +800,13 @@ kgetch(SCREEN *sp, bool forever EVENTLIST_2nd(_nc_eventlist * evl))
  		return KEY_EVENT;
  	    }
  #endif
@@ -207,7 +199,7 @@
  		TR(TRACE_IEVENT, ("ran out of time"));
  		break;
  	    }
-@@ -775,5 +813,8 @@
+@@ -775,5 +814,8 @@ kgetch(SCREEN *sp, bool forever EVENTLIST_2nd(_nc_eventlist * evl))
      }
      ch = fifo_pull(sp);
      peek = head;
@@ -218,7 +210,7 @@
  }
 --- a/ncurses/base/lib_newterm.c
 +++ b/ncurses/base/lib_newterm.c
-@@ -86,6 +86,8 @@
+@@ -86,6 +86,8 @@ _nc_initscr(NCURSES_SP_DCL0)
  	buf.c_lflag &= (unsigned) ~(ECHO | ECHONL);
  	buf.c_iflag &= (unsigned) ~(ICRNL | INLCR | IGNCR);
  	buf.c_oflag &= (unsigned) ~(ONLCR);
@@ -227,19 +219,20 @@
  #elif HAVE_SGTTY_H
  	buf.sg_flags &= ~(ECHO | CRMOD);
  #elif USE_NAMED_PIPES
-@@ -298,7 +300,11 @@
+@@ -297,8 +299,12 @@ NCURSES_SP_NAME(newterm) (NCURSES_SP_DCLx
+ 	    SP_PARM->_use_meta = ((new_term->Ottyb.c_cflag & CSIZE) == CS8 &&
  				  !(new_term->Ottyb.c_iflag & ISTRIP)) ||
  		USE_KLIBC_KBD;
- #else
++#else
 +#ifdef __pyxis__
 +            SP_PARM->_use_meta = TRUE; /* Native console input is eight-bit bytes. */
-+#else
+ #else
  	    SP_PARM->_use_meta = FALSE;
 +#endif
  #endif
  	    SP_PARM->_endwin = ewInitial;
  #if !USE_TERM_DRIVER
-@@ -348,7 +354,18 @@
+@@ -348,7 +354,18 @@ NCURSES_SP_NAME(newterm) (NCURSES_SP_DCLx
  #endif /* USE_TERM_DRIVER */
  
  	    /* Initialize the terminal line settings. */
@@ -260,7 +253,7 @@
  	    result = SP_PARM;
 --- a/ncurses/base/resizeterm.c
 +++ b/ncurses/base/resizeterm.c
-@@ -482,7 +482,7 @@
+@@ -482,7 +482,7 @@ NCURSES_SP_NAME(resizeterm) (NCURSES_SP_DCLx int ToLines, int ToCols)
  	SP_PARM->_sig_winch = FALSE;
  
  	if (NCURSES_SP_NAME(is_term_resized) (NCURSES_SP_ARGx ToLines, ToCols)) {
@@ -269,7 +262,7 @@
  	    ripoff_t *rop;
  	    bool slk_visible = (SP_PARM != NULL
  				&& SP_PARM->_slk != NULL
-@@ -494,7 +494,7 @@
+@@ -494,7 +494,7 @@ NCURSES_SP_NAME(resizeterm) (NCURSES_SP_DCLx int ToLines, int ToCols)
  #endif
  	    result = NCURSES_SP_NAME(resize_term) (NCURSES_SP_ARGx ToLines, ToCols);
  
@@ -278,7 +271,7 @@
  	    clearok(CurScreen(SP_PARM), TRUE);	/* screen contents are unknown */
  
  	    /* ripped-off lines are a special case: if we did not lengthen
-@@ -524,7 +524,7 @@
+@@ -524,7 +524,7 @@ NCURSES_SP_NAME(resizeterm) (NCURSES_SP_DCLx int ToLines, int ToCols)
  	    }
  #endif
  	}
@@ -289,7 +282,7 @@
      }
 --- a/ncurses/build.priv.h
 +++ b/ncurses/build.priv.h
-@@ -51,6 +51,9 @@
+@@ -51,6 +51,9 @@ extern "C" {
  #endif
  
  #include <ncurses_cfg.h>
@@ -301,7 +294,7 @@
  #define MODULE_ID(id) static const char Ident[] = id;
 --- a/ncurses/curses.priv.h
 +++ b/ncurses/curses.priv.h
-@@ -149,7 +149,12 @@
+@@ -149,7 +149,12 @@ extern int errno;
  #endif
  
  /* include signal.h before curses.h to work-around defect in glibc 2.1.3 */
@@ -314,7 +307,7 @@
  
  /* Alessandro Rubini's GPM (general-purpose mouse) */
  #if HAVE_LIBGPM && HAVE_GPM_H
-@@ -193,7 +198,9 @@
+@@ -193,7 +198,9 @@ extern int errno;
  #define HAVE_SIZECHANGE 0
  #endif
  
@@ -325,7 +318,7 @@
  #define USE_SIZECHANGE 1
  #else
  #define USE_SIZECHANGE 0
-@@ -2140,7 +2147,7 @@
+@@ -2140,7 +2147,7 @@ extern NCURSES_EXPORT(int)    _nc_ripoffline(int, int(*)(WINDOW*, int));
  					}
  
  /* lib_tstp.c */
@@ -334,7 +327,7 @@
  extern NCURSES_EXPORT(int) _nc_handle_sigwinch(SCREEN *);
  #else
  #define _nc_handle_sigwinch(a) /* nothing */
-@@ -2565,9 +2572,23 @@
+@@ -2565,9 +2572,23 @@ extern NCURSES_EXPORT(void)   _nc_get_screensize(SCREEN *, int *, int *);
  #if USE_TERM_DRIVER
  extern NCURSES_EXPORT_VAR(TERM_DRIVER) _nc_WIN_DRIVER;
  extern NCURSES_EXPORT_VAR(TERM_DRIVER) _nc_TINFO_DRIVER;
@@ -361,7 +354,7 @@
  #define USE_WINCONMODE 1
 --- a/ncurses/modules
 +++ b/ncurses/modules
-@@ -260,6 +260,7 @@
+@@ -260,6 +260,7 @@ wcwidth		lib             $(win32con)	$(HEADER_DEPS)
  win32_driver	lib             $(win32con)	$(HEADER_DEPS)
  
  @ port_tinfo
@@ -371,7 +364,7 @@
  # vile:makemode
 --- a/ncurses/term.priv.h
 +++ b/ncurses/term.priv.h
-@@ -59,7 +59,12 @@
+@@ -59,7 +59,12 @@ extern "C" {
  # include <sys/param.h>
  #endif
  
@@ -387,7 +380,7 @@
  
 --- a/ncurses/tinfo/init_keytry.c
 +++ b/ncurses/tinfo/init_keytry.c
-@@ -84,6 +84,9 @@
+@@ -84,6 +84,9 @@ _nc_init_keytry(SCREEN *sp)
  				      _nc_tinfo_fkeys[n].code);
  	    }
  	}
@@ -399,7 +392,7 @@
  	 * Add any of the extended strings to the tries if their name begins
 --- a/ncurses/tinfo/lib_baudrate.c
 +++ b/ncurses/tinfo/lib_baudrate.c
-@@ -104,6 +104,9 @@
+@@ -104,6 +104,9 @@ struct speed {
  
  static struct speed const speeds[] =
  {
@@ -409,7 +402,7 @@
      DATA(0),
      DATA(50),
      DATA(75),
-@@ -188,6 +191,7 @@
+@@ -188,6 +191,7 @@ static struct speed const speeds[] =
      DATA(4000000),
  #endif
  #endif
@@ -417,7 +410,7 @@
  };
  #endif /* !USE_NAMED_PIPES */
  
-@@ -264,6 +268,9 @@
+@@ -264,6 +268,9 @@ _nc_ospeed(int BaudRate)
  NCURSES_EXPORT(int)
  NCURSES_SP_NAME(baudrate) (NCURSES_SP_DCL0)
  {
@@ -427,7 +420,7 @@
      int result;
  
      T((T_CALLED("baudrate(%p)"), (void *) SP_PARM));
-@@ -307,6 +314,7 @@
+@@ -307,6 +314,7 @@ NCURSES_SP_NAME(baudrate) (NCURSES_SP_DCL0)
      }
  #endif /* !USE_NAMED_PIPES */
      returnCode(result);
@@ -435,47 +428,9 @@
  }
  
  #if NCURSES_SP_FUNCS
---- a/ncurses/tinfo/lib_cur_term.c
-+++ b/ncurses/tinfo/lib_cur_term.c
-@@ -131,6 +131,9 @@
- NCURSES_SP_NAME(del_curterm) (NCURSES_SP_DCLx TERMINAL *termp)
- {
-     int rc = ERR;
-+#ifdef __pyxis__
-+    int release_status = OK;
-+#endif
- 
-     T((T_CALLED("del_curterm(%p, %p)"), (void *) SP_PARM, (void *) termp));
- 
-@@ -164,8 +167,13 @@
- 	}
- #endif
- #if USE_TERM_DRIVER
-+#ifdef __pyxis__
-+        if (TCB->drv)
-+            release_status = _nc_pyxis_release(TCB);
-+#else
- 	if (TCB->drv)
- 	    TCB->drv->td_release(TCB);
-+#endif
- #endif
- #if NO_LEAKS
- 	/* discard memory used in tgetent's cache for this terminal */
-@@ -179,7 +187,11 @@
- 	free(termp->tparm_state.out_buff);
- 	free(termp);
- 
-+#ifdef __pyxis__
-+        rc = release_status;
-+#else
- 	rc = OK;
-+#endif
-     }
- 
-     returnCode(rc);
 --- a/ncurses/tinfo/lib_kernel.c
 +++ b/ncurses/tinfo/lib_kernel.c
-@@ -94,6 +94,8 @@
+@@ -94,6 +94,8 @@ NCURSES_SP_NAME(erasechar) (NCURSES_SP_DCL0)
  	result = termp->Ottyb.c_cc[VERASE];
  	if (result == _nc_vdisable())
  	    result = ERR;
@@ -484,7 +439,7 @@
  #elif defined(USE_WIN32CON_DRIVER)
  	result = ERR;
  #else
-@@ -131,7 +133,7 @@
+@@ -131,7 +133,7 @@ NCURSES_SP_NAME(killchar) (NCURSES_SP_DCL0)
  	result = termp->Ottyb.c_cc[VKILL];
  	if (result == _nc_vdisable())
  	    result = ERR;
@@ -493,7 +448,7 @@
  	result = ERR;
  #else
  	result = termp->Ottyb.sg_kill;
-@@ -151,6 +153,9 @@
+@@ -151,6 +153,9 @@ killchar(void)
  static void
  flush_input(int fd)
  {
@@ -503,7 +458,7 @@
  #if defined(TERMIOS)
      tcflush(fd, TCIFLUSH);
  #else /* !TERMIOS */
-@@ -164,6 +169,7 @@
+@@ -164,6 +169,7 @@ flush_input(int fd)
      } while
  	(errno == EINTR);
  #endif
@@ -511,7 +466,7 @@
  }
  
  /*
-@@ -175,6 +181,9 @@
+@@ -175,6 +181,9 @@ flush_input(int fd)
  NCURSES_EXPORT(int)
  NCURSES_SP_NAME(flushinp) (NCURSES_SP_DCL0)
  {
@@ -521,7 +476,7 @@
      T((T_CALLED("flushinp(%p)"), (void *) SP_PARM));
  
      if (SP_PARM != NULL) {
-@@ -190,6 +199,7 @@
+@@ -190,6 +199,7 @@ NCURSES_SP_NAME(flushinp) (NCURSES_SP_DCL0)
  	returnCode(OK);
      }
      returnCode(ERR);
@@ -531,18 +486,21 @@
  #if NCURSES_SP_FUNCS
 --- a/ncurses/tinfo/lib_napms.c
 +++ b/ncurses/tinfo/lib_napms.c
-@@ -63,7 +63,7 @@
+@@ -63,7 +63,11 @@ NCURSES_SP_NAME(napms) (NCURSES_SP_DCLx int ms)
  	ms = MAX_DELAY_MSECS;
  
  #if USE_TERM_DRIVER
--    CallDriver_1(SP_PARM, td_nap, ms);
++#ifdef __pyxis__
 +    returnCode(CallDriver_1(SP_PARM, td_nap, ms));
++#else
+     CallDriver_1(SP_PARM, td_nap, ms);
++#endif
  #else /* !USE_TERM_DRIVER */
  #if NCURSES_SP_FUNCS
      (void) sp;
 --- a/ncurses/tinfo/lib_raw.c
 +++ b/ncurses/tinfo/lib_raw.c
-@@ -98,6 +98,8 @@
+@@ -98,6 +98,8 @@ NCURSES_SP_NAME(raw) (NCURSES_SP_DCL0)
  	buf.c_cc[VTIME] = 0;
  #elif defined(USE_WIN32CON_DRIVER)
  	buf.dwFlagIn &= (unsigned long) ~CONMODE_NORAW;
@@ -551,7 +509,7 @@
  #else
  	buf.sg_flags |= RAW;
  #endif
-@@ -155,6 +157,8 @@
+@@ -155,6 +157,8 @@ NCURSES_SP_NAME(cbreak) (NCURSES_SP_DCL0)
  #elif defined(USE_WIN32CON_DRIVER)
  	buf.dwFlagIn |= CONMODE_NORAW;
  	buf.dwFlagIn &= (unsigned long) ~CONMODE_NOCBREAK;
@@ -560,7 +518,7 @@
  #else
  	buf.sg_flags |= CBREAK;
  #endif
-@@ -162,6 +166,9 @@
+@@ -162,6 +166,9 @@ NCURSES_SP_NAME(cbreak) (NCURSES_SP_DCL0)
  	if (result == OK) {
  	    if (SP_PARM) {
  		IsCbreak(SP_PARM) = 1;
@@ -570,7 +528,7 @@
  	    }
  	    termp->Nttyb = buf;
  	}
-@@ -232,6 +239,8 @@
+@@ -232,6 +239,8 @@ NCURSES_SP_NAME(noraw) (NCURSES_SP_DCL0)
  	buf.c_iflag |= COOKED_INPUT;
  #elif defined(USE_WIN32CON_DRIVER)
  	buf.dwFlagIn |= CONMODE_NORAW;
@@ -579,7 +537,7 @@
  #else
  	buf.sg_flags &= ~(RAW | CBREAK);
  #endif
-@@ -286,6 +295,8 @@
+@@ -286,6 +295,8 @@ NCURSES_SP_NAME(nocbreak) (NCURSES_SP_DCL0)
  	buf.c_iflag |= ICRNL;
  #elif defined(USE_WIN32CON_DRIVER)
  	buf.dwFlagIn |= (CONMODE_NOCBREAK | CONMODE_NORAW);
@@ -590,7 +548,7 @@
  #endif
 --- a/ncurses/tinfo/lib_setup.c
 +++ b/ncurses/tinfo/lib_setup.c
-@@ -200,13 +200,16 @@
+@@ -200,13 +200,16 @@ set_tabsize(int value)
  #endif
  #endif /* NCURSES_EXT_FUNCS */
  
@@ -608,7 +566,7 @@
      SCREEN *scan;
  
      if (_nc_globals.have_sigwinch) {
-@@ -218,6 +221,7 @@
+@@ -218,6 +221,7 @@ _nc_handle_sigwinch(SCREEN *sp)
      }
  
      return (sp ? sp->_sig_winch : 0);
@@ -618,7 +576,7 @@
  #endif
 --- a/ncurses/tinfo/lib_tputs.c
 +++ b/ncurses/tinfo/lib_tputs.c
-@@ -136,7 +136,12 @@
+@@ -136,7 +136,12 @@ NCURSES_SP_NAME(_nc_flush) (NCURSES_SP_DCL0)
  	    TR(TRACE_CHARPUT, ("flushing %ld/%ld bytes",
  			       (unsigned long) amount, _nc_outchars));
  	    while (amount) {
@@ -632,7 +590,7 @@
  		if (res > 0) {
  		    /* if the write was incomplete, try again */
  		    amount -= (size_t) res;
-@@ -191,7 +196,13 @@
+@@ -191,7 +196,13 @@ NCURSES_SP_NAME(_nc_outch) (NCURSES_SP_DCLx int ch)
  	     * POSIX says write() is safe in a signal handler, but the
  	     * buffered I/O is not.
  	     */
@@ -649,7 +607,7 @@
      } else {
 --- /dev/null
 +++ b/ncurses/tinfo/pyxis_driver.c
-@@ -0,0 +1,356 @@
+@@ -0,0 +1,348 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#ifdef __pyxis__
 +#include <pyxis/descriptor.h>
@@ -921,21 +879,13 @@
 +  state->escape_deadline = 0;
 +  sp->_fifohead = -1;
 +  sp->_fifotail = sp->_fifopeek = 0;
-+  /* Bound an explicit flush even if another producer keeps sending. */
-+  for (size_t total = 0; total < 65536;) {
++  for (;;) {
 +    ssize_t count = pyxis_descriptor_try_read(sp->_ifd, bytes, sizeof(bytes));
-+    if (count < 0 && errno == EAGAIN) {
-+      state->escape_deadline = 0;
-+      sp->_fifohead = -1;
-+      sp->_fifotail = sp->_fifopeek = 0;
++    if (count < 0 && errno == EAGAIN)
 +      return OK;
-+    }
 +    if (count <= 0)
 +      return ERR;
-+    total += (size_t)count;
 +  }
-+  errno = EBUSY;
-+  return ERR;
 +}
 +
 +int
@@ -1008,7 +958,7 @@
 +#endif
 --- a/ncurses/tinfo/tinfo_driver.c
 +++ b/ncurses/tinfo/tinfo_driver.c
-@@ -105,7 +105,12 @@
+@@ -105,7 +105,12 @@ static int
  drv_doupdate(TERMINAL_CONTROL_BLOCK * TCB)
  {
      AssertTCB();
@@ -1022,7 +972,7 @@
  }
  
  static const char *
-@@ -118,6 +123,10 @@
+@@ -118,6 +123,10 @@ drv_Name(TERMINAL_CONTROL_BLOCK * TCB)
  static void
  get_baudrate(TERMINAL *termp)
  {
@@ -1033,7 +983,7 @@
      int my_ospeed;
      int result;
      if (GET_TTY(termp->Filedes, &termp->Nttyb) == OK) {
-@@ -145,6 +154,7 @@
+@@ -145,6 +154,7 @@ get_baudrate(TERMINAL *termp)
  #endif
      termp->_baudrate = result;
      ospeed = (NCURSES_OSPEED) my_ospeed;
@@ -1041,7 +991,7 @@
  }
  
  #undef SETUP_FAIL
-@@ -167,6 +177,13 @@
+@@ -167,6 +177,13 @@ drv_CanHandle(TERMINAL_CONTROL_BLOCK * TCB, const char *tname, int *errret)
      assert(TCB != NULL && tname != NULL);
      termp = (TERMINAL *) TCB;
      sp = TCB->csp;
@@ -1055,33 +1005,33 @@
      TCB->magic = TCBMAGIC;
  
  #if (NCURSES_USE_DATABASE || NCURSES_USE_TERMCAP)
-@@ -183,7 +200,7 @@
+@@ -183,7 +200,12 @@ drv_CanHandle(TERMINAL_CONTROL_BLOCK * TCB, const char *tname, int *errret)
  
  	if (fallback) {
  	    T(("found fallback entry"));
--	    TerminalType(termp) = *fallback;
++#ifdef __pyxis__
++	    /* SCREEN destruction owns its termtype arrays; the fallback is static. */
 +	    _nc_copy_termtype2(&TerminalType(termp), fallback);
++#else
+ 	    TerminalType(termp) = *fallback;
++#endif
  	    status = TGETENT_YES;
  	}
      }
-@@ -324,7 +341,7 @@
+@@ -324,7 +346,12 @@ drv_defaultcolors(TERMINAL_CONTROL_BLOCK * TCB, int fg, int bg)
      AssertTCB();
      SetSP();
  
--    if (sp != NULL && orig_pair && orig_colors && (initialize_pair != NULL)) {
-+    if (sp != NULL && (orig_pair || orig_colors) && initialize_pair == NULL) {
++#ifdef __pyxis__
++    /* The native profile restores default colours with op (SGR 39/49). */
++    if (sp != NULL && orig_pair) {
++#else
+     if (sp != NULL && orig_pair && orig_colors && (initialize_pair != NULL)) {
++#endif
  #if NCURSES_EXT_FUNCS
  	sp->_default_color = isDefaultColor(fg) || isDefaultColor(bg);
  	sp->_has_sgr_39_49 = (NCURSES_SP_NAME(tigetflag) (NCURSES_SP_ARGx
-@@ -335,6 +352,7 @@
- 	if (sp->_color_pairs != NULL) {
- 	    bool save = sp->_default_color;
- 	    sp->_default_color = TRUE;
-+	    sp->_assumed_color = TRUE;
- 	    NCURSES_SP_NAME(init_pair) (NCURSES_SP_ARGx
- 					0,
- 					(short)fg,
-@@ -418,6 +436,9 @@
+@@ -418,6 +445,9 @@ drv_rescolors(TERMINAL_CONTROL_BLOCK * TCB)
  static int
  drv_size(TERMINAL_CONTROL_BLOCK * TCB, int *linep, int *colp)
  {
@@ -1091,7 +1041,7 @@
      SCREEN *sp;
      bool useEnv = TRUE;
      bool useTioctl = TRUE;
-@@ -541,6 +562,7 @@
+@@ -541,6 +571,7 @@ drv_size(TERMINAL_CONTROL_BLOCK * TCB, int *linep, int *colp)
  
      T(("screen size is %dx%d", *linep, *colp));
      return OK;
@@ -1099,7 +1049,7 @@
  }
  
  static int
-@@ -565,6 +587,9 @@
+@@ -565,6 +596,9 @@ drv_setsize(TERMINAL_CONTROL_BLOCK * TCB, int l, int c)
  static int
  drv_sgmode(TERMINAL_CONTROL_BLOCK * TCB, int setFlag, TTY * buf)
  {
@@ -1109,7 +1059,7 @@
      SCREEN *sp = TCB->csp;
      TERMINAL *_term = (TERMINAL *) TCB;
      int result = OK;
-@@ -594,6 +619,7 @@
+@@ -594,6 +628,7 @@ drv_sgmode(TERMINAL_CONTROL_BLOCK * TCB, int setFlag, TTY * buf)
  	}
      }
      return result;
@@ -1117,7 +1067,7 @@
  }
  
  static int
-@@ -618,8 +644,8 @@
+@@ -618,8 +653,8 @@ drv_mode(TERMINAL_CONTROL_BLOCK * TCB, int progFlag, int defFlag)
  	    if ((drv_sgmode(TCB, FALSE, &(_term->Nttyb)) == OK)) {
  #ifdef TERMIOS
  		_term->Nttyb.c_oflag &= (unsigned) ~OFLAGS_TABS;
@@ -1128,7 +1078,7 @@
  #else
  		_term->Nttyb.sg_flags &= (unsigned) ~XTABS;
  #endif
-@@ -649,8 +675,8 @@
+@@ -649,8 +684,8 @@ drv_mode(TERMINAL_CONTROL_BLOCK * TCB, int progFlag, int defFlag)
  #ifdef TERMIOS
  		if (_term->Ottyb.c_oflag & OFLAGS_TABS)
  		    tab = back_tab = NULL;
@@ -1139,7 +1089,7 @@
  #else
  		if (_term->Ottyb.sg_flags & XTABS)
  		    tab = back_tab = NULL;
-@@ -670,6 +696,10 @@
+@@ -670,6 +705,10 @@ drv_mode(TERMINAL_CONTROL_BLOCK * TCB, int progFlag, int defFlag)
  #endif
  	}
      }
@@ -1150,7 +1100,7 @@
      returnCode(code);
  }
  
-@@ -686,6 +716,9 @@
+@@ -686,6 +725,9 @@ drv_wrap(SCREEN *sp)
  static void
  drv_release(TERMINAL_CONTROL_BLOCK * TCB GCC_UNUSED)
  {
@@ -1160,7 +1110,7 @@
  }
  
  #  define SGR0_TEST(mode) (mode != NULL) && (exit_attribute_mode == NULL || strcmp(mode, exit_attribute_mode))
-@@ -1286,7 +1319,7 @@
+@@ -1286,7 +1328,7 @@ drv_read(TERMINAL_CONTROL_BLOCK * TCB, int *buf)
  {
      SCREEN *sp;
      int n;
@@ -1169,7 +1119,7 @@
      unsigned char c2 = 0;
  #endif
  
-@@ -1299,11 +1332,13 @@
+@@ -1299,11 +1341,13 @@ drv_read(TERMINAL_CONTROL_BLOCK * TCB, int *buf)
      n = _nc_console_read(sp,
  			 _nc_console_handle(sp->_ifd),
  			 buf);
@@ -1184,7 +1134,7 @@
      *buf = (int) c2;
  #endif
      return n;
-@@ -1312,6 +1347,10 @@
+@@ -1312,6 +1356,10 @@ drv_read(TERMINAL_CONTROL_BLOCK * TCB, int *buf)
  static int
  drv_nap(TERMINAL_CONTROL_BLOCK * TCB GCC_UNUSED, int ms)
  {
@@ -1195,7 +1145,7 @@
  #if HAVE_NANOSLEEP
      {
  	struct timespec request, remaining;
-@@ -1328,6 +1367,7 @@
+@@ -1328,6 +1376,7 @@ drv_nap(TERMINAL_CONTROL_BLOCK * TCB GCC_UNUSED, int ms)
      _nc_timed_wait(NULL, 0, ms, (int *) 0 EVENTLIST_2nd(NULL));
  #endif
      return OK;
@@ -1216,7 +1166,7 @@
  #if defined(SIGTSTP) && (HAVE_SIGACTION || HAVE_SIGVEC)
  #define USE_SIGTSTP 1
  #else
-@@ -426,3 +430,5 @@
+@@ -426,3 +430,5 @@ _nc_signal_handler(int enable)
      }
      returnVoid;
  }
@@ -1224,7 +1174,7 @@
 +#endif /* !__pyxis__ */
 --- a/ncurses/tty/lib_twait.c
 +++ b/ncurses/tty/lib_twait.c
-@@ -174,6 +174,26 @@
+@@ -174,6 +174,26 @@ _nc_timed_wait(const SCREEN *sp MAYBE_UNUSED,
  	       int *timeleft
  	       EVENTLIST_2nd(_nc_eventlist * evl))
  {
@@ -1251,7 +1201,7 @@
      int count;
      int result = TW_NONE;
      TimeType t0;
-@@ -520,4 +540,5 @@
+@@ -520,4 +540,5 @@ _nc_timed_wait(const SCREEN *sp MAYBE_UNUSED,
  #endif
  
      return (result);
