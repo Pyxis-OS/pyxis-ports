@@ -1,17 +1,3 @@
-diff --git a/Source/options.cpp b/Source/options.cpp
-index 8995874..dfc6cb8 100644
---- a/Source/options.cpp
-+++ b/Source/options.cpp
-@@ -982,7 +982,8 @@ GraphicsOptions::GraphicsOptions()
-           ,
-           N_("Frame Rate Control"),
-           N_("Manages frame rate to balance performance, reduce tearing, or save power."),
--#if defined(NXDK) || defined(USE_SDL1)
-+// Pyxis presents without vertical sync, so limit the frame rate instead.
-+#if defined(NXDK) || defined(USE_SDL1) || defined(__pyxis__)
-           FrameRateControl::CPUSleep
- #else
-           FrameRateControl::VerticalSync
 diff --git a/Source/utils/paths.cpp b/Source/utils/paths.cpp
 index 6253e87..cb0472a 100644
 --- a/Source/utils/paths.cpp
@@ -30,27 +16,7 @@ index 6253e87..cb0472a 100644
  	}
  	return *basePath;
  }
-@@ -85,7 +90,8 @@ const std::string &PrefPath()
- 		prefPath = NxdkGetPrefPath();
- #else
- 		prefPath = FromSDL(SDL_GetPrefPath("diasurgical", "devilution"));
--#if !defined(__amigaos__)
-+// On Pyxis, preferences always live in home://devilution/.
-+#if !defined(__amigaos__) && !defined(__pyxis__)
- 		if (FileExistsAndIsWriteable("diablo.ini")) {
- 			prefPath = std::string("." DIRECTORY_SEPARATOR_STR);
- 		}
-@@ -104,7 +110,8 @@ const std::string &ConfigPath()
- 		configPath = NxdkGetPrefPath();
- #else
- 		configPath = FromSDL(SDL_GetPrefPath("diasurgical", "devilution"));
--#if !defined(__amigaos__)
-+// On Pyxis, preferences always live in home://devilution/.
-+#if !defined(__amigaos__) && !defined(__pyxis__)
- 		if (FileExistsAndIsWriteable("diablo.ini")) {
- 			configPath = std::string("." DIRECTORY_SEPARATOR_STR);
- 		}
-@@ -123,6 +130,9 @@ const std::string &AssetsPath()
+@@ -123,6 +128,9 @@ const std::string &AssetsPath()
  		assetsPath.emplace("D:\\assets\\");
  #elif defined(__3DS__) || defined(__SWITCH__)
  		assetsPath.emplace("romfs:/");

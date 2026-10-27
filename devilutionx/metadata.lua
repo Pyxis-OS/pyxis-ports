@@ -41,7 +41,6 @@ return {
   },
   patches = {
     "patches/0001-pyxis-platform.patch",
-    "patches/0002-pyxis-file-checks.patch",
     "patches/0003-libcxx-fmt12.patch",
     "patches/0004-pyxis-paths-and-defaults.patch",
     "patches/0005-pyxis-command-modifier-snapshot.patch",

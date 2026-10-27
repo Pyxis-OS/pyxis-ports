@@ -13,29 +13,13 @@ index ea02624..b960948 100644
  
  if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD|OpenBSD|DragonFly|NetBSD")
    if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
-diff --git a/CMake/functions/devilutionx_library.cmake b/CMake/functions/devilutionx_library.cmake
-index 0ba57e2..d65d89a 100644
---- a/CMake/functions/devilutionx_library.cmake
-+++ b/CMake/functions/devilutionx_library.cmake
-@@ -45,7 +45,9 @@ function(add_devilutionx_library NAME)
-     target_compile_options(${NAME} PUBLIC -Wall -Wextra -Wno-unused-parameter)
-   endif()
- 
--  if(NOT WIN32 AND NOT APPLE AND NOT ${CMAKE_SYSTEM_NAME} STREQUAL FreeBSD)
-+  # Pyxis libc is not POSIX; file_util.cpp has its own branches there.
-+  if(NOT WIN32 AND NOT APPLE AND NOT ${CMAKE_SYSTEM_NAME} STREQUAL FreeBSD
-+     AND NOT CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
-     # Enable POSIX extensions such as `readlink` and `ftruncate`.
-     add_definitions(-D_POSIX_C_SOURCE=200809L)
-   endif()
 diff --git a/CMake/platforms/pyxis.cmake b/CMake/platforms/pyxis.cmake
 new file mode 100644
-index 0000000..7a3e24e
+index 0000000..2984dd5
 --- /dev/null
 +++ b/CMake/platforms/pyxis.cmake
-@@ -0,0 +1,22 @@
-+# Pyxis: single player. The SDK's libc++ has no <filesystem>, and executables
-+# are P1F files the linker writes directly.
+@@ -0,0 +1,18 @@
++# Pyxis: single player; executables are P1F files written by the linker.
 +set(ASAN OFF)
 +set(UBSAN OFF)
 +set(BUILD_TESTING OFF)
@@ -53,6 +37,3 @@ index 0000000..7a3e24e
 +
 +# Threads are part of libc; there is no separate threads library to link.
 +list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/threads-stub")
-+
-+# file_util.cpp falls back to stdio and stat without <filesystem>.
-+list(APPEND DEVILUTIONX_PLATFORM_COMPILE_DEFINITIONS DVL_NO_FILESYSTEM)

@@ -47,7 +47,7 @@ The build uses CMake's FetchContent with downloads turned off
 at runtime:
 
 - required: `memory/manage`, `clock` read and sleep, `display/draw` and
-  `keyboard/input` and the read-only `diablo` package as `pkg://diablo`;
+  `keyboard/input`, `gamepad/input` and the read-only `diablo` package as `pkg://diablo`;
 - optional: `pointer/input`; for sound `audio/create`, `threads/manage`
   (SDL's audio callback thread) and `pipe/create` (SDL's cross-thread event
   wakeup); and `clipboard_local` and `clipboard_shared` (`publish`, `paste`)
@@ -66,26 +66,22 @@ the game runs silent. Without a clipboard grant, Copy and Paste refuse.
    - loose assets, because there is no `smpq` host tool;
    - no post-link strip, because `llvm-strip` cannot read P1F executables;
    - no link-time optimization;
-   - upstream's threads stub, because threads are part of libc, with
-     `DVL_NO_FILESYSTEM`.
+   - upstream's threads stub, because threads are part of libc.
 
-   It also keeps `_POSIX_C_SOURCE` off, since Pyxis libc is not POSIX.
-2. `0002-pyxis-file-checks` gives `file_util.cpp` Pyxis branches:
-   - file and directory existence use `stat`, so read-only package data
-     counts as present;
-   - resizing a save uses `ftruncate`.
+   File utilities use upstream's std::filesystem and libc path operations.
+   The SDK provides native filesystem support and truncate; the former stat
+   and stdio replacements are removed.
 3. `0003-libcxx-fmt12` makes the build fixes for libc++ and fmt 12:
    `<new>` for `std::launder`, `<cstdlib>` for `std::getenv`, and
    `<fmt/format.h>` in `xpbar.cpp`.
-4. `0004-pyxis-paths-and-defaults` sets Pyxis paths and defaults:
+4. `0004-pyxis-paths-and-defaults` sets Pyxis paths:
    - **Paths:** data in `pkg://diablo` unless `--data-dir` says otherwise.
      A missing `diablo` package refuses launch on both live and installed
      systems. Program assets come from the bundle's `app/assets/` through its
      read-only `devilution_assets://` resource root.
-   - **Preferences:** saves and `diablo.ini` always go to SDL's preference path,
-     `home://devilution/`. A writable `diablo.ini` in the working directory no
-     longer redirects them.
-   - **Frame rate:** defaults to "Limit FPS", because Pyxis has no vertical sync.
+   - **Preferences:** upstream detects a writable `diablo.ini` in the working
+     directory; otherwise SDL supplies `home://devilution/`.
+   Frame-rate control retains upstream's default and user-selectable settings.
 
 5. `0005-pyxis-command-modifier-snapshot` makes the text editor use the
    delivered key command's modifiers on Pyxis. Shared Copy/Paste arrives as one
