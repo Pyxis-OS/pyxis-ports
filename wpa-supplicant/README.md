@@ -27,14 +27,10 @@ policy is built. `IEEE8021X_EAPOL` is unset: upstream's disabled-feature paths
 supply no preauthentication or PMKSA reuse. The shared headers still describe
 upstream structures and constants for omitted features. The source patch skips
 unavailable socket headers, selects the native build profile and makes the
-unused NTP helper unavailable at compile time. The erasure patch clears the
-final RSN state, outgoing EAPOL copies, failed AES allocations and reached crypto
-temporaries. The native profile maps upstream `os_memset` clears and
-`forced_memzero` to libc's C23 `memset_explicit`; it needs that current SDK
-function. These are cleanup changes, with no cryptographic algorithm or
-handshake-policy change. This adds clearing work during credential derivation,
-authentication, rekey and teardown; it does not add a software per-data-packet
-cipher path. Measure that control-path cost with the integrated worker.
+unused NTP helper unavailable at compile time. The native profile maps upstream
+`os_memset` clears and `forced_memzero` to libc's C23 `memset_explicit`; it needs
+that current SDK function. Cryptographic algorithms, handshake policy and the
+remaining upstream cleanup paths are unchanged.
 
 ## Native integration
 
