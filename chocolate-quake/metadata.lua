@@ -17,7 +17,6 @@ return {
   patches = {
     "patches/0001-pyxis-no-network-or-music-codecs.patch",
     "patches/0002-pyxis-platform.patch",
-    "patches/0003-pyxis-frame-sleep.patch",
   },
   outputs = {
     sdl2_yuv_license = "share/licenses/chocolate-quake/SDL2-yuv2rgb-LICENSE",

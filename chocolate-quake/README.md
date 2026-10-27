@@ -45,11 +45,8 @@ fails with SDL's error and the game runs silent, as with `-nosound`.
    - **Music:** the Vorbis, MP3 and FLAC codecs are left out. The WAV codec
      stays.
 2. **Platform.**
-   - **Timer:** upstream stops when `SDL_Init(SDL_INIT_TIMER)` fails. When this
-     adaptation was written the SDL2 port had no threads, which made that call
-     fail. It no longer does: `SDL_INIT_TIMER` starts no thread, and the first
-     callback timer starts one lazily. Quake only reads the performance counter,
-     so Pyxis still skips the call.
+   - **Timer:** upstream `SDL_INIT_TIMER` initialization is retained. The native
+     SDL timer backend starts no thread until a callback timer is requested.
    - **Data:** the default base directory is `pkg://quake`, from the
      declared package. Upstream uses `SDL_GetPrefPath`, which would keep
      data and generated files together under `home://`.
@@ -61,10 +58,7 @@ fails with SDL's error and the game runs silent, as with `-nosound`.
      bytes; log messages may interleave and success does not imply storage sync.
      Unsupported append targets refuse before creation or truncation.
    - **Directories:** `Sys_mkdir`, empty upstream, calls libc `mkdir`.
-3. **Frame sleep.** Upstream checks the clock in a tight loop between its
-   72 Hz frames, keeping one CPU busy. On Pyxis the frame filter sleeps through
-   the rest of the frame with `SDL_Delay`, in whole milliseconds rounded down,
-   so the next frame is never late. Timedemos don't sleep.
+Frame pacing follows upstream's frame filter without an added SDL_Delay.
 
 ## Memory
 
