@@ -38,10 +38,12 @@ return `GL_FALSE` while preserving the previous current binding.
 The profile has no LLVM/JIT, GPU, GLX/EGL/GBM, GLES, shared objects or disk cache.
 The optional SSE runtime vertex translator uses the generic C fallback instead;
 executable allocation is unavailable. OSMesaPostprocess is absent and its lookup
-returns NULL. CPU availability remains the conservative one-CPU fallback;
-physical memory is unknown, with no memory-info capability advertised. No Unix
-PID/mode/DRM metadata or success is fabricated. Automatic log filenames are
-unsupported; an explicit native MESA_LOG_FILE works through normal FILE grants.
+returns NULL. CPU availability uses libc `sysconf(_SC_NPROCESSORS_ONLN)` and
+`_SC_NPROCESSORS_CONF`, reporting the process's usable logical CPU allowance at
+startup without a system-info grant. Physical memory remains unknown, with no
+memory-info capability advertised; CPU-only `sysconf` support does not enable
+physical-memory queries. No Unix PID/mode/DRM metadata or success is fabricated.
+Automatic log filenames are unsupported; an explicit native MESA_LOG_FILE works through normal FILE grants.
 
 The static closure also links with every archive member retained and section
 collection disabled, so unused disabled-feature objects do not hide missing

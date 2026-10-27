@@ -317,7 +317,7 @@ index 7d99383..f9b79ea 100644
  os_dupfd_cloexec(int fd)
  {
 diff --git a/src/util/os_misc.c b/src/util/os_misc.c
-index 16dd51b..0850c37 100644
+index 16dd51b..c5713ca 100644
 --- a/src/util/os_misc.c
 +++ b/src/util/os_misc.c
 @@ -55,7 +55,9 @@
@@ -331,6 +331,15 @@ index 16dd51b..0850c37 100644
  #  define LOG_TAG "MESA"
  #  include <unistd.h>
  #  include <android/log.h>
+@@ -359,7 +361,7 @@ os_set_option(const char *name, const char *value, bool override)
+ bool
+ os_get_total_physical_memory(uint64_t *size)
+ {
+-#if HAVE_SYSCONF
++#if HAVE_SYSCONF && !DETECT_OS_PYXIS
+    const long phys_pages = sysconf(_SC_PHYS_PAGES);
+    const long page_size = sysconf(_SC_PAGESIZE);
+ 
 @@ -408,7 +410,9 @@ os_get_total_physical_memory(uint64_t *size)
     *size = zx_system_get_physmem();
     return true;
@@ -393,6 +402,31 @@ index f97a829..7a03d42 100644
  #include <pthread.h>
  #endif
  
+diff --git a/src/util/u_cpu_detect.c b/src/util/u_cpu_detect.c
+index 451881d..573407d 100644
+--- a/src/util/u_cpu_detect.c
++++ b/src/util/u_cpu_detect.c
+@@ -73,7 +73,7 @@
+ #include <elf.h>
+ #endif
+ 
+-#if DETECT_OS_POSIX
++#if DETECT_OS_POSIX || DETECT_OS_PYXIS
+ #include <unistd.h>
+ #endif
+ 
+@@ -773,7 +773,10 @@ _util_cpu_detect_once(void)
+    memset(&util_cpu_caps, 0, sizeof util_cpu_caps);
+ 
+    /* Count the number of CPUs in system */
+-#if DETECT_OS_WINDOWS
++#if DETECT_OS_PYXIS
++   available_cpus = sysconf(_SC_NPROCESSORS_ONLN);
++   total_cpus = sysconf(_SC_NPROCESSORS_CONF);
++#elif DETECT_OS_WINDOWS
+    {
+       SYSTEM_INFO system_info;
+       GetSystemInfo(&system_info);
 diff --git a/src/util/u_debug.c b/src/util/u_debug.c
 index 45ea231..e5289d6 100644
 --- a/src/util/u_debug.c
