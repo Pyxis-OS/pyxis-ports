@@ -49,5 +49,6 @@ imports. OSMesa source provenance is recorded in metadata and source.txt. Restor
 retain their original notices. Original Pyxis recipe/config/manual sources are
 MPL-2.0; patches retain upstream terms. NOTICES is derived from the actual
 compiler source/header dependencies, including generated Bison notices and its
-exception. This profile is not formally OpenGL-conformance qualified. SDL2
-OpenGL glue and game integration are later tasks in the parent milestone.
+exception. This profile is not formally OpenGL-conformance qualified. The
+restored frontend and native doublebuffer extension are kept together in the
+original restoration patch. SDL2 uses that extension for its native GL backend.

@@ -13,7 +13,7 @@ return {
     host = { "make", "curl", "sha256sum", "tar", "xz", "install", "python3", "meson", "ninja", "flex", "bison", "pkg-config" },
     pyxis = { "libc", "libpyxis", "libc++", "libc++abi", "libunwind" },
   },
-  patches = { "patches/0001-restore-static-osmesa.patch", "patches/0002-pyxis-native-profile.patch", "patches/0003-osmesa-doublebuffer.patch" },
+  patches = { "patches/0001-restore-static-osmesa.patch", "patches/0002-pyxis-native-profile.patch" },
   outputs = {
     library = "dev/lib/libOSMesa.a",
     gl_header = "dev/include/GL/gl.h",

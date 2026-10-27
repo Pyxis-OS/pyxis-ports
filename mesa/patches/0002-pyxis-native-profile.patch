@@ -354,42 +354,28 @@ index 16dd51b..0850c37 100644
  
     if (page_size <= 0)
 diff --git a/src/util/os_time.c b/src/util/os_time.c
-index 71fc7e3..035f141 100644
+index 71fc7e3..69aa881 100644
 --- a/src/util/os_time.c
 +++ b/src/util/os_time.c
-@@ -40,7 +40,10 @@
+@@ -40,7 +40,9 @@
  #include "util/u_atomic.h"
  #include "util/u_overflow.h"
  
 -#if DETECT_OS_POSIX_LITE
 +#if DETECT_OS_PYXIS
 +#  include <time.h>
-+#  include <stdlib.h>
 +#elif DETECT_OS_POSIX_LITE
  #  include <unistd.h> /* usleep */
  #  include <time.h> /* timeval */
  #  include <sys/time.h> /* timeval */
-@@ -57,7 +60,8 @@ int64_t
- os_time_get_nano(void)
- {
-    struct timespec ts;
--   timespec_get(&ts, TIME_MONOTONIC);
-+   if (timespec_get(&ts, TIME_MONOTONIC) != TIME_MONOTONIC)
-+      abort();
-    return ts.tv_nsec + ts.tv_sec*INT64_C(1000000000);
- }
- 
-@@ -80,7 +84,13 @@ os_time_nanosleep_until(int64_t deadline)
+@@ -80,7 +82,10 @@ os_time_nanosleep_until(int64_t deadline)
  void
  os_time_sleep(int64_t usecs)
  {
 -#if DETECT_OS_LINUX || DETECT_OS_MANAGARM || DETECT_OS_FUCHSIA
 +#if DETECT_OS_PYXIS
-+   if (usecs <= 0)
-+      return;
 +   struct timespec delay = {usecs / 1000000, (usecs % 1000000) * 1000};
-+   if (nanosleep(&delay, NULL) != 0)
-+      abort();
++   nanosleep(&delay, NULL);
 +#elif DETECT_OS_LINUX || DETECT_OS_MANAGARM || DETECT_OS_FUCHSIA
     struct timespec time;
     time.tv_sec = usecs / 1000000;
@@ -435,26 +421,3 @@ index 2e4d5e3..59a2752 100644
     return true;
  #else
     return geteuid() == getuid() && getegid() == getgid();
-diff --git a/src/util/u_thread.c b/src/util/u_thread.c
-index d1cf085..fc04da4 100644
---- a/src/util/u_thread.c
-+++ b/src/util/u_thread.c
-@@ -70,6 +70,9 @@ int u_thread_create(thrd_t *thrd, int (*routine)(void *), void *param)
-    struct u_thread_param *paramp = malloc(sizeof(*paramp));
-    int ret = thrd_error;
- 
-+   if (!paramp)
-+      return thrd_nomem;
-+
-    paramp->routine = routine;
-    paramp->arg = param;
- 
-@@ -91,6 +94,8 @@ int u_thread_create(thrd_t *thrd, int (*routine)(void *), void *param)
-    ret = thrd_create(thrd, thread_routine, paramp);
- #endif
- 
-+   if (ret != thrd_success)
-+      free(paramp);
-    return ret;
- }
- 
