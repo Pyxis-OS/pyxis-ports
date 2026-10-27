@@ -8,19 +8,17 @@ Ordinary `io.open` reads consume HTTP streams through libc. A staged HTTP
 `"w"` or `"w+"` file commits on an explicit file flush or final owning close;
 `"w+"` then reads its reply from the same file and rejects later writes.
 Garbage collection abandons pending requests without submission. A successful
-standalone interpreter shutdown, or explicit `os.exit(status)`, closes its Lua
-state normally and can commit clean transactions; an unhandled Lua error
-selects abandonment. Real automatic abort/release failures emit a bounded
-stderr diagnostic and make an otherwise successful exit fail. Requested nonzero
-exit status alone does not mark a FILE as failed. Explicitly check flush/close
-results. These operations use existing declared grants. See the
-[Lua HTTP stream examples](../lua/README.md#http-streams); Lua 5.1 has no
-lexical-scope `__close` support.
+standalone interpreter shutdown closes its Lua state normally; an unhandled
+Lua error selects abandonment. `os.exit(status)` follows upstream process exit
+without forcing `lua_close`. Explicitly check flush/close results; automatic
+cleanup adds no Lua diagnostics or exit-status aggregation. These operations
+use existing declared grants. See the [Lua HTTP stream examples](../lua/README.md#http-streams);
+Lua 5.1 has no lexical-scope `__close` support.
 
-Embeddings call `lua_pyxis_io_shutdown(state, normal, &failed)` immediately
-before `lua_close(state)`; the failure pointer remains borrowed until close
-returns. Without this hook, GC abandons pending requests. The hook is harmless
-when `io` was not opened.
+Embeddings call `lua_pyxis_io_shutdown(state, normal)` immediately before
+`lua_close(state)` to select normal publication or abandonment. No caller
+pointer is borrowed. Without this hook, GC abandons pending requests. The hook
+is harmless when `io` was not opened.
 
 ```sh
 lua build.lua lua51 --sdk /path/to/build/sdk --libuv /path/to/libuv/stage/dev
@@ -51,10 +49,11 @@ bin://lua5.1.pxb -e 'print(_VERSION)'
 ```
 
 Upstream `lua.c`'s script, `-e`, `-l`, `-v`, `--` and `-` (stdin) options are
-kept. There is no interactive mode: without a script or `-e`, it prints usage
-and exits with status 1. `LUA_INIT` is honored. `require` searches
+kept, together with upstream `-i` and its basic stdio REPL. With no script or
+expression, a terminal uses that REPL and redirected stdin is executed as a
+script. Signals remain unavailable. `LUA_INIT` is honored. `require` searches
 `package.preload` and then `?.lua;?/init.lua` relative to the working
-directory, or `LUA_PATH` when set. The working directory and environment are
+directory, or `LUA_PATH` when set, including upstream `;;` default expansion. The working directory and environment are
 libc's shared stores: `uv.chdir` changes where relative paths and `require`
 look, and `os.getenv` sees variables set with `uv.os_setenv`. `lpeg` and `luv` are linked in and found
 through `package.preload`.
@@ -63,9 +62,12 @@ through `package.preload`.
 
 What libc cannot do is left out or reported, never imitated:
 
-- **Absent:** `io.popen`, `os.execute`, `os.clock`, `os.setlocale`,
-  `file:setvbuf`, `package.loadlib` and the C module searchers, because libc has
-  no `popen`, `system`, `clock`, locales, `setvbuf` or dynamic loading.
+- **Absent:** `os.execute` and `os.clock`, because libc has
+  no Unix process shell or CPU clock. `os.setlocale` uses real fixed-C libc
+  selection/query and returns nil for other locale names. `io.popen` retains the
+  upstream explicit unsupported fallback. `package.loadlib` and C searchers
+  retain the upstream unsupported-loader implementation; default `cpath` is
+  empty and no dynamic loading is provided. `file:setvbuf` uses current libc.
 - **Calendar tables:** `os.time(table)` uses libc's `mktime` in the zone `TZ`
   selects. A wall time skipped by a DST gap, or repeated in a fold without an
   `isdst` field that settles it, returns `nil`, as upstream does for any
@@ -111,11 +113,11 @@ console streams, child processes and synchronous filesystem calls.
 ## Adaptations
 
 - `0001-pyxis-runtime.patch` (Lua) implements the profile above, removes the
-  interpreter's signal handling and interactive mode, names it `lua5.1` and
+  interpreter's unsupported signal handling, names it `lua5.1` and
   preloads `lpeg` and `luv`.
 - `0002-pyxis-file-abandonment.patch` separates explicit close from GC
-  abandonment, records cleanup failure per Lua state, and gives the driver and
-  `os.exit` normal/error shutdown paths while protecting standard files.
+  abandonment and gives the standalone driver normal/error shutdown selection
+  while protecting standard files and preserving foreign FILE close callbacks.
 - `luv-0001-pyxis-native.patch` adds `src/pyxis.c`, which replaces `dns.c`,
   `tcp.c`, `udp.c`, `fs_event.c` and `fs_poll.c` with ENOSYS functions under
   the same Lua names, plus luv's connect callback that pipes also use. It guards

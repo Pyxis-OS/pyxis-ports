@@ -13,7 +13,9 @@ compiler runtime's LLVM notice are copied into the same metadata tree.
 Development prefixes retain their own copies for static-library consumers.
 
 The ordered patches adapt Lua's standard libraries to supported native libc
-operations, omit interactive mode and dynamic modules, and preload LPeg/luv.
+operations, keep upstream interpreter modes and unsupported dynamic-loader
+fallbacks, and preload LPeg/luv. Native transaction abandonment remains separate
+from explicit close; automatic cleanup adds no diagnostics or exit aggregation.
 The luv patch uses native exit observations and rejects unsupported socket,
 watch, signal, PID and worker operations. The compat-5.3 patch removes the
 unsupported binary-mode `freopen` operation. Upstream-derived changes retain

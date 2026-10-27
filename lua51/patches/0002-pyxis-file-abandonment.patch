@@ -1,4 +1,5 @@
 diff --git a/src/liolib.c b/src/liolib.c
+index 649f9a5..bd21bfa 100644
 --- a/src/liolib.c
 +++ b/src/liolib.c
 @@ -7,6 +7,7 @@
@@ -9,16 +10,12 @@ diff --git a/src/liolib.c b/src/liolib.c
  #include <stdlib.h>
  #include <string.h>
  
-@@ -22,6 +23,36 @@
- 
- #define IO_INPUT	1
+@@ -24,6 +25,31 @@
  #define IO_OUTPUT	2
-+
-+
+ 
+ 
 +typedef struct IOShutdown {
 +  int normal;
-+  int failed;
-+  int *shutdown_failed;  /* borrowed only through lua_close */
 +} IOShutdown;
 +
 +static const char io_shutdown_key = 0;
@@ -34,19 +31,18 @@ diff --git a/src/liolib.c b/src/liolib.c
 +}
 +
 +
-+LUALIB_API void lua_pyxis_io_shutdown (lua_State *L, int normal, int *failed) {
++LUALIB_API void lua_pyxis_io_shutdown (lua_State *L, int normal) {
 +  IOShutdown *shutdown = io_shutdown(L);
-+  if (failed != NULL)
-+    *failed = shutdown != NULL && shutdown->failed;
 +  if (shutdown != NULL) {
 +    shutdown->normal = normal;
-+    shutdown->shutdown_failed = failed;
 +  }
 +}
- 
- 
++
++
  static const char *const fnames[] = {"input", "output"};
-@@ -129,10 +160,37 @@
+ 
+ 
+@@ -140,10 +166,27 @@ static int io_close (lua_State *L) {
  
  
  static int io_gc (lua_State *L) {
@@ -57,7 +53,6 @@ diff --git a/src/liolib.c b/src/liolib.c
 +  FILE **p = tofilep(L);
 +  IOShutdown *shutdown;
 +  lua_CFunction close;
-+  int result, error;
 +  if (*p == NULL)
 +    return 0;
 +  lua_getfenv(L, 1);
@@ -71,24 +66,15 @@ diff --git a/src/liolib.c b/src/liolib.c
 +    return 0;
 +  }
 +  shutdown = io_shutdown(L);
-+  errno = 0;
-+  result = shutdown != NULL && shutdown->normal ? fclose(*p) :
-+           pyxis_fclose_abandon(*p);
-+  error = errno;
++  if (shutdown != NULL && shutdown->normal)
++    fclose(*p);
++  else
++    pyxis_fclose_abandon(*p);
 +  *p = NULL;
-+  if (result != 0) {
-+    if (shutdown != NULL) {
-+      shutdown->failed = 1;
-+      if (shutdown->shutdown_failed != NULL)
-+        *shutdown->shutdown_failed = 1;
-+    }
-+    fprintf(stderr, "lua: file cleanup failed (errno %d)\n",
-+            error != 0 ? error : EIO);
-+  }
    return 0;
  }
  
-@@ -498,6 +556,15 @@
+@@ -535,6 +578,13 @@ static void newfenv (lua_State *L, lua_CFunction cls) {
  
  
  LUALIB_API int luaopen_io (lua_State *L) {
@@ -97,63 +83,34 @@ diff --git a/src/liolib.c b/src/liolib.c
 +    lua_pushlightuserdata(L, (void *)&io_shutdown_key);
 +    shutdown = (IOShutdown *)lua_newuserdata(L, sizeof(IOShutdown));
 +    shutdown->normal = 0;
-+    shutdown->failed = 0;
-+    shutdown->shutdown_failed = NULL;
 +    lua_rawset(L, LUA_REGISTRYINDEX);
 +  }
    createmeta(L);
    /* create (private) environment (with fields IO_INPUT, IO_OUTPUT, __close) */
    newfenv(L, io_fclose);
-diff --git a/src/loslib.c b/src/loslib.c
---- a/src/loslib.c
-+++ b/src/loslib.c
-@@ -189,7 +189,13 @@
- 
- 
- static int os_exit (lua_State *L) {
--  exit(luaL_optint(L, 1, EXIT_SUCCESS));
-+  int status = luaL_optint(L, 1, EXIT_SUCCESS);
-+  int failed;
-+  lua_pyxis_io_shutdown(L, 1, &failed);
-+  lua_close(L);
-+  if (failed && status == EXIT_SUCCESS)
-+    status = EXIT_FAILURE;
-+  exit(status);
- }
- 
- static const luaL_Reg syslib[] = {
-diff --git a/src/lualib.h b/src/lualib.h
---- a/src/lualib.h
-+++ b/src/lualib.h
-@@ -23,6 +23,9 @@
- 
- #define LUA_IOLIBNAME	"io"
- LUALIB_API int (luaopen_io) (lua_State *L);
-+
-+/* 'failed' remains borrowed until lua_close; harmless when io was not opened. */
-+LUALIB_API void (lua_pyxis_io_shutdown) (lua_State *L, int normal, int *failed);
- 
- #define LUA_OSLIBNAME	"os"
- LUALIB_API int (luaopen_os) (lua_State *L);
 diff --git a/src/lua.c b/src/lua.c
+index a5490a6..fa549a6 100644
 --- a/src/lua.c
 +++ b/src/lua.c
-@@ -277,7 +277,7 @@
- 
- 
- int main (int argc, char **argv) {
--  int status;
-+  int status, cleanup_failed;
-   struct Smain s;
-   lua_State *L = lua_open();  /* create state */
-   if (L == NULL) {
-@@ -288,7 +288,8 @@
+@@ -382,6 +382,7 @@ int main (int argc, char **argv) {
    s.argv = argv;
    status = lua_cpcall(L, &pmain, &s);
    report(L, status);
-+  lua_pyxis_io_shutdown(L, !(status || s.status), &cleanup_failed);
++  lua_pyxis_io_shutdown(L, !(status || s.status));
    lua_close(L);
--  return (status || s.status) ? EXIT_FAILURE : EXIT_SUCCESS;
-+  return (status || s.status || cleanup_failed) ? EXIT_FAILURE : EXIT_SUCCESS;
+   return (status || s.status) ? EXIT_FAILURE : EXIT_SUCCESS;
  }
+diff --git a/src/lualib.h b/src/lualib.h
+index 469417f..1504ab5 100644
+--- a/src/lualib.h
++++ b/src/lualib.h
+@@ -24,6 +24,9 @@ LUALIB_API int (luaopen_table) (lua_State *L);
+ #define LUA_IOLIBNAME	"io"
+ LUALIB_API int (luaopen_io) (lua_State *L);
+ 
++/* Select publication or abandonment before closing the Lua state. */
++LUALIB_API void (lua_pyxis_io_shutdown) (lua_State *L, int normal);
++
+ #define LUA_OSLIBNAME	"os"
+ LUALIB_API int (luaopen_os) (lua_State *L);
  
