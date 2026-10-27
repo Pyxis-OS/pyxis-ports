@@ -16,8 +16,10 @@ and stdout must be consoles; there is no named-console fallback for redirected
 streams.
 
 Ctrl-S saves, Ctrl-Q quits with repeated confirmation for unsaved edits, and
-Ctrl-F searches. Arrow keys and Page Up/Down use upstream navigation. Home/End
-and Delete keep upstream bindings. The port preserves upstream byte insertion,
+Ctrl-F searches. Arrow keys, Page Up/Down and Delete use upstream navigation.
+Pinned upstream decodes Home/End but does not dispatch those soft keys; End was
+observed inserting byte 0xee instead of moving the cursor. This upstream defect
+is unchanged. The port preserves upstream byte insertion,
 syntax highlighting, line reading and descriptor saving. Creation requests use
 native mode 0666; authority comes from the supplied filesystem grants.
 
