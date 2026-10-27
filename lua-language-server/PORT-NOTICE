@@ -12,9 +12,10 @@ the same error, transaction-abandonment and finalization rules.
 
 This profile uses real threads, native file/directory capabilities, monotonic
 time and byte-pipe stdio. It provides no Linux process identity, dynamic loader,
-CPU-time substitute, TCP transport, subprocess, watcher, formatter or executable
-workspace configuration. The upstream framework add-ons are excluded. No
-launcher/network/SDK grant is requested. Inherited filesystem authority may
+CPU-time substitute, TCP transport, subprocess, watcher or formatter. Upstream
+Lua configuration, plugins, client configuration editing and custom annotations
+use the existing filesystem authority. Lazy-cache paths use owned instance
+state. No launcher/network/SDK grant is requested. Inherited filesystem authority may
 include writable home; instance names are not a confidentiality boundary.
 
 The linked static SDK includes Pyxis MPL-2.0, musl/MIT and BSD notices, TLSF

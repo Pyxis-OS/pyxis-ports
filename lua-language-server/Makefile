@@ -2,7 +2,7 @@ include $(SDK)/share/pyxis.mk
 
 LUA := $(BEE)/3rd/lua55
 INCLUDES := -I$(BEE) -I$(RECIPE)/pyxis -I$(LUA) -I$(BEE)/3rd/lua-patch -I$(LPEGLABEL)
-NATIVE_SOURCES := main.cpp filesystem.cpp platform.cpp concurrency.cpp
+NATIVE_SOURCES := runtime.cpp filesystem.cpp platform.cpp concurrency.cpp
 NATIVE_OBJECTS := $(addprefix $(BUILD)/,$(NATIVE_SOURCES:.cpp=.o))
 LPEG_SOURCES := lplcap.c lplcode.c lplprint.c lpltree.c lplvm.c
 LPEG_OBJECTS := $(addprefix $(BUILD)/lpeg-,$(LPEG_SOURCES:.c=.o))
@@ -29,7 +29,10 @@ $(BUILD)/lpeg-%.o: $(LPEGLABEL)/%.c $(wildcard $(LPEGLABEL)/*.h) $(LUA_INPUTS)
 $(BUILD)/%.o: $(RECIPE)/pyxis/%.cpp $(wildcard $(RECIPE)/pyxis/*.hpp) $(LUA_INPUTS)
 	$(CXX) $(PYXIS_CXX_CPPFLAGS) $(PYXIS_CXXFLAGS) -std=gnu++17 $(INCLUDES) -I$(BEE)/3rd/lua-seri -DLUALS_VERSION='"$(VERSION)"' -c $< -o $@
 
-OBJECTS := $(NATIVE_OBJECTS) $(LPEG_OBJECTS) $(BUILD)/lua-core.o \
+$(BUILD)/bootstrap.o: $(BEE)/bootstrap/main.cpp $(wildcard $(RECIPE)/pyxis/*.hpp) $(LUA_INPUTS)
+	$(CXX) $(PYXIS_CXX_CPPFLAGS) $(PYXIS_CXXFLAGS) -std=gnu++17 $(INCLUDES) -c $< -o $@
+
+OBJECTS := $(BUILD)/bootstrap.o $(NATIVE_OBJECTS) $(LPEG_OBJECTS) $(BUILD)/lua-core.o \
   $(BUILD)/lua-libraries.o $(BUILD)/bee-newstate.o $(BUILD)/lua-seri.o
 
 $(BUILD)/lua-language-server.pxe: $(OBJECTS) $(PYXIS_START) $(PYXIS_CXX_LIBRARIES) $(PYXIS_LIBRARIES) $(PYXIS_LINKER_SCRIPT)

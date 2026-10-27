@@ -47,12 +47,11 @@ for index, path in ipairs(dofile(recipe .. "/runtime-files.lua")) do
 end
 for index, path in ipairs({ "Makefile", "metadata.lua", "build.lua", "stage.py",
     "runtime-files.lua", "manifest.json", "README.md", "PORT-NOTICE",
-    "pyxis/runtime.hpp", "pyxis/binding.hpp", "pyxis/main.cpp", "pyxis/filesystem.cpp",
+    "pyxis/runtime.hpp", "pyxis/binding.hpp", "pyxis/runtime.cpp", "pyxis/filesystem.cpp",
     "pyxis/platform.cpp", "pyxis/concurrency.cpp", "pyxis/concurrency.md",
     "pyxis/lua-config.h", "pyxis/lua-core.cpp", "pyxis/lua-libraries.cpp",
     "patches/0001-native-workers.patch", "patches/0002-pyxis-profile.patch",
-    "patches/0003-pyxis-lua-libraries.patch",
-    "patches/0004-bee-serialization-allocation.patch" }) do
+    "patches/0003-pyxis-lua-libraries.patch" }) do
   outputs["pyxis_" .. index] = app .. "metadata/pyxis/" .. path
 end
 
@@ -72,8 +71,7 @@ return {
           url = "https://github.com/actboy168/bee.lua/archive/f55b6988e8d9564816a555118b0e76564ef9a283.tar.gz",
           mirror = "https://repo.internal/repository/raw-github/actboy168/bee.lua/archive/f55b6988e8d9564816a555118b0e76564ef9a283.tar.gz",
           sha256 = "61f25750910fce54f8e4dc1e3118e831a479bb1f654573e8cee57de4403bb2f4",
-        }, patches = { "patches/0003-pyxis-lua-libraries.patch",
-          "patches/0004-bee-serialization-allocation.patch" } },
+        }, patches = { "patches/0003-pyxis-lua-libraries.patch" } },
       { name = "lpeglabel", url = "https://github.com/sqmedeiros/lpeglabel.git",
         commit = "912b0b9e8641074408ffc2259e069b188e0c717b",
         archive = {

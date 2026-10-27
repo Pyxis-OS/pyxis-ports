@@ -1,81 +1,11 @@
 diff --git a/main.lua b/main.lua
-index 312107c..c3cb455 100644
+index 312107c..2a5d553 100644
 --- a/main.lua
 +++ b/main.lua
-@@ -2,62 +2,40 @@ local fs      = require 'bee.filesystem'
- local util    = require 'utility'
- local version = require 'version'
+@@ -45,13 +45,9 @@ end
  
--require 'config.env'
--
--local function getValue(value)
--    if     value == 'true' or value == nil then
--        value = true
--    elseif value == 'false' then
--        value = false
--    elseif tonumber(value) then
--        value = tonumber(value)
--    elseif value:sub(1, 1) == '"' and value:sub(-1, -1) == '"' then
--        value = value:sub(2, -2)
--    end
--    return value
--end
--
--local function loadArgs()
--    ---@type string?
--    local lastKey
--    for _, v in ipairs(arg) do
--        ---@type string?
--        local key, tail = v:match '^%-%-([%w_]+)(.*)$'
--        local value
--        if key then
--            value   = tail:match '=(.+)'
--            lastKey = nil
--            if not value then
--                lastKey = key
--            end
--        else
--            if lastKey then
--                key     = lastKey
--                value   = v
--                lastKey = nil
--            end
-+assert(ROOT and LOGPATH and METAPATH, 'Pyxis runtime roots were not initialized')
-+
-+local i = 1
-+while arg[i] do
-+    local option, value = arg[i]:match('^%-%-([%w-]+)=(.*)$')
-+    option = option or arg[i]:match('^%-%-([%w-]+)$')
-+    assert(option, 'unsupported LuaLS argument: ' .. arg[i])
-+    if option == 'locale' or option == 'loglevel' then
-+        if not value then
-+            i = i + 1
-+            value = assert(arg[i], 'missing --' .. option .. ' value')
-         end
--        if key then
--            _G[key:upper():gsub('-', '_')] = getValue(value)
-+        if option == 'locale' then
-+            assert(value:match('^[%w-]+$'), 'invalid locale')
-+            LOCALE = value
-+        else
-+            assert(({trace=true, debug=true, info=true, warn=true, error=true})[value], 'invalid log level')
-+            LOGLEVEL = value
-         end
-+    elseif option == 'version' and not value then
-+        print(version.getVersion())
-+        return
-+    elseif option == 'help' and not value then
-+        print('lua-language-server [--stdio] [--locale=ID] [--loglevel=LEVEL]')
-+        print('Pyxis profile: JSON/JSONC settings, stdio LSP; no executable configuration.')
-+        return
-+    elseif option ~= 'stdio' or value then
-+        error('unsupported LuaLS option in Pyxis profile: --' .. option)
-     end
-+    i = i + 1
- end
+ loadArgs()
  
--loadArgs()
--
 -local currentPath = debug.getinfo(1, 'S').source:sub(2)
 -local rootPath    = currentPath:gsub('[/\\]*[^/\\]-$', '')
 -
@@ -83,41 +13,20 @@ index 312107c..c3cb455 100644
 -ROOT     = fs.path(util.expandPath(rootPath))
 -LOGPATH  = LOGPATH  and util.expandPath(LOGPATH)  or (ROOT:string() .. '/log')
 -METAPATH = METAPATH and util.expandPath(METAPATH) or (ROOT:string() .. '/meta')
--
++ROOT = fs.path(LUALS_ROOT)
++LOGPATH = LOGPATH or (LUALS_STATE_ROOT .. '/log')
++METAPATH = METAPATH or (LUALS_STATE_ROOT .. '/meta')
+ 
  util.enableCloseFunction()
  util.enableFormatString()
--
----collectgarbage('generational', 10, 50)
----collectgarbage('incremental', 120, 120, 0)
- collectgarbage('param', 'minormul', 10)
- collectgarbage('param', 'minormajor', 50)
+@@ -76,7 +72,6 @@ log.info('VERSION:', version.getVersion())
  
-@@ -65,21 +43,9 @@ collectgarbage('param', 'minormajor', 50)
- log = require 'log'
- log.init(ROOT, fs.path(LOGPATH) / 'service.log')
- if LOGLEVEL then
--    log.level = tostring(LOGLEVEL):lower()
-+    log.level = LOGLEVEL
- end
--
--log.info('Lua Lsp startup, root: ', ROOT)
--log.info('ROOT:', ROOT:string())
--log.info('LOGPATH:', LOGPATH)
--log.info('METAPATH:', METAPATH)
--log.info('VERSION:', version.getVersion())
--
-+log.info('Lua LSP startup:', ROOT, version.getVersion())
-+log.info('Pyxis stdio profile; watchers, formatter, executable configuration and plugins unavailable')
  require 'tracy'
--
+ 
 -xpcall(dofile, log.debug, (ROOT / 'debugger.lua'):string())
--
--require 'cli'
--
--local _, service = xpcall(require, log.error, 'service')
--
--service.start()
-+require('service').start()
+ 
+ require 'cli'
+ 
 diff --git a/script/await.lua b/script/await.lua
 index f252197..bd58643 100644
 --- a/script/await.lua
@@ -157,444 +66,44 @@ index f252197..bd58643 100644
          if passed > 0.5 then
              warnStepTime(passed, resume)
          end
-diff --git a/script/client.lua b/script/client.lua
-index 71ff529..ad1ebcc 100644
---- a/script/client.lua
-+++ b/script/client.lua
-@@ -1,4 +1,3 @@
--local fs        = require 'bee.filesystem'
- local nonil     = require 'without-check-nil'
- local util      = require 'utility'
- local lang      = require 'language'
-@@ -7,10 +6,7 @@ local define    = require 'proto.define'
- local config    = require 'config'
- local converter = require 'proto.converter'
- local await     = require 'await'
--local scope     = require 'workspace.scope'
- local inspect   = require 'inspect'
--local jsone     = require 'json-edit'
--local jsonc     = require 'jsonc'
+diff --git a/script/cli/doc/init.lua b/script/cli/doc/init.lua
+index 144c991..7ee1233 100644
+--- a/script/cli/doc/init.lua
++++ b/script/cli/doc/init.lua
+@@ -1,3 +1,4 @@
++local elapsed = require 'pyxis-profile'.elapsed
+ local lclient  = require 'lclient'
+ local furi     = require 'file-uri'
+ local ws       = require 'workspace'
+@@ -204,7 +205,7 @@ function doc.runCLI()
  
- local m = {}
- m._eventList = {}
-@@ -165,410 +161,17 @@ function m.logMessage(type, ...)
-     })
- end
+     util.enableCloseFunction()
  
--function m.watchFiles(path)
--    path = path:gsub('\\', '/')
--               :gsub('[%[%]%{%}%*%?]', '\\%1')
--    local registration = {
--        id              = path,
--        method          = 'workspace/didChangeWatchedFiles',
--        registerOptions = {
--            watchers = {
--                {
--                    globPattern = path .. '/**',
--                    kind = 1 | 2 | 4,
--                },
--            },
--        },
--    }
--    proto.request('client/registerCapability', {
--        registrations = {
--            registration,
--        }
--    })
--
--    return function ()
--        local unregisteration = {
--            id     = path,
--            method = 'workspace/didChangeWatchedFiles',
--        }
--        proto.request('client/registerCapability', {
--            unregisterations = {
--                unregisteration,
--            }
--        })
--    end
--end
--
-----@class config.change
-----@field key       string
-----@field prop?     string
-----@field value     any
-----@field action    'add'|'set'|'prop'
-----@field global?   boolean
-----@field uri?      uri
--
-----@param uri uri?
-----@param changes config.change[]
-----@return config.change[]
--local function getValidChanges(uri, changes)
--    local newChanges = {}
--    if not uri then
--        return changes
--    end
--    local scp = scope.getScope(uri)
--    for _, change in ipairs(changes) do
--        if scp:isChildUri(change.uri)
--        or scp:isLinkedUri(change.uri) then
--            newChanges[#newChanges+1] = change
--        end
--    end
--    return newChanges
--end
--
-----@class json.patch
-----@field op 'add' | 'remove' | 'replace'
-----@field path string
-----@field value any
--
-----@class json.patchInfo
-----@field key string
-----@field value any
--
-----@param cfg table
-----@param rawKey string
-----@return json.patchInfo
--local function searchPatchInfo(cfg, rawKey)
--
--    ---@param key string
--    ---@param parentKey string
--    ---@param parentValue table
--    ---@return json.patchInfo?
--    local function searchOnce(key, parentKey, parentValue)
--        if parentValue == nil then
--            return nil
--        end
--        if type(parentValue) ~= 'table' then
--            return {
--                key   = parentKey,
--                value = parentValue,
--            }
--        end
--        if parentValue[key] then
--            return {
--                key   = parentKey .. '/' .. key,
--                value = parentValue[key],
--            }
--        end
--        for pos in key:gmatch '()%.' do
--            local k = key:sub(1, pos - 1)
--            local v = parentValue[k]
--            local info = searchOnce(key:sub(pos + 1), parentKey .. '/' .. k, v)
--            if info then
--                return info
--            end
--        end
--        return nil
--    end
--
--    return searchOnce(rawKey, '', cfg)
--        or searchOnce(rawKey:gsub('^Lua%.', ''), '', cfg)
--        or {
--            key   = '/' .. rawKey:gsub('^Lua%.', ''),
--            value = nil,
--        }
--end
--
-----@param uri? uri
-----@param cfg table
-----@param change config.change
-----@return json.patch?
--local function makeConfigPatch(uri, cfg, change)
--    local info  = searchPatchInfo(cfg, change.key)
--    if change.action == 'add' then
--        if type(info.value) == 'table' and #info.value > 0 then
--            return {
--                op    = 'add',
--                path  = info.key .. '/-',
--                value = change.value,
--            }
--        else
--            return makeConfigPatch(uri, cfg, {
--                action = 'set',
--                key    = change.key,
--                value  = config.get(uri, change.key),
--            })
--        end
--    elseif change.action == 'set' then
--        if info.value ~= nil then
--            return {
--                op    = 'replace',
--                path  = info.key,
--                value = change.value,
--            }
--        else
--            return {
--                op    = 'add',
--                path  = info.key,
--                value = change.value,
--            }
--        end
--    elseif change.action == 'prop' then
--        if type(info.value) == 'table' and next(info.value) then
--            return {
--                op    = 'add',
--                path  = info.key .. '/' .. change.prop,
--                value = change.value,
--            }
--        else
--            return makeConfigPatch(uri, cfg, {
--                action = 'set',
--                key    = change.key,
--                value  = config.get(uri, change.key),
--            })
--        end
--    end
--    return nil
--end
--
-----@param uri? uri
-----@param path string
-----@param changes config.change[]
-----@return string?
--local function editConfigJson(uri, path, changes)
--    local text = util.loadFile(path)
--    if not text then
--        m.showMessage('Error', lang.script('CONFIG_LOAD_FAILED', path))
--        return nil
--    end
--    local suc, res = pcall(jsonc.decode_jsonc, text)
--    if not suc then
--        m.showMessage('Error', lang.script('CONFIG_MODIFY_FAIL_SYNTAX_ERROR', path .. res:match 'ERROR(.+)$'))
--        return nil
--    end
--    if type(res) ~= 'table' then
--        res = {}
--    end
--    ---@cast res table
--    for _, change in ipairs(changes) do
--        local patch = makeConfigPatch(uri, res, change)
--        if patch then
--            text = jsone.edit(text, patch, { indent = '    ' })
--        end
--    end
--    return text
--end
--
-----@param changes config.change[]
-----@param applied config.change[]
--local function removeAppliedChanges(changes, applied)
--    local appliedMap = {}
--    for _, change in ipairs(applied) do
--        appliedMap[change] = true
--    end
--    for i = #changes, 1, -1 do
--        if appliedMap[changes[i]] then
--            table.remove(changes, i)
--        end
--    end
--end
--
--local function tryModifySpecifiedConfig(uri, finalChanges)
--    if #finalChanges == 0 then
--        return false
--    end
--    log.info('tryModifySpecifiedConfig', uri, inspect(finalChanges))
--    local workspace = require 'workspace'
--    local scp = scope.getScope(uri)
--    if scp:get('lastLocalType') ~= 'json' then
--        log.info('lastLocalType ~= json')
--        return false
--    end
--    local validChanges = getValidChanges(uri, finalChanges)
--    if #validChanges == 0 then
--        log.info('No valid changes')
--        return false
--    end
--    local path = workspace.getAbsolutePath(uri, CONFIGPATH)
--    if not path then
--        log.info('Can not get absolute path')
--        return false
--    end
--    local newJson = editConfigJson(uri, path, validChanges)
--    if not newJson then
--        log.info('Can not edit config json')
--        return false
--    end
--    util.saveFile(path, newJson)
--    log.info('Apply changes to config file', inspect(validChanges))
--    removeAppliedChanges(finalChanges, validChanges)
--    return true
--end
--
--local function tryModifyRC(uri, finalChanges, create)
--    if #finalChanges == 0 then
--        return false
--    end
--    log.info('tryModifyRC', uri, inspect(finalChanges))
--    local workspace = require 'workspace'
--    local path = workspace.getAbsolutePath(uri, '.luarc.jsonc')
--    if not path then
--        log.info('Can not get absolute path of .luarc.jsonc')
--        return false
--    end
--    path = fs.exists(fs.path(path)) and path or workspace.getAbsolutePath(uri, '.luarc.json')
--    if not path then
--        log.info('Can not get absolute path of .luarc.json')
--        return false
--    end
--    local buf = util.loadFile(path)
--    if not buf and not create then
--        log.info('Can not load .luarc.json and not create')
--        return false
--    end
--    local validChanges = getValidChanges(uri, finalChanges)
--    if #validChanges == 0 then
--        log.info('No valid changes')
--        return false
--    end
--    if not buf then
--        util.saveFile(path, '')
--    end
--    local newJson = editConfigJson(uri, path, validChanges)
--    if not newJson then
--        log.info('Can not edit config json')
--        return false
--    end
--    util.saveFile(path, newJson)
--    log.info('Apply changes to .luarc.json', inspect(validChanges))
--    removeAppliedChanges(finalChanges, validChanges)
--    return true
--end
--
--local function tryModifyClient(uri, finalChanges)
--    if #finalChanges == 0 then
--        return false
--    end
--    log.info('tryModifyClient', uri, inspect(finalChanges))
--    if not m.getOption 'changeConfiguration' then
--        return false
--    end
--    local scp = scope.getScope(uri)
--    local scpChanges = {}
--    for _, change in ipairs(finalChanges) do
--        if  change.uri
--        and (scp:isChildUri(change.uri) or scp:isLinkedUri(change.uri)) then
--            scpChanges[#scpChanges+1] = change
--        end
--    end
--    if #scpChanges == 0 then
--        log.info('No changes in client scope')
--        return false
--    end
--    proto.notify('$/command', {
--        command   = 'lua.config',
--        data      = scpChanges,
--    })
--    log.info('Apply client changes', uri, inspect(scpChanges))
--    removeAppliedChanges(finalChanges, scpChanges)
--    return true
--end
--
-----@param finalChanges config.change[]
--local function tryModifyClientGlobal(finalChanges)
--    if #finalChanges == 0 then
--        return
--    end
--    log.info('tryModifyClientGlobal', inspect(finalChanges))
--    if not m.getOption 'changeConfiguration' then
--        log.info('Client does not support modifying config')
--        return
--    end
--    local changes = {}
--    for _, change in ipairs(finalChanges) do
--        if change['global'] then
--            changes[#changes+1] = change
--        end
--    end
--    if #changes == 0 then
--        log.info('No global changes')
--        return
--    end
--    proto.notify('$/command', {
--        command   = 'lua.config',
--        data      = changes,
--    })
--    log.info('Apply client global changes', inspect(changes))
--    removeAppliedChanges(finalChanges, changes)
--end
--
-----@param changes config.change[]
-----@return string
--local function buildMaunuallyMessage(changes)
--    local message = {}
--    for _, change in ipairs(changes) do
--        if change.action == 'add' then
--            message[#message+1] = '* ' .. lang.script('WINDOW_MANUAL_CONFIG_ADD', change.key, change.value)
--        elseif change.action == 'set' then
--            message[#message+1] = '* ' .. lang.script('WINDOW_MANUAL_CONFIG_SET', change.key, change.value)
--        elseif change.action == 'prop' then
--            message[#message+1] = '* ' .. lang.script('WINDOW_MANUAL_CONFIG_PROP', change.key, change.prop, change.value)
--        end
--    end
--    return table.concat(message, '\n')
-+function m.watchFiles(_path)
-+    error('filesystem watching is unavailable in the Pyxis LuaLS profile')
- end
+-    local lastClock = os.clock()
++    local lastClock = elapsed()
  
- ---@param changes config.change[]
- ---@param onlyMemory? boolean
--function m.setConfig(changes, onlyMemory)
--    local finalChanges = {}
--    for _, change in ipairs(changes) do
--        if     change.action == 'add' then
--            local suc = config.add(change.uri, change.key, change.value)
--            if suc then
--                finalChanges[#finalChanges+1] = change
--            end
--        elseif change.action == 'set' then
--            local suc = config.set(change.uri, change.key, change.value)
--            if suc then
--                finalChanges[#finalChanges+1] = change
--            end
--        elseif change.action == 'prop' then
--            local suc = config.prop(change.uri, change.key, change.prop, change.value)
--            if suc then
--                finalChanges[#finalChanges+1] = change
--            end
--        end
--    end
--    if onlyMemory then
--        return
--    end
--    if #finalChanges == 0 then
--        return
--    end
--    log.info('Modify config', inspect(finalChanges))
--    xpcall(function ()
--        local ws = require 'workspace'
--        tryModifyClientGlobal(finalChanges)
--        if #ws.folders == 0 then
--            tryModifySpecifiedConfig(nil, finalChanges)
--            tryModifyClient(nil, finalChanges)
--            if #finalChanges > 0 then
--                local manuallyModifyConfig = buildMaunuallyMessage(finalChanges)
--                m.showMessage('Warning', lang.script('CONFIG_MODIFY_FAIL_NO_WORKSPACE', manuallyModifyConfig))
--            end
--        else
--            for _, scp in ipairs(ws.folders) do
--                tryModifySpecifiedConfig(scp.uri, finalChanges)
--                tryModifyRC(scp.uri, finalChanges, false)
--                tryModifyClient(scp.uri, finalChanges)
--                tryModifyRC(scp.uri, finalChanges, true)
--            end
--            if #finalChanges > 0 then
--                m.showMessage('Warning', lang.script('CONFIG_MODIFY_FAIL', buildMaunuallyMessage(finalChanges)))
--                log.warn('Config modify fail', inspect(finalChanges))
--            end
--        end
--    end, log.error)
-+function m.setConfig(_changes, _onlyMemory)
-+    local message = 'Configuration writes are unavailable in the Pyxis LuaLS profile; edit JSON/JSONC settings explicitly.'
-+    log.warn(message)
-+    m.showMessage('Warning', message)
-+    return false, message
- end
+     ---@async
+     lclient():start(function (client)
+@@ -229,8 +230,8 @@ function doc.runCLI()
+         local globals = dirty_export.gatherGlobals()
  
- ---@alias textEditor {start: integer, finish: integer, text: string}
+         local docs = dirty_export.makeDocs(globals, function (i, max)
+-            if os.clock() - lastClock > 0.2 then
+-                lastClock = os.clock()
++            if elapsed() - lastClock > 0.2 then
++                lastClock = elapsed()
+                 local output = '\x0D'
+                     .. ('>'):rep(math.ceil(i / max * 20))
+                     .. ('='):rep(20 - math.ceil(i / max * 20))
+diff --git a/script/cli/init.lua b/script/cli/init.lua
+index 17e6f61..b00ad03 100644
+--- a/script/cli/init.lua
++++ b/script/cli/init.lua
+@@ -1,3 +1,4 @@
++assert(not CHECK and not CHECK_WORKER, 'LuaLS subprocess CLI modes are unavailable on Pyxis')
+ if _G['HELP'] then
+     require 'cli.help'
+     os.exit(0, true)
 diff --git a/script/config/config.lua b/script/config/config.lua
 index ae0cbfa..0872f9f 100644
 --- a/script/config/config.lua
@@ -640,85 +149,6 @@ index ae0cbfa..0872f9f 100644
      local scp = getScope(uri, key)
      local value = m.getRawTable(scp)[key]
      if value == nil then
-diff --git a/script/config/loader.lua b/script/config/loader.lua
-index 391424d..487ecea 100644
---- a/script/config/loader.lua
-+++ b/script/config/loader.lua
-@@ -5,6 +5,7 @@ local workspace = require 'workspace'
- local scope     = require 'workspace.scope'
- local inspect   = require 'inspect'
- local jsonc     = require 'jsonc'
-+local json      = require 'json'
- 
- local function errorMessage(msg)
-     proto.notify('window/showMessage', {
-@@ -19,6 +20,7 @@ local m = {}
- 
- ---@return table?
- function m.loadRCConfig(uri, filename)
-+    assert(filename == '.luarc.json' or filename == '.luarc.jsonc', 'unsupported LuaLS settings filename')
-     local scp  = scope.getScope(uri)
-     local path = workspace.getAbsolutePath(uri, filename)
-     if not path then
-@@ -31,8 +33,8 @@ function m.loadRCConfig(uri, filename)
-         return nil
-     end
-     local suc, res = pcall(jsonc.decode_jsonc, buf)
--    if not suc then
--        errorMessage(lang.script('CONFIG_LOAD_ERROR', res))
-+    if not suc or type(res) ~= 'table' or not json.isObject(res) then
-+        errorMessage('Invalid JSON/JSONC LuaLS configuration: ' .. path)
-         return scp:get('lastRCConfig')
-     end
-     ---@cast res table
-@@ -45,6 +47,10 @@ function m.loadLocalConfig(uri, filename)
-     if not filename then
-         return nil
-     end
-+    if not filename:match('%.jsonc?$') then
-+        errorMessage('Pyxis LuaLS configuration must be JSON or JSONC: ' .. filename)
-+        return nil
-+    end
-     local scp  = scope.getScope(uri)
-     local path = workspace.getAbsolutePath(uri, filename)
-     if not path then
-@@ -59,29 +65,14 @@ function m.loadLocalConfig(uri, filename)
-         scp:set('lastLocalType', nil)
-         return nil
-     end
--    local firstChar = buf:match '%S'
--    if firstChar == '{' then
--        local suc, res = pcall(jsonc.decode_jsonc, buf)
--        if not suc then
--            errorMessage(lang.script('CONFIG_LOAD_ERROR', res))
--            return scp:get('lastLocalConfig')
--        end
--        ---@cast res table
--        scp:set('lastLocalConfig', res)
--        scp:set('lastLocalType', 'json')
--        return res
--    else
--        local suc, res = pcall(function ()
--            return assert(load(buf, '@' .. path, 't'))()
--        end)
--        if not suc then
--            errorMessage(lang.script('CONFIG_LOAD_ERROR', res))
--            scp:set('lastLocalConfig', res)
--        end
--        scp:set('lastLocalConfig', res)
--        scp:set('lastLocalType', 'lua')
--        return res
-+    local suc, res = pcall(jsonc.decode_jsonc, buf)
-+    if not suc or type(res) ~= 'table' or not json.isObject(res) then
-+        errorMessage('Invalid JSON/JSONC LuaLS configuration: ' .. path)
-+        return scp:get('lastLocalConfig')
-     end
-+    scp:set('lastLocalConfig', res)
-+    scp:set('lastLocalType', 'json')
-+    return res
- end
- 
- ---@async
 diff --git a/script/core/code-action.lua b/script/core/code-action.lua
 index a453c98..8b0250e 100644
 --- a/script/core/code-action.lua
@@ -787,38 +217,6 @@ index a453c98..8b0250e 100644
      end
      disableDiagnostic(uri, diag.code, start, results)
  end
-diff --git a/script/core/command/autoRequire.lua b/script/core/command/autoRequire.lua
-index afdfb23..fa7979d 100644
---- a/script/core/command/autoRequire.lua
-+++ b/script/core/command/autoRequire.lua
-@@ -78,9 +78,6 @@ local function askAutoRequire(uri, visiblePaths)
-             selects[#selects+1] = select
-         end
-     end
--    local disable = lang.script.COMPLETION_DISABLE_AUTO_REQUIRE
--    selects[#selects+1] = disable
--
-     local result = client.awaitRequestMessage('Info'
-         , lang.script.COMPLETION_ASK_AUTO_REQUIRE
-         , selects
-@@ -88,17 +85,6 @@ local function askAutoRequire(uri, visiblePaths)
-     if not result then
-         return
-     end
--    if result == disable then
--        client.setConfig {
--            {
--                key    = 'Lua.completion.autoRequire',
--                action = 'set',
--                value  = false,
--                uri    = uri,
--            }
--        }
--        return
--    end
-     return nameMap[result]
- end
- 
 diff --git a/script/core/diagnostics/init.lua b/script/core/diagnostics/init.lua
 index e31a19f..e5c35dc 100644
 --- a/script/core/diagnostics/init.lua
@@ -907,10 +305,10 @@ index e31a19f..e5c35dc 100644
          end
          if checked then
 diff --git a/script/file-uri.lua b/script/file-uri.lua
-index 4c56490..0c2c7b6 100644
+index 4c56490..a31ecce 100644
 --- a/script/file-uri.lua
 +++ b/script/file-uri.lua
-@@ -1,117 +1,54 @@
+@@ -1,117 +1,51 @@
 -local platform = require 'bee.platform'
 +local profile = require 'pyxis-profile'
  
@@ -932,11 +330,9 @@ index 4c56490..0c2c7b6 100644
 +end
 +
 +local function unescape(text)
-+    assert(not text:gsub('%%%x%x', ''):find('%', 1, true), 'malformed URI escape')
 +    local value = text:gsub('%%(%x%x)', function (n)
          return string.char(tonumber(n, 16))
      end)
-+    assert(not value:find('%z'), 'NUL in file URI')
 +    return value
  end
  
@@ -1023,7 +419,6 @@ index 4c56490..0c2c7b6 100644
 +    local root, rest = path:match('^/([^/]+)/?(.*)$')
 +    assert(root, 'Pyxis file URI has no root: ' .. uri)
 +    root, rest = unescape(root), unescape(rest)
-+    assert(root:match('^[%w._+-]+$') and root ~= '.' and root ~= '..', 'invalid URI root')
 +    return profile.normalizePath(root .. '://' .. rest)
  end
  
@@ -1057,7 +452,7 @@ index 4c56490..0c2c7b6 100644
  end
  
 diff --git a/script/files.lua b/script/files.lua
-index e2535c4..e3a841e 100644
+index e2535c4..00feaf2 100644
 --- a/script/files.lua
 +++ b/script/files.lua
 @@ -1,3 +1,4 @@
@@ -1065,25 +460,15 @@ index e2535c4..e3a841e 100644
  local platform = require 'bee.platform'
  local fs       = require 'bee.filesystem'
  local sys      = require 'bee.sys'
-@@ -12,9 +13,6 @@ local smerger  = require 'string-merger'
- local progress = require "progress"
- local encoder  = require 'encoder'
+@@ -14,7 +15,6 @@ local encoder  = require 'encoder'
  local scope    = require 'workspace.scope'
--local lazy     = require 'lazytable'
--local cacher   = require 'lazy-cacher'
+ local lazy     = require 'lazytable'
+ local cacher   = require 'lazy-cacher'
 -local sp       = require 'bee.subprocess'
  local pub      = require 'pub'
  
  ---@class file
-@@ -34,7 +32,6 @@ local pub      = require 'pub'
- ---@field words?        table
- 
- ---@class files
-----@field lazyCache?   lazy-cacher
- local m = {}
- 
- m.watchList      = {}
-@@ -232,7 +229,7 @@ function m.setText(uri, text, isTrust, callback)
+@@ -232,7 +232,7 @@ function m.setText(uri, text, isTrust, callback)
      if file.originText == text then
          return
      end
@@ -1092,16 +477,16 @@ index e2535c4..e3a841e 100644
      local newText = pluginOnSetText(file, text)
      m.removeState(file)
      file.text            = newText
-@@ -255,7 +252,7 @@ function m.setText(uri, text, isTrust, callback)
+@@ -255,7 +255,7 @@ function m.setText(uri, text, isTrust, callback)
              util.saveFile(LOGPATH .. '/diffed.lua', newText)
          end
      end
 -    log.trace('Set text:', uri, 'takes', os.clock() - clock, 'sec.')
-+    log.trace('Set text:', uri, 'elapsed', elapsed() - clock, 'sec.')
++    log.trace('Set text:', uri, 'takes', elapsed() - clock, 'sec.')
  
      --if instance or TEST then
      --else
-@@ -401,8 +398,7 @@ function m.getChildFiles(uri)
+@@ -401,8 +401,7 @@ function m.getChildFiles(uri)
      local uris = m.getAllUris(uri)
      for _, curi in ipairs(uris) do
          if  #curi > #uri
@@ -1111,25 +496,19 @@ index e2535c4..e3a841e 100644
              results[#results+1] = curi
          end
      end
-@@ -498,17 +494,6 @@ function m.eachDll()
-     return pairs(map)
- end
+@@ -500,10 +499,7 @@ end
  
--function m.getLazyCache()
--    if not m.lazyCache then
+ function m.getLazyCache()
+     if not m.lazyCache then
 -        local cachePath = string.format('%s/cache/%d'
 -            , LOGPATH
 -            , sp.get_id()
 -        )
--        m.lazyCache = cacher(cachePath, log.error)
--    end
--    return m.lazyCache
--end
--
- ---@param state parser.state
- ---@param file file
- function m.compileStateThen(state, file)
-@@ -521,23 +506,13 @@ function m.compileStateThen(state, file)
++        local cachePath = LUALS_STATE_ROOT .. '/cache'
+         m.lazyCache = cacher(cachePath, log.error)
+     end
+     return m.lazyCache
+@@ -521,9 +517,9 @@ function m.compileStateThen(state, file)
      state.originLines = file.originLines
      state.originText  = file.originText
  
@@ -1139,24 +518,21 @@ index e2535c4..e3a841e 100644
 -    local passed = os.clock() - clock
 +    local passed = elapsed() - clock
      if passed > 0.1 then
--        log.warn(('Parse LuaDoc of [%s] takes [%.3f] sec, size [%.3f] kb.'):format(file.uri, passed, #file.text / 1000))
-+        log.warn(('Parse LuaDoc of [%s] takes [%.3f] elapsed sec, size [%.3f] kb.'):format(file.uri, passed, #file.text / 1000))
+         log.warn(('Parse LuaDoc of [%s] takes [%.3f] sec, size [%.3f] kb.'):format(file.uri, passed, #file.text / 1000))
      end
- 
--    if LAZY and not file.trusted then
--        local cache = m.getLazyCache()
--        local id = ('%d'):format(file.id)
+@@ -531,9 +527,9 @@ function m.compileStateThen(state, file)
+     if LAZY and not file.trusted then
+         local cache = m.getLazyCache()
+         local id = ('%d'):format(file.id)
 -        clock = os.clock()
--        state = lazy.build(state, cache:writterAndReader(id)):entry()
++        clock = elapsed()
+         state = lazy.build(state, cache:writterAndReader(id)):entry()
 -        passed = os.clock() - clock
--        if passed > 0.1 then
--            log.warn(('Convert lazy-table for [%s] takes [%.3f] sec, size [%.3f] kb.'):format(file.uri, passed, #file.text / 1000))
--        end
--    end
- 
-     file.compileCount = file.compileCount + 1
-     if file.compileCount >= 3 then
-@@ -667,15 +642,15 @@ function m.compileState(uri)
++        passed = elapsed() - clock
+         if passed > 0.1 then
+             log.warn(('Convert lazy-table for [%s] takes [%.3f] sec, size [%.3f] kb.'):format(file.uri, passed, #file.text / 1000))
+         end
+@@ -667,15 +663,15 @@ function m.compileState(uri)
      local prog <close> = progress.create(uri, lang.script.WINDOW_COMPILING, 0.5)
      prog:setMessage(ws.getRelativePath(uri))
      log.trace('Compile State:', uri)
@@ -1175,72 +551,7 @@ index e2535c4..e3a841e 100644
      end
  
      if not state then
-@@ -880,24 +855,9 @@ function m.countStates()
-     return n
- end
- 
--local addonsPath
--
-----Updates the variable 'addonsPath' with the user's configuration.
-----The path is only updated if 'addonsPath' is not set and the provided path is a valid string.
-----It first expands the input path and then verifies its existence via fs.exists.
-----@param path string
- function m.updateAddonsPath(path)
--    if addonsPath then
--        return
--    end
--    if not (path and type(path) == "string") then
--        return
--    end
--
--    path = util.expandPath(fs.path(path):string())
--    if fs.exists(fs.path(path)) then
--        addonsPath = path
--        log.info('Updating addon repository path to: ', path)
-+    if path and path ~= '' then
-+        error('LuaLS addon repositories are unavailable in the Pyxis profile')
-     end
- end
- 
-@@ -906,35 +866,8 @@ end
- ---@return string resolvedPath
- function m.resolvePathPlaceholders(path)
-     path = path:gsub("%$%{(.-)%}", function(key)
--        if key == "3rd" then
--            return (ROOT / "meta" / "3rd"):string()
--        elseif key == "addons" then
--            if addonsPath then
--                return addonsPath
--            end
--            local client = require("client")
--            local storagePath = client.getOption("storagePath")
--            if storagePath then
--                addonsPath = (fs.path(storagePath) / "addonManager" / "addons"):string()
--            else
--                -- Common path across OSes
--                local dataPath = "User/globalStorage/sumneko.lua/addonManager/addons"
--
--                if platform.os == "windows" then
--                    addonsPath = "$APPDATA/Code/" .. dataPath
--                elseif platform.os == "linux" then
--                    local serverPath = util.expandPath(fs.path("~/.vscode-server/data"):string())
--                    if fs.exists(fs.path(serverPath)) then
--                        -- addons are installed via SSH remote
--                        addonsPath = serverPath .."/" .. dataPath
--                    else
--                        addonsPath = "~/.config/Code/" .. dataPath
--                    end
--                elseif platform.os == "macos" then
--                    addonsPath = "~/Library/Application Support/Code/" .. dataPath
--                end
--            end
--            return addonsPath
-+        if key == "3rd" or key == "addons" then
-+            error('LuaLS addon path placeholders are unavailable in the Pyxis profile')
-         elseif key:sub(1, 4) == "env:" then
-             local env = os.getenv(key:sub(5))
-             return env
-@@ -959,27 +892,7 @@ end
+@@ -959,27 +955,7 @@ end
  ---@return string
  function m.normalize(path)
      path = m.resolvePathPlaceholders(path)
@@ -1428,7 +739,7 @@ index 7362e41..a7c973d 100644
      return path
  end
 diff --git a/script/library.lua b/script/library.lua
-index 6a38c57..02d3dc6 100644
+index 6a38c57..de987a1 100644
 --- a/script/library.lua
 +++ b/script/library.lua
 @@ -184,7 +184,6 @@ local function compileSingleMetaDoc(uri, script, metaLang, status)
@@ -1439,18 +750,9 @@ index 6a38c57..02d3dc6 100644
  
      local suc = xpcall(function ()
          assert(load(middleScript, middleScript, 't', env))()
-@@ -219,14 +218,12 @@ local function initBuiltIn(uri)
-     local version  = config.get(uri, 'Lua.runtime.version')
-     local encoding = config.get(uri, 'Lua.runtime.fileEncoding')
-     ---@type fs.path
--    local metaPath = fs.path(METAPATH) / config.get(uri, 'Lua.runtime.meta'):gsub('%$%{(.-)%}', {
--        version  = version,
--        language = langID,
--        encoding = encoding,
--    })
-+    local component = require('pyxis-profile').stateComponent
-+    local metaName = 'v-' .. component(version) .. '_l-' .. component(langID) .. '_e-' .. component(encoding)
-+    local metaPath = fs.path(METAPATH) / metaName
+@@ -225,8 +224,8 @@ local function initBuiltIn(uri)
+         encoding = encoding,
+     })
  
 -    local metaLang = loadMetaLocale('en-US')
 -    if langID ~= 'en-US' then
@@ -1459,591 +761,33 @@ index 6a38c57..02d3dc6 100644
          loadMetaLocale(langID, metaLang)
      end
  
-@@ -280,387 +277,11 @@ local function initBuiltIn(uri)
-     end
- end
- 
-----@param libraryDir fs.path
-----@return table?
--local function loadSingle3rdConfigFromJson(libraryDir)
--    local path = libraryDir / 'config.json'
--    local configText = fsu.loadFile(path)
--    if not configText then
--        return nil
--    end
--
--    local suc, cfg = xpcall(jsonc.decode_jsonc, function (err)
--        log.error('Decode config.json failed at:', libraryDir:string(), err)
--    end, configText)
--    if not suc then
--        return nil
--    end
--
--    if type(cfg) ~= 'table' then
--        log.error('config.json must be an object:', libraryDir:string())
--        return nil
--    end
--
--    return cfg
--end
--
-----@param libraryDir fs.path
-----@return table?
--local function loadSingle3rdConfigFromLua(libraryDir)
--    local path = libraryDir / 'config.lua'
--    local configText = fsu.loadFile(path)
--    if not configText then
--        return nil
--    end
--
--    local env = setmetatable({}, { __index = _G })
--    local f, err = load(configText, '@' .. libraryDir:string(), 't', env)
--    if not f then
--        log.error('Load config.lua failed at:', libraryDir:string(), err)
--        return nil
--    end
--
--    local suc = xpcall(f, function (err)
--        log.error('Load config.lua failed at:', libraryDir:string(), err)
--    end)
--
--    if not suc then
--        return nil
--    end
--
--    local cfg = {}
--    for k, v in pairs(env) do
--        cfg[k] = v
--    end
--
--    return cfg
--end
--
-----@param libraryDir fs.path
--local function loadSingle3rdConfig(libraryDir)
--    local cfg = loadSingle3rdConfigFromJson(libraryDir)
--    if not cfg then
--        cfg = loadSingle3rdConfigFromLua(libraryDir)
--        if not cfg then
--            return
--        end
--        local jsonbuf = jsonb.beautify(cfg)
--        client.requestMessage('Info', lang.script.WINDOW_CONFIG_LUA_DEPRECATED, {
--            lang.script.WINDOW_CONVERT_CONFIG_LUA,
--        }, function (_action, index)
--            if index == 1 and jsonbuf then
--                fsu.saveFile(libraryDir / 'config.json', jsonbuf)
--                fsu.fileRemove(libraryDir / 'config.lua')
--            end
--        end)
--    end
--
--    cfg.path = libraryDir:filename():string()
--    cfg.name = cfg.name or cfg.path
--
--    if fs.exists(libraryDir / 'plugin.lua') then
--        cfg.plugin = true
--    end
--
--    if cfg.words then
--        for i, word in ipairs(cfg.words) do
--            cfg.words[i] = '([%w_]?)' .. word .. '([%w_]?)'
--        end
--    end
--    if cfg.files then
--        for i, fname in ipairs(cfg.files) do
--            local filename = fname
--            if plat.os == 'windows' then
--                filename = filename:gsub('/', '\\')
--            else
--                filename = filename:gsub('\\', '/')
--            end
--            cfg.files[i] = '([%w_]?)' .. filename .. '([%w_]?)'
--        end
--    end
--
--    return cfg
--end
--
--local innerThirdDir = ROOT / 'meta' / '3rd'
--
--local function load3rdConfigInDir(dir, configs, inner)
--    if not fs.is_directory(dir) then
--        return
--    end
--    for libraryDir in fs.pairs(dir) do
--        local suc, res = xpcall(loadSingle3rdConfig, log.error, libraryDir)
--        if suc and res then
--            if inner then
--                res.dirname = ('${3rd}/%s'):format(res.path)
--            else
--                res.dirname = ('%s/%s'):format(dir:string(), res.path)
--            end
--            configs[#configs+1] = res
--        end
--    end
--end
--
--local function load3rdConfig(uri)
--    local scp = scope.getScope(uri)
--    local configs = scp:get 'thirdConfigsCache'
--    if configs then
--        return configs
--    end
--    configs = {}
--    scp:set('thirdConfigsCache', configs)
--    load3rdConfigInDir(innerThirdDir, configs, true)
--    local thirdDirs = config.get(uri, 'Lua.workspace.userThirdParty')
--    for _, thirdDir in ipairs(thirdDirs) do
--        load3rdConfigInDir(fs.path(thirdDir), configs)
--    end
--    return configs
--end
--
--local function apply3rd(uri, cfg, onlyMemory)
--    local changes = {}
--    if cfg.settings then
--        for key, value in pairs(cfg.settings) do
--            if type(value) == 'table' then
--                if #value == 0 then
--                    for k, v in pairs(value) do
--                        changes[#changes+1] = {
--                            key    = key,
--                            action = 'prop',
--                            prop   = k,
--                            value  = v,
--                            uri    = uri,
--                        }
--                    end
--                else
--                    for _, v in ipairs(value) do
--                        changes[#changes+1] = {
--                            key    = key,
--                            action = 'add',
--                            value  = v,
--                            uri    = uri,
--                        }
--                    end
--                end
--            else
--                changes[#changes+1] = {
--                    key    = key,
--                    action = 'set',
--                    value  = value,
--                    uri    = uri,
--                }
--            end
--        end
--    end
--
--    if cfg.plugin then
--        changes[#changes+1] = {
--            key    = 'Lua.runtime.plugin',
--            action = 'set',
--            value  = ('%s/plugin.lua'):format(cfg.dirname),
--            uri    = uri,
--        }
--    end
--
--    changes[#changes+1] = {
--        key    = 'Lua.workspace.library',
--        action = 'add',
--        value  = ('%s/library'):format(cfg.dirname),
--        uri    = uri,
--    }
--
--    client.setConfig(changes, onlyMemory)
--end
--
--local hasAsked = {}
-----@async
--local function askFor3rd(uri, cfg, checkThirdParty)
--    if hasAsked[cfg.name] then
--        return nil
--    end
--
--    if checkThirdParty == 'Apply' then
--        apply3rd(uri, cfg, false)
--    elseif checkThirdParty == 'ApplyInMemory' then
--        apply3rd(uri, cfg, true)
--    elseif checkThirdParty == 'Disable' then
--        return nil
--    elseif checkThirdParty == 'Ask' then
--        hasAsked[cfg.name] = true
--        local applyAndSetConfig = lang.script.WINDOW_APPLY_WHIT_SETTING
--        local applyInMemory = lang.script.WINDOW_APPLY_WHITOUT_SETTING
--        local dontShowAgain   = lang.script.WINDOW_DONT_SHOW_AGAIN
--        local result = client.awaitRequestMessage('Info'
--            , lang.script('WINDOW_ASK_APPLY_LIBRARY', cfg.name)
--            , {applyAndSetConfig, applyInMemory, dontShowAgain}
--        )
--        if not result then
--            -- "If none got selected"
--            -- See: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#window_showMessageRequest
--            return nil
--        end
--        if result == applyAndSetConfig then
--            apply3rd(uri, cfg, false)
--        elseif result == applyInMemory then
--            apply3rd(uri, cfg, true)
--        else
--            client.setConfig({
--                {
--                    key    = 'Lua.workspace.checkThirdParty',
--                    action = 'set',
--                    value  = 'Disable',
--                    uri    = uri,
--                },
--            }, false)
--        end
--    end
--end
--
-----@param a string
-----@param b string
-----@return boolean
--local function wholeMatch(a, b)
--    local captures = {
--        a:match(b),
--    }
--    return captures[1] == '' and captures[#captures] == ''
--end
--
--local function check3rdByWords(uri, configs, checkThirdParty)
--    if not files.isLua(uri) then
--        return
--    end
--    local id = 'check3rdByWords:' .. uri
--    await.close(id)
--    await.call(function () ---@async
--        await.sleep(0.1)
--        local text = files.getText(uri)
--        if not text then
--            return
--        end
--        for _, cfg in ipairs(configs) do
--            if not cfg.words then
--                goto CONTINUE
--            end
--            if hasAsked[cfg.name] then
--                goto CONTINUE
--            end
--            local library = ('%s/library'):format(cfg.dirname)
--            if util.arrayHas(config.get(uri, 'Lua.workspace.library'), library) then
--                goto CONTINUE
--            end
--            for _, word in ipairs(cfg.words) do
--                await.delay()
--                if wholeMatch(text, word) then
--                    log.info('Found 3rd library by word: ', word, uri, library, inspect(config.get(uri, 'Lua.workspace.library')))
--                    ---@async
--                    await.call(function ()
--                        askFor3rd(uri, cfg, checkThirdParty)
--                    end)
--                    return
--                end
--            end
--            ::CONTINUE::
--        end
--    end, id)
--end
--
--local function check3rdByFileName(uri, configs, checkThirdParty)
--    local path = ws.getRelativePath(uri)
--    if not path then
--        return
--    end
--    local id = 'check3rdByFileName:' .. uri
--    await.close(id)
--    await.call(function () ---@async
--        await.sleep(0.1)
--        for _, cfg in ipairs(configs) do
--            if not cfg.files then
--                goto CONTINUE
--            end
--            if hasAsked[cfg.name] then
--                goto CONTINUE
--            end
--            local library = ('%s/library'):format(cfg.dirname)
--            if util.arrayHas(config.get(uri, 'Lua.workspace.library'), library) then
--                goto CONTINUE
--            end
--            for _, filename in ipairs(cfg.files) do
--                await.delay()
--                if wholeMatch(path, filename) then
--                    log.info('Found 3rd library by filename: ', filename, uri, library, inspect(config.get(uri, 'Lua.workspace.library')))
--                    ---@async
--                    await.call(function ()
--                        askFor3rd(uri, cfg, checkThirdParty)
--                    end)
--                    return
--                end
--            end
--            ::CONTINUE::
--        end
--    end, id)
--end
--
-----@async
--local function check3rd(uri)
--    if ws.isIgnored(uri) then
--        return
--    end
--    local checkThirdParty = config.get(uri, 'Lua.workspace.checkThirdParty')
--    -- Backwards compatability: `checkThirdParty` used to be a boolean.
--    if not checkThirdParty or checkThirdParty == 'Disable' then
--        return
--    elseif checkThirdParty == true then
--        checkThirdParty = 'Ask'
--    end
--    local scp = scope.getScope(uri)
--    if not scp:get 'canCheckThirdParty' then
--        return
--    end
--    local thirdConfigs = load3rdConfig(uri) or false
--    if not thirdConfigs then
--        return
--    end
--    check3rdByWords(uri, thirdConfigs, checkThirdParty)
--    check3rdByFileName(uri, thirdConfigs, checkThirdParty)
--end
--
--local function check3rdOfWorkspace(suri)
--    local scp = scope.getScope(suri)
--    scp:set('thirdConfigsCache', nil)
--    scp:set('canCheckThirdParty', true)
--    local id = 'check3rdOfWorkspace:' .. scp:getName()
--    await.close(id)
--    ---@async
--    await.call(function ()
--        ws.awaitReady(suri)
--        for uri in files.eachFile(suri) do
--            check3rd(uri)
--        end
--        for uri in files.eachDll() do
--            check3rd(uri)
--        end
--    end, id)
--end
--
--config.watch(function (uri, key, _value, _oldValue)
--    if key:find '^Lua.runtime' then
-+-- External annotation packs, their Lua configuration and migrations are excluded.
-+config.watch(function (uri, key)
-+    if key:find('^Lua.runtime') then
-         initBuiltIn(uri)
-     end
--    if key == 'Lua.workspace.checkThirdParty'
--    or key == 'Lua.workspace.userThirdParty'
--    or key == '' then
--        check3rdOfWorkspace(uri)
--    end
--end)
--
-----@async
--files.watch(function (ev, uri)
--    if ev == 'update'
--    or ev == 'dll' then
--        await.sleep(1)
--        check3rd(uri)
--    end
- end)
- 
- ws.watch(function (ev, uri)
 diff --git a/script/plugin.lua b/script/plugin.lua
-index 3dc77b2..80be9f6 100644
+index 3dc77b2..5f68cf3 100644
 --- a/script/plugin.lua
 +++ b/script/plugin.lua
-@@ -1,176 +1,9 @@
--local config = require 'config'
--local util   = require 'utility'
--local client = require 'client'
--local lang   = require 'language'
--local await  = require 'await'
--local scope  = require 'workspace.scope'
--local ws     = require 'workspace'
--local fs = require 'bee.filesystem'
--
-----@class plugin
-+-- Executable project plugins are excluded from the Pyxis stdio profile.
- local m = {}
--
--function m.showError(scp, err)
--    if m._hasShowedError then
--        return
--    end
--    m._hasShowedError = true
--    client.showMessage('Error', lang.script('PLUGIN_RUNTIME_ERROR', scp:get('pluginPath'), err))
-+function m.dispatch(_event, _uri, ...)
-+    return false, 'LuaLS project plugins are unavailable in the Pyxis profile'
- end
--
-----@alias plugin.event 'OnSetText' | 'OnTransformAst' | 'ResolveRequire'
--
-----@param event plugin.event
--function m.dispatch(event, uri, ...)
--    local scp = scope.getScope(uri)
--    local interfaces = scp:get('pluginInterfaces')
--    if not interfaces then
--        return false
--    end
--    local failed = 0
--    local res1, res2
--    for _, interface in ipairs(interfaces) do
--        local method = interface[event]
--        if type(method) ~= 'function' then
--            return false
--        end
+@@ -1,3 +1,4 @@
++local elapsed = require 'pyxis-profile'.elapsed
+ local config = require 'config'
+ local util   = require 'utility'
+ local client = require 'client'
+@@ -34,14 +35,14 @@ function m.dispatch(event, uri, ...)
+         if type(method) ~= 'function' then
+             return false
+         end
 -        local clock = os.clock()
--        tracy.ZoneBeginN('plugin dispatch:' .. event)
--        local suc
--        suc, res1, res2 = xpcall(method, log.error, uri, ...)
--        tracy.ZoneEnd()
++        local clock = elapsed()
+         tracy.ZoneBeginN('plugin dispatch:' .. event)
+         local suc
+         suc, res1, res2 = xpcall(method, log.error, uri, ...)
+         tracy.ZoneEnd()
 -        local passed = os.clock() - clock
--        if passed > 0.1 then
++        local passed = elapsed() - clock
+         if passed > 0.1 then
 -            log.warn(('Call plugin event [%s] takes [%.3f] sec'):format(event, passed))
--        end
--        if not suc then
--            m.showError(scp, res1)
--            failed = failed + 1
--        end
--    end
--    return failed == 0, res1, res2
-+function m.getPluginInterfaces(_uri)
-+    return nil
- end
--
--function m.getPluginInterfaces(uri)
--    local scp = scope.getScope(uri)
--    local interfaces = scp:get('pluginInterfaces')
--    if not interfaces then
--        return
--    end
--    return interfaces
--end
--
-----@async
-----@param scp scope
--local function checkTrustLoad(scp)
--	if TRUST_ALL_PLUGINS then
--		return true
--	end
--    local pluginPath = scp:get('pluginPath')
--    local filePath = LOGPATH .. '/trusted'
--    local trusted = util.loadFile(filePath)
--    local lines = {}
--    if trusted then
--        for line in util.eachLine(trusted) do
--            lines[#lines+1] = line
--            if line == pluginPath then
--                return true
--            end
--        end
--    end
--    local _, index = client.awaitRequestMessage('Warning', lang.script('PLUGIN_TRUST_LOAD', pluginPath), {
--        lang.script('PLUGIN_TRUST_YES'),
--        lang.script('PLUGIN_TRUST_NO'),
--    })
--    if not index then
--        return false
--    end
--    lines[#lines+1] = pluginPath
--    util.saveFile(filePath, table.concat(lines, '\n'))
--    return true
--end
--
-----@param uri uri
--local function initPlugin(uri)
--    await.call(function () ---@async
--        local scp = scope.getScope(uri)
--        local interfaces = {}
--        scp:set('pluginInterfaces', interfaces)
--
--        if not scp.uri then
--            return
--        end
--        ---@type string[]|string
--        local pluginConfigPaths = config.get(scp.uri, 'Lua.runtime.plugin')
--        if not pluginConfigPaths then
--            return
--        end
--        local args = config.get(scp.uri, 'Lua.runtime.pluginArgs')
--        if args == nil then args = {} end
--        if type(pluginConfigPaths) == 'string' then
--            pluginConfigPaths = { pluginConfigPaths }
--        end
--        for _, pluginConfigPath in ipairs(pluginConfigPaths) do
--            local myArgs = args
--            if args and not args[1] then
--                for k, v in pairs(args) do
--                    if pluginConfigPath:find(k, 1, true) then
--                        myArgs = v
--                        break
--                    end
--                end
--            end
--
--            local pluginPath = ws.getAbsolutePath(scp.uri, pluginConfigPath)
--            log.info('plugin path:', pluginPath)
--            if not pluginPath then
--                return
--            end
--
--            --Adding the plugins path to package.path allows for requires in files
--            --to find files relative to itself.
--            local oldPath = package.path
--            local path = fs.path(pluginPath):parent_path() / '?.lua'
--            if not package.path:find(path:string(), 1, true) then
--                package.path = package.path .. ';' .. path:string()
--            end
--
--            local pluginLua = util.loadFile(pluginPath)
--            if not pluginLua then
--                log.warn('plugin not found:', pluginPath)
--                package.path = oldPath
--                return
--            end
--
--            scp:set('pluginPath', pluginPath)
--
--            local interface = setmetatable({}, { __index = _ENV })
--            local f, err = load(pluginLua, '@' .. pluginPath, "t", interface)
--            if not f then
--                log.error(err)
--                m.showError(scp, err)
--                return
--            end
--            if not client.getOption('trustByClient') and not checkTrustLoad(scp) then
--                return
--            end
--            local suc, err = xpcall(f, log.error, f, uri, myArgs)
--            if not suc then
--                m.showError(scp, err)
--                return
--            end
--            interfaces[#interfaces+1] = interface
--        end
--
--        ws.resetFiles(scp)
--    end)
--end
--
--ws.watch(function (ev, uri)
--    if ev == 'startReload' then
--        require 'plugins'
--        initPlugin(uri)
--    end
--end)
--
- return m
-diff --git a/script/plugins/init.lua b/script/plugins/init.lua
-index 28f902e..2228d43 100644
---- a/script/plugins/init.lua
-+++ b/script/plugins/init.lua
-@@ -1 +1 @@
--require 'plugins.ffi'
-\ No newline at end of file
-+error('LuaLS executable plugins are unavailable in the Pyxis profile')
++            log.warn(('Call plugin event [%s] takes [%.3f] elapsed sec'):format(event, passed))
+         end
+         if not suc then
+             m.showError(scp, res1)
 diff --git a/script/provider/capability.lua b/script/provider/capability.lua
 index b33f17f..a8042fe 100644
 --- a/script/provider/capability.lua
@@ -2057,7 +801,7 @@ index b33f17f..a8042fe 100644
  require 'provider.code-lens'
  
 diff --git a/script/provider/diagnostic.lua b/script/provider/diagnostic.lua
-index 9ca5d9b..f35f78f 100644
+index 9ca5d9b..9fddf56 100644
 --- a/script/provider/diagnostic.lua
 +++ b/script/provider/diagnostic.lua
 @@ -1,3 +1,4 @@
@@ -2073,62 +817,7 @@ index 9ca5d9b..f35f78f 100644
  local vm        = require 'vm.vm'
  
  ---@class diagnosticProvider
-@@ -464,51 +464,12 @@ function m.refresh(uri)
- end
- 
- ---@async
--local function askForDisable(uri)
-+local function askForDisable(_uri)
-     if m.dontAskedForDisable then
-         return
-     end
--    local delay = 30
--    local delayTitle = lang.script('WINDOW_DELAY_WS_DIAGNOSTIC', delay)
--    local item = proto.awaitRequest('window/showMessageRequest', {
--        type    = define.MessageType.Info,
--        message = lang.script.WINDOW_SETTING_WS_DIAGNOSTIC,
--        actions = {
--            {
--                title = lang.script.WINDOW_DONT_SHOW_AGAIN,
--            },
--            {
--                title = delayTitle,
--            },
--            {
--                title = lang.script.WINDOW_DISABLE_DIAGNOSTIC,
--            },
--        }
--    })
--    if not item then
--        return
--    end
--    if     item.title == lang.script.WINDOW_DONT_SHOW_AGAIN then
--        m.dontAskedForDisable = true
--    elseif item.title == delayTitle then
--        client.setConfig {
--            {
--                key    = 'Lua.diagnostics.workspaceDelay',
--                action = 'set',
--                value  = delay * 1000,
--                uri    = uri,
--            }
--        }
--    elseif item.title == lang.script.WINDOW_DISABLE_DIAGNOSTIC then
--        client.setConfig {
--            {
--                key    = 'Lua.diagnostics.workspaceDelay',
--                action = 'set',
--                value  = -1,
--                uri    = uri,
--            }
--        }
--    end
-+    m.dontAskedForDisable = true
-+    client.showMessage('Info', 'Workspace diagnostics are taking time. Edit Lua.diagnostics.workspaceDelay in JSON/JSONC settings to adjust them.')
- end
- 
- local function clearMemory(finished)
-@@ -537,7 +498,7 @@ function m.awaitDiagnosticsScope(suri, callback)
+@@ -537,7 +537,7 @@ function m.awaitDiagnosticsScope(suri, callback)
          m.scopeDiagCount = m.scopeDiagCount - 1
          clearMemory(finished)
      end)
@@ -2137,7 +826,7 @@ index 9ca5d9b..f35f78f 100644
      local bar <close> = progress.create(suri, lang.script.WORKSPACE_DIAGNOSTIC, 1)
      local cancelled
      bar:onCancel(function ()
-@@ -574,7 +535,7 @@ function m.awaitDiagnosticsScope(suri, callback)
+@@ -574,7 +574,7 @@ function m.awaitDiagnosticsScope(suri, callback)
          end
      end
      bar:remove()
@@ -2146,7 +835,7 @@ index 9ca5d9b..f35f78f 100644
      finished = true
  end
  
-@@ -715,13 +676,5 @@ config.watch(function (uri, key, value, oldValue)
+@@ -715,13 +715,5 @@ config.watch(function (uri, key, value, oldValue)
      end
  end)
  
@@ -2160,115 +849,8 @@ index 9ca5d9b..f35f78f 100644
 -end)
  
  return m
-diff --git a/script/provider/formatting.lua b/script/provider/formatting.lua
-index f8b4ef2..dae9d5f 100644
---- a/script/provider/formatting.lua
-+++ b/script/provider/formatting.lua
-@@ -1,101 +1 @@
--local suc, codeFormat = pcall(require, 'code_format')
--if not suc then
--    return
--end
--
--local ws          = require 'workspace'
--local furi        = require 'file-uri'
--local fs          = require 'bee.filesystem'
--local fw          = require 'filewatch'
--local util        = require 'utility'
--local config      = require 'config'
--
--local loadedUris = {}
--
--local updateType = {
--    Created = 1,
--    Changed = 2,
--    Deleted = 3,
--}
--
--fw.event(function(_ev, path)
--    if util.stringEndWith(path, '.editorconfig') then
--        for uri, fsPath in pairs(loadedUris) do
--            loadedUris[uri] = nil
--            if fsPath ~= true then
--                local status, err = codeFormat.update_config(updateType.Deleted, uri, fsPath:string())
--                if not status and err then
--                    log.error(err)
--                end
--            end
--        end
--    end
--end)
--
--
--local m = {}
--
--m.loadedDefaultConfig = false
--
-----@param uri uri
--function m.updateConfig(uri)
--    if not m.loadedDefaultConfig then
--        m.loadedDefaultConfig = true
--        codeFormat.set_default_config(config.get(uri, 'Lua.format.defaultConfig'))
--        m.updateNonStandardSymbols(config.get(nil, 'Lua.runtime.nonstandardSymbol'))
--    end
--
--    local currentUri = uri
--    while true do
--        currentUri = currentUri:match('^(.+)/[^/]*$')
--        if not currentUri or loadedUris[currentUri] then
--            return
--        end
--        loadedUris[currentUri] = true
--
--        local currentPath        = furi.decode(currentUri)
--        local editorConfigFSPath = fs.path(currentPath) / '.editorconfig'
--        if fs.exists(editorConfigFSPath) then
--            loadedUris[currentUri] = editorConfigFSPath
--            local status, err = codeFormat.update_config(updateType.Created, currentUri, editorConfigFSPath:string())
--            if not status and err then
--                log.error(err)
--            end
--        end
--
--        if not ws.rootUri then
--            return
--        end
--
--        for _, scp in ipairs(ws.folders) do
--            if scp.uri == currentUri then
--                return
--            end
--        end
--    end
--end
--
-----@param symbols? string[]
--function m.updateNonStandardSymbols(symbols)
--    if symbols == nil then
--        return
--    end
--
--    for _, symbol in ipairs(symbols) do
--        if symbol == "//" then
--            codeFormat.set_clike_comments_symbol()
--        end
--    end
--
--    codeFormat.set_nonstandard_symbol()
--end
--
--config.watch(function(_uri, key, value)
--    if  key == "Lua.format.defaultConfig" then
--        codeFormat.set_default_config(value)
--    elseif key == "Lua.runtime.nonstandardSymbol" then
--        m.updateNonStandardSymbols(value)
--    end
--end)
--
--return m
-+error('formatting is unavailable in the Pyxis LuaLS profile')
 diff --git a/script/provider/provider.lua b/script/provider/provider.lua
-index 7f0e63f..2696093 100644
+index 7f0e63f..07d0eab 100644
 --- a/script/provider/provider.lua
 +++ b/script/provider/provider.lua
 @@ -1,3 +1,4 @@
@@ -2284,22 +866,16 @@ index 7f0e63f..2696093 100644
  local json       = require 'json'
  local scope      = require 'workspace.scope'
  local furi       = require 'file-uri'
-@@ -31,14 +31,6 @@ m.attributes = {}
- ---@async
- function m.updateConfig(uri)
-     config.addNullSymbol(json.null)
--    local specified = cfgLoader.loadLocalConfig(uri, CONFIGPATH)
--    if specified then
--        log.info('Load config from specified', CONFIGPATH)
--        log.info(inspect(specified))
+@@ -35,8 +35,6 @@ function m.updateConfig(uri)
+     if specified then
+         log.info('Load config from specified', CONFIGPATH)
+         log.info(inspect(specified))
 -        -- watch directory
 -        filewatch.watch(workspace.getAbsolutePath(uri, CONFIGPATH):gsub('[^/\\]+$', ''), false)
--        config.update(scope.override, specified)
--    end
+         config.update(scope.override, specified)
+     end
  
-     for _, folder in ipairs(scope.folders) do
-         local clientConfig = nil
-@@ -68,8 +60,20 @@ function m.updateConfig(uri)
+@@ -68,8 +66,20 @@ function m.updateConfig(uri)
      end
  end
  
@@ -2320,7 +896,7 @@ index 7f0e63f..2696093 100644
          m.attributes[method] = attrs
          if attrs.preview and not PREVIEW then
              return
-@@ -81,33 +85,6 @@ function m.register(method)
+@@ -81,33 +91,6 @@ function m.register(method)
      end
  end
  
@@ -2354,17 +930,7 @@ index 7f0e63f..2696093 100644
  m.register 'initialize' {
      function(params)
          client.init(params)
-@@ -180,9 +157,6 @@ m.register 'shutdown' {
- 
- m.register 'workspace/didChangeConfiguration' {
-     function () ---@async
--        if CONFIGPATH then
--            return
--        end
-         m.updateConfig()
-     end
- }
-@@ -334,6 +308,10 @@ m.register 'textDocument/didSave' {
+@@ -334,6 +317,10 @@ m.register 'textDocument/didSave' {
          local doc    = params.textDocument
          local uri    = files.getRealUri(doc.uri)
          files.onWatch('save', uri)
@@ -2375,7 +941,7 @@ index 7f0e63f..2696093 100644
      end
  }
  
-@@ -646,12 +624,12 @@ m.register 'textDocument/completion' {
+@@ -646,12 +633,12 @@ m.register 'textDocument/completion' {
              end
          end
          --await.setPriority(1000)
@@ -2391,7 +957,7 @@ index 7f0e63f..2696093 100644
          end
          if not result then
              return nil
-@@ -700,7 +678,7 @@ m.register 'textDocument/completion' {
+@@ -700,7 +687,7 @@ m.register 'textDocument/completion' {
                  },
              }
              if res.id then
@@ -2400,62 +966,12 @@ index 7f0e63f..2696093 100644
                      local resolved = core.resolve(res.id)
                      if resolved then
                          item.detail = resolved.detail
-@@ -902,6 +880,15 @@ m.register 'textDocument/codeAction' {
- 
-         local start, finish = converter.unpackRange(state, range)
-         local results = core(uri, start, finish, diagnostics)
-+        if results then
-+            local filtered = {}
-+            for _, result in ipairs(results) do
-+                if not result.command or result.command.command ~= 'lua.setConfig' then
-+                    filtered[#filtered+1] = result
-+                end
-+            end
-+            results = filtered
-+        end
- 
-         if not results or #results == 0 then
-             return nil
-@@ -981,7 +968,6 @@ m.register 'workspace/executeCommand' {
-                 'lua.removeSpace',
-                 'lua.solve',
-                 'lua.jsonToLua',
--                'lua.setConfig',
-                 'lua.getConfig',
-                 'lua.autoRequire',
-             },
-@@ -999,23 +985,14 @@ m.register 'workspace/executeCommand' {
-         elseif command == 'lua.jsonToLua' then
-             local core = require 'core.command.jsonToLua'
-             return core(params.arguments[1])
--        elseif command == 'lua.setConfig' then
--            local core = require 'core.command.setConfig'
--            return core(params.arguments)
-         elseif command == 'lua.getConfig' then
-             local core = require 'core.command.getConfig'
-             return core(params.arguments)
-         elseif command == 'lua.autoRequire' then
-             local core = require 'core.command.autoRequire'
-             return core(params.arguments[1])
--        elseif command == 'lua.exportDocument' then
--            local core = require 'core.command.exportDocument'
--            core(params.arguments)
--        elseif command == 'lua.reloadFFIMeta' then
--            local core = require 'core.command.reloadFFIMeta'
--            for _, scp in ipairs(workspace.folders) do
--                core(scp.uri)
--            end
-+        else
-+            error('unsupported LuaLS command in Pyxis profile: ' .. command)
-         end
-     end
- }
 diff --git a/script/pyxis-profile.lua b/script/pyxis-profile.lua
 new file mode 100644
-index 0000000..d8d8bd4
+index 0000000..2fef615
 --- /dev/null
 +++ b/script/pyxis-profile.lua
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,53 @@
 +-- The executable supplies immutable runtime and per-instance writable roots.
 +local time = require 'bee.time'
 +
@@ -2495,29 +1011,9 @@ index 0000000..d8d8bd4
 +        and (root:sub(-1) == '/' or path:sub(#root + 1, #root + 1) == '/'))
 +end
 +
-+-- Component encoding is injective and cannot introduce separators or dot paths.
-+function m.stateComponent(value)
-+    return (tostring(value):gsub('[^%w]', function (c)
-+        return ('%%%02X'):format(c:byte())
-+    end))
-+end
-+
-+local fixed = {
-+    ['Lua.format.enable'] = false,
-+    ['Lua.workspace.checkThirdParty'] = false,
-+    ['Lua.workspace.userThirdParty'] = {},
-+    ['Lua.addonRepositoryPath'] = '',
-+}
-+local unavailable = {
-+    ['Lua.runtime.plugin'] = true,
-+    ['Lua.runtime.pluginArgs'] = true,
-+    ['Lua.runtime.meta'] = true,
-+}
++local fixed = { ['Lua.format.enable'] = false }
 +
 +function m.fixedSetting(key)
-+    if unavailable[key] then
-+        return true, nil
-+    end
 +    if fixed[key] ~= nil then
 +        return true, fixed[key]
 +    end
@@ -2631,7 +1127,7 @@ index 150ad18..7627ab2 100644
      return fields
  end
 diff --git a/script/workspace/loading.lua b/script/workspace/loading.lua
-index 670d70f..8894e8a 100644
+index 670d70f..9eb83ee 100644
 --- a/script/workspace/loading.lua
 +++ b/script/workspace/loading.lua
 @@ -1,3 +1,4 @@
@@ -2639,33 +1135,7 @@ index 670d70f..8894e8a 100644
  local progress = require 'progress'
  local lang     = require 'language'
  local await    = require 'await'
-@@ -42,24 +43,7 @@ function mt:checkMaxPreload(uri)
-         return false
-     end
-     self.scp:set('hasHintedMaxPreload', true)
--    client.requestMessage('Info'
--        , lang.script('MWS_MAX_PRELOAD', max)
--        , {
--            lang.script('WINDOW_INCREASE_UPPER_LIMIT'),
--        }
--        , function (_, index)
--            if index == 1 then
--                client.setConfig {
--                    {
--                        key    = 'Lua.workspace.maxPreload',
--                        uri    = self.scp.uri,
--                        action = 'set',
--                        value  = max + math.max(1000, max),
--                    }
--                }
--            end
--        end
--    )
-+    client.showMessage('Info', lang.script('MWS_MAX_PRELOAD', max) .. ' Edit Lua.workspace.maxPreload in JSON/JSONC settings to change this limit.')
-     return false
- end
- 
-@@ -156,7 +140,7 @@ end
+@@ -156,7 +157,7 @@ end
  
  ---@async
  function mt:loadAll(fileName)
@@ -2674,7 +1144,7 @@ index 670d70f..8894e8a 100644
      log.info('Load files from disk:', fileName)
      while self.read < self.max do
          self:update()
-@@ -168,8 +152,8 @@ function mt:loadAll(fileName)
+@@ -168,8 +169,8 @@ function mt:loadAll(fileName)
              await.sleep(0.1)
          end
      end
@@ -2685,7 +1155,7 @@ index 670d70f..8894e8a 100644
      self._bar:remove()
      self._bar = progress.create(self.scp.uri, lang.script('WORKSPACE_LOADING', self.scp.uri), 0)
      for i, set in ipairs(self._sets) do
-@@ -178,7 +162,7 @@ function mt:loadAll(fileName)
+@@ -178,7 +179,7 @@ function mt:loadAll(fileName)
          self.read = i
          self:update()
      end
@@ -2749,21 +1219,8 @@ index 3ab4149..c17d238 100644
              end
              local relative = uri:sub(#parentUri + 1):sub(1, - #tail)
              if not strict
-diff --git a/script/workspace/scope.lua b/script/workspace/scope.lua
-index 06184e4..607de8a 100644
---- a/script/workspace/scope.lua
-+++ b/script/workspace/scope.lua
-@@ -103,7 +103,7 @@ function mt:getLinkedUri(uri)
-         return nil
-     end
-     for linkUri in pairs(self._links) do
--        if uri:sub(1, #linkUri) == linkUri then
-+        if require('pyxis-profile').isChild(uri, linkUri) then
-             return linkUri
-         end
-     end
 diff --git a/script/workspace/workspace.lua b/script/workspace/workspace.lua
-index 9420ef9..3491df8 100644
+index 9420ef9..51759a7 100644
 --- a/script/workspace/workspace.lua
 +++ b/script/workspace/workspace.lua
 @@ -8,7 +8,6 @@ local platform   = require 'bee.platform'
@@ -2774,30 +1231,17 @@ index 9420ef9..3491df8 100644
  local scope      = require 'workspace.scope'
  local loading    = require 'workspace.loading'
  local inspect    = require 'inspect'
-@@ -48,13 +47,6 @@ function m.create(uri, folderName)
+@@ -48,8 +47,7 @@ function m.create(uri, folderName)
      log.info('Workspace create: ', uri)
      local scp = scope.createFolder(uri, folderName)
      m.folders[#m.folders+1] = scp
 -    if uri == furi.encode '/'
 -    or uri == furi.encode(os.getenv 'HOME' or '') then
--        if not FORCE_ACCEPT_WORKSPACE then
--            client.showMessage('Error', lang.script('WORKSPACE_NOT_ALLOWED', furi.decode(uri)))
--            scp:set('bad root', true)
--        end
--    end
- end
- 
- function m.remove(uri)
-@@ -184,7 +176,7 @@ function m.getNativeMatcher(scp)
-         local apath = m.getAbsolutePath(scp.uri, path)
-         if apath then
-             log.debug('Ignore by library:', apath)
--            debug[#pattern+1] = apath
-+            pattern[#pattern+1] = apath
-         end
-     end
-     for _, path in ipairs(config.get(scp.uri, 'Lua.workspace.ignoreDir')) do
-@@ -344,13 +336,6 @@ function m.awaitPreload(scp)
++    if uri == furi.encode 'home://' then
+         if not FORCE_ACCEPT_WORKSPACE then
+             client.showMessage('Error', lang.script('WORKSPACE_NOT_ALLOWED', furi.decode(uri)))
+             scp:set('bad root', true)
+@@ -344,13 +342,6 @@ function m.awaitPreload(scp)
  
      if scp.uri and not scp:get('bad root') then
          log.info('Scan files at:', scp:getName())
@@ -2811,7 +1255,7 @@ index 9420ef9..3491df8 100644
          local count = 0
          ---@async
          native:scan(furi.decode(scp.uri), function (path)
-@@ -368,13 +353,6 @@ function m.awaitPreload(scp)
+@@ -368,13 +359,6 @@ function m.awaitPreload(scp)
      for _, libMatcher in ipairs(librarys) do
          log.info('Scan library at:', libMatcher.uri)
          local count = 0
@@ -2825,7 +1269,7 @@ index 9420ef9..3491df8 100644
          if not libMatcher.isDofile then
              scp:addLink(libMatcher.uri)
          end
-@@ -485,12 +463,13 @@ function m.getRelativePath(uriOrPath)
+@@ -485,12 +469,13 @@ function m.getRelativePath(uriOrPath)
          local relative = files.normalize(path)
          return relative:gsub('^[/\\]+', ''), false
      end
@@ -2844,7 +1288,7 @@ index 9420ef9..3491df8 100644
  end
  
  ---@param scp scope
-@@ -625,40 +604,5 @@ config.watch(function (uri, key, value, oldValue)
+@@ -625,40 +610,5 @@ config.watch(function (uri, key, value, oldValue)
      end
  end)
  
@@ -2885,3 +1329,16 @@ index 9420ef9..3491df8 100644
 -end)
  
  return m
+diff --git a/make/bootstrap.lua b/make/bootstrap.lua
+--- a/make/bootstrap.lua
++++ b/make/bootstrap.lua
+@@ -46,6 +46,9 @@
+         if root == '' then
+             root = '.'
+         end
++    elseif LUALS_ROOT then
++        root = LUALS_ROOT
++        arg[0] = root .. '/main.lua'
+     else
+         local sep = package.config:sub(1, 1)
+         if sep == '\\' then

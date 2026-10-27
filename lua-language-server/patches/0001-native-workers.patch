@@ -1,3 +1,5 @@
+diff --git a/script/brave/brave.lua b/script/brave/brave.lua
+index 26a9b3c..41cc520 100644
 --- a/script/brave/brave.lua
 +++ b/script/brave/brave.lua
 @@ -1,5 +1,11 @@
@@ -12,7 +14,7 @@
  
  local reqPad
  local resPad
-@@ -67,7 +73,10 @@
+@@ -67,7 +73,10 @@ function m.start()
                          log.error('Brave can not handle this work: ' .. name)
                          goto CONTINUE
                      end
@@ -24,6 +26,8 @@
                      if suc then
                          resPad:push(id, res)
                      else
+diff --git a/script/brave/work.lua b/script/brave/work.lua
+index d31c49c..fecf8f2 100644
 --- a/script/brave/work.lua
 +++ b/script/brave/work.lua
 @@ -1,72 +1,19 @@
@@ -106,12 +110,10 @@
      end
  end)
  
-@@ -81,19 +28,6 @@
- brave.on('loadFile', function (path)
-     local util    = require 'utility'
+@@ -83,19 +30,6 @@ brave.on('loadFile', function (path)
      return util.loadFile(path)
--end)
--
+ end)
+ 
 -brave.on('removeCaches', function (path)
 -    local fs  = require 'bee.filesystem'
 -    local fsu = require 'fs-utility'
@@ -123,10 +125,12 @@
 -            fsu.fileRemove(dir)
 -        end
 -    end
- end)
- 
+-end)
+-
  ---@class brave.param.compile
-@@ -111,13 +45,13 @@
+ ---@field uri uri
+ ---@field text string
+@@ -111,13 +45,13 @@ end)
  ---@param param brave.param.compile
  brave.on('compile', function (param)
      local parser = require 'parser'
@@ -142,72 +146,8 @@
      return {
          state = state,
          err   = err,
---- a/script/jsonrpc.lua
-+++ b/script/jsonrpc.lua
-@@ -18,11 +18,16 @@
- local function readProtoHead(reader)
-     local head = {}
-     local line = ''
-+    local bytes = 0
-     while true do
--        local char = reader(1)
-+        local char, err = reader(1)
-         if char == nil then
-             -- 说明管道已经关闭了
--            return nil, 'Disconnected!'
-+            return nil, err or 'Disconnected!'
-+        end
-+        bytes = bytes + #char
-+        if bytes > 8192 then
-+            return nil, 'LSP header exceeds 8 KiB budget'
-         end
-         line = line .. char
-         if line == '\r\n' then
-@@ -35,8 +40,15 @@
-         if not k then
-             return nil, 'Proto header error: ' .. line
-         end
--        if k == 'Content-Length' then
-+        k = k:lower()
-+        if k == 'content-length' then
-+            if head[k] ~= nil or not v:match('^%s*%d+%s*$') then
-+                return nil, 'Invalid or repeated LSP Content-Length'
-+            end
-             v = tonumber(v)
-+            if not math.tointeger(v) or v < 1 or v > 4 * 1024 * 1024 then
-+                return nil, 'LSP Content-Length exceeds 4 MiB budget or is invalid'
-+            end
-         end
-         head[k] = v
-         line = ''
-@@ -51,13 +63,13 @@
-     if not head then
-         return nil, err
-     end
--    local len = head['Content-Length']
-+    local len = head['content-length']
-     if not len then
-         return nil, 'Proto header error: ' .. inspect(head)
-     end
--    local content = reader(len)
--    if not content then
--        return nil, 'Proto read error'
-+    local content, readError = reader(len)
-+    if not content or #content ~= len then
-+        return nil, readError or 'Truncated LSP body'
-     end
-     ---@type any
-     local null = json.null
-@@ -67,6 +79,9 @@
-     if not suc then
-         return nil, 'Proto parse error: ' .. res
-     end
-+    if type(res) ~= 'table' then
-+        return nil, 'LSP message must be an object'
-+    end
-     return res
- end
- 
+diff --git a/script/proto/proto.lua b/script/proto/proto.lua
+index b432a3d..6a4c574 100644
 --- a/script/proto/proto.lua
 +++ b/script/proto/proto.lua
 @@ -1,3 +1,4 @@
@@ -215,7 +155,7 @@
  local util       = require 'utility'
  local await      = require 'await'
  local pub        = require 'pub'
-@@ -5,9 +6,13 @@
+@@ -5,9 +6,13 @@ local jsonrpc    = require 'jsonrpc'
  local define     = require 'proto.define'
  local json       = require 'json'
  local inspect    = require 'inspect'
@@ -232,7 +172,7 @@
  local timer      = require 'timer'
  
  local reqCounter = util.counter()
-@@ -51,11 +56,7 @@
+@@ -51,11 +56,7 @@ end
  function m.send(data)
      local buf = jsonrpc.encode(data)
      logSend(buf)
@@ -245,28 +185,7 @@
  end
  
  function m.response(id, res)
-@@ -157,6 +158,7 @@
- }
- 
- m.methodQueue = {}
-+m.activeMethods = 0
- 
- function m.applyMethod(proto)
-     logRecieve(proto)
-@@ -174,17 +176,26 @@
-         end
-         return
-     end
-+    if m.activeMethods >= 512 then
-+        log.error('LuaLS active LSP method budget exceeded')
-+        os.exit(1, true)
-+    end
-+    m.activeMethods = m.activeMethods + 1
-     await.call(function () ---@async
-+        local active <close> = function ()
-+            m.activeMethods = m.activeMethods - 1
-+        end
-         --log.debug('Start method:', method)
+@@ -179,12 +180,13 @@ function m.applyMethod(proto)
          if proto.id then
              await.setID('proto:' .. proto.id)
          end
@@ -282,7 +201,7 @@
              if passed > 0.5 then
                  log.warn(('Method [%s] takes [%.3f]sec. %s'):format(method, passed, inspect(proto, secretOption)))
              end
-@@ -199,7 +210,8 @@
+@@ -199,7 +201,8 @@ function m.applyMethod(proto)
                  m.responseErr(proto.id, proto._closeReason or define.ErrorCodes.InternalError, proto._closeMessage or res)
              end
          end
@@ -292,18 +211,7 @@
          await.delay()
      end)
  end
-@@ -221,6 +233,10 @@
- end
- 
- function m.doMethod(proto)
-+    if #m.methodQueue >= 512 then
-+        log.error('LuaLS pending LSP method budget exceeded')
-+        os.exit(1, true)
-+    end
-     m.methodQueue[#m.methodQueue+1] = proto
-     if #m.methodQueue > 1 then
-         return
-@@ -254,55 +270,11 @@
+@@ -254,55 +257,11 @@ function m.doResponse(proto)
      waiting.resume(proto.result)
  end
  
@@ -363,9 +271,11 @@
  end
  
  return m
+diff --git a/script/pub/pub.lua b/script/pub/pub.lua
+index d4f9627..dd2f1cf 100644
 --- a/script/pub/pub.lua
 +++ b/script/pub/pub.lua
-@@ -4,6 +4,15 @@
+@@ -4,6 +4,15 @@ local selectMod  = require 'bee.select'
  local utility    = require 'utility'
  local await      = require 'await'
  
@@ -381,7 +291,7 @@
  -- 每个 brave 有独立的 channel 对，避免多线程竞争
  local selector = selectMod.create()
  
-@@ -13,15 +22,11 @@
+@@ -13,15 +22,11 @@ local counter = utility.counter()
  local braveTemplate = [[
  package.path  = {path:q}
  package.cpath = {cpath:q}
@@ -397,7 +307,7 @@
  local brave = require 'brave'
  brave.register({id}, {taskChName:q}, {replyChName:q})
  ]]
-@@ -74,10 +79,6 @@
+@@ -74,10 +79,6 @@ function m.recruitBraves(num, privatePad)
              thread      = thread.create(braveTemplate % {
                  path = package.path,
                  cpath = package.cpath,
@@ -408,18 +318,7 @@
                  id = id,
                  taskChName = taskChName,
                  replyChName = replyChName,
-@@ -125,6 +126,10 @@
-     local brave = findIdleBrave(braveList)
-     if not brave then
-         -- 所有 brave 都忙，加入队列
-+        if #queue >= 1024 then
-+            log.error('LuaLS pending task budget exceeded')
-+            os.exit(1, true)
-+        end
-         queue[#queue + 1] = info
-         m.taskMap[info.id] = info
-         return true
-@@ -170,7 +175,7 @@
+@@ -170,7 +171,7 @@ function m.popTask(brave, id, result)
      if not info.removed then
          info.removed = true
          if info.callback then
@@ -428,7 +327,7 @@
          end
      end
  end
-@@ -182,7 +187,7 @@
+@@ -182,7 +183,7 @@ function m.popReport(brave, name, params)
          log.warn(('Brave pushed unknown report: # %d => %q'):format(brave.id, name))
          return
      end
@@ -437,7 +336,7 @@
  end
  
  --- 发布任务
-@@ -233,10 +238,10 @@
+@@ -233,10 +234,10 @@ function m.reciveFromPad(brave)
  end
  
  --- 接收反馈
@@ -450,16 +349,7 @@
          -- 遍历公共组
          for _, brave in ipairs(m.publicBraves) do
              m.reciveFromPad(brave)
-@@ -248,7 +253,7 @@
-             end
-         end
-     else
--        while true do
-+        for _ = 1, 128 do
-             local ok = false
-             -- 遍历公共组
-             for _, brave in ipairs(m.publicBraves) do
-@@ -282,9 +287,9 @@
+@@ -282,9 +283,9 @@ function m.checkDead()
      end
  end
  
@@ -471,17 +361,8 @@
  end
  
  return m
---- a/script/pub/report.lua
-+++ b/script/pub/report.lua
-@@ -22,7 +22,7 @@
- 
- pub.on('protoerror', function (err)
-     log.warn('Load proto error:', err)
--    os.exit(0, true)
-+    os.exit(1, true)
- end)
- 
- pub.on('wakeup', function () end)
+diff --git a/script/service/service.lua b/script/service/service.lua
+index 5518a23..1056ab0 100644
 --- a/script/service/service.lua
 +++ b/script/service/service.lua
 @@ -1,3 +1,4 @@
@@ -489,7 +370,7 @@
  ---@diagnostic disable: deprecated
  local pub    = require 'pub'
  local await  = require 'await'
-@@ -9,9 +10,8 @@
+@@ -9,9 +10,8 @@ local files  = require 'files'
  local lang   = require 'language'
  local ws     = require 'workspace'
  local time   = require 'bee.time'
@@ -500,7 +381,7 @@
  local client = require 'client'
  
  require 'jsonc'
-@@ -37,9 +37,9 @@
+@@ -37,9 +37,9 @@ end
  
  function m.reportMemoryCollect()
      local totalMemBefore = countMemory()
@@ -512,7 +393,7 @@
      local totalMemAfter, mems  = countMemory()
  
      local lines = {}
-@@ -148,61 +148,22 @@
+@@ -148,61 +148,22 @@ function m.report()
  end
  
  function m.eventLoop()
@@ -543,18 +424,7 @@
          if await.step() then
 -            busy()
 -            return true
-+            if not m.workingClock then
-+                m.workingClock = time.monotonic()
-+                m.reportStatus()
-+            end
-+        else
-+            if m.workingClock then
-+                m.workingClock = nil
-+                m.reportStatus()
-+            end
-+            local timeout = timer.nextTimeout()
-+            pub.step(true, timeout and math.min(timeout, 30000) or -1)
-         end
+-        end
 -        return false
 -    end
 -
@@ -566,7 +436,10 @@
 -                if doSomething() then
 -                    return
 -                end
--            end
++            if not m.workingClock then
++                m.workingClock = time.monotonic()
++                m.reportStatus()
+             end
 -            pub.step(true)
 -        end
 -    end
@@ -580,13 +453,20 @@
 -        end
 -        if doSomething() then
 -            goto CONTINUE
--        end
++        else
++            if m.workingClock then
++                m.workingClock = nil
++                m.reportStatus()
++            end
++            local timeout = timer.nextTimeout()
++            pub.step(true, timeout or -1)
+         end
 -        sleep()
 -        ::CONTINUE::
      end
  end
  
-@@ -248,37 +209,15 @@
+@@ -248,37 +209,15 @@ function m.sayHello()
      proto.notify('$/hello', {'world'})
  end
  
@@ -629,6 +509,8 @@
  
      require 'provider'
  
+diff --git a/script/timer.lua b/script/timer.lua
+index 14d33f6..76653c7 100644
 --- a/script/timer.lua
 +++ b/script/timer.lua
 @@ -1,10 +1,18 @@
@@ -651,7 +533,7 @@
  
  _ENV = nil
  
-@@ -49,7 +57,8 @@
+@@ -49,7 +57,8 @@ local function mWakeup(self)
      end
      self._running = false
      if self._onTimer then
@@ -661,7 +543,7 @@
      end
      if self._removed then
          return
-@@ -237,6 +246,23 @@
+@@ -237,6 +246,23 @@ function m.update()
      end
  end
  

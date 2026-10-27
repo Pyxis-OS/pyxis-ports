@@ -13,10 +13,8 @@ LuaLS worker protocol. Its `fd()` returns a typed readiness object; selectors
 only support channel READ readiness, with actual queue predicates and a shared
 condition variable. Publication, capacity release and stop use the same mutex.
 Capacity exhaustion waits for the consumer or cancellation; an oversized or
-unserializable message fails the service rather than disappearing. The selected
-bee patch checks C++ serializer allocations and releases scratch blocks on both
-allocation exceptions and Lua's C++ error transfer. Allocation failure returns
-through the protected pack call, releasing the admission before service stop.
+unserializable message fails the service rather than disappearing. The
+checksum-pinned bee serializer is used without generic allocation changes. Allocation-failure and Lua-error scratch cleanup remain unqualified.
 
 Task 3 sized these program-private limits from three public LuaLS source
 workloads (248 files, 1,665,517 bytes, plus the held Neovim library) and three
@@ -33,10 +31,10 @@ underflows. Measurement hooks are not shipped.
 | Accounted bytes total | 2,302,689 B | 64 MiB; room for two maximum-size reservations and queued work |
 | Accounted items/channel / total | 70 / 70 | 512 / 1024, 7.3× / 14.6× |
 | Graph tables / visited values / depth | 94 / 694 / 8 | 8192 / 65,536 / 32; traversal guards, not workload-size limits |
-| LSP input / output body | 152,808 / 720,906 B | 4 MiB each; at least 5.8× |
-| LSP header | 26 B | 8 KiB; separate bounded header parsing, including optional headers |
-| Pending Lua tasks per pool | 215 | 1024, 4.8× |
-| Queued / active LSP methods | 70 / 79 | 512 / 512, at least 6.5× |
+| LSP input / output body | 152,808 / 720,906 B | Upstream framing; no added application byte cap |
+| LSP header | 26 B | Upstream parsing; no added header cap |
+| Pending Lua tasks per pool | 215 | Upstream Lua queue |
+| Queued / active LSP methods | 70 / 79 | Upstream Lua queues |
 | Workers / named channels | 4 / 8 | 8 / 32; ordinary profile still starts four workers |
 | Worker bootstrap | 260 B | 4 KiB, 15.8×; no arguments |
 
@@ -55,7 +53,7 @@ sufficiently dense graph can still reach them below the byte ceiling.
 
 These are tuning choices for the measured profile, not ABI contracts or
 universal project limits. A well-framed JSON message still has to fit the
-independent graph limits; the framing bound alone does not promise admission.
+independent graph and byte limits; framing alone does not promise admission.
 Global byte admission intentionally backpressures a third simultaneous maximum
 reservation rather than provisioning four such copies. **Queue admission is not a whole-process memory
 budget.** Four read-only debugger checkpoints on a separate corpus run observed
@@ -80,8 +78,8 @@ results in the service VM. `script/proto/proto.lua` runs handlers through
 `await.call` (a same-VM coroutine), then `response` → `send` →
 `script/jsonrpc.lua:encode` produces the framed JSON string. Native
 `stdio_write` in `pyxis/concurrency.cpp` writes that string directly to stdout;
-there is no writer channel. Thus the 50,015 semantic integers above are subject
-to the output byte bound, not individual visits against the channel graph guard.
+there is no writer channel or added output byte cap. Thus the 50,015 semantic
+integers above do not individually visit the channel graph guard.
 Incoming editor messages, including replies to server requests, are decoded in
 `script/brave/work.lua:loadProtoByStdio` and pushed as tables. Those and internal
 worker task/reply graphs remain subject to the graph limits; the 10,000-name
@@ -99,9 +97,9 @@ a private sentinel through protected Lua calls. Owned xpcall/coroutine boundarie
 preserve that identity. VM hooks interrupt Lua work and disable themselves when
 they raise the sentinel, preventing repeated exceptions in error handlers.
 `is_stop_error` lets main distinguish expected cancellation from an actual error
-that races with exit. The first nonzero exit status is retained. Malformed or
-truncated framing, unexpected EOF and I/O failures request failure; after reading
-an exit notification, the reader retires that task without an extra EOF read.
+that races with exit. The first nonzero exit status is retained. Upstream
+framing reports parse errors; unexpected EOF and native I/O failures request
+failure. After reading an exit notification, the reader retires that task without an extra EOF read.
 
 Forced stop may cancel queued work. `stop_and_join` waits for every worker before
 releasing channel buffers and wake handles. Worker states close through the
@@ -117,3 +115,9 @@ and metadata navigation in QEMU. Chronium's attended vela HWP PXE editor check
 passed hover, typed completion, semantic highlighting and diagnostics. Normal
 editor exit removed its state leaf, verified separately over Remote. Native
 allocation-failure/forced-stop cases and a heap-leak proof remain unqualified.
+
+The measurements above describe the original Task 1/3 profile. The patch
+cleanup restored upstream Lua queues, framing, configuration, plugins and cache
+behavior; it removed the serializer allocation patch. Those earlier runs do not
+qualify the changed profile. Native copied-buffer admission, cancellation and
+join ownership are retained.

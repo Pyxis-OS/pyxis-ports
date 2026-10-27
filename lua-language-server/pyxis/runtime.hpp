@@ -11,7 +11,10 @@ extern "C" {
 namespace pyxis_luals {
 // Program-private glue; this is not an SDK or kernel interface.
 lua_State* new_state();
-bool close_state(lua_State* state, bool normal);
+void initialize_instance();
+void initialize_main(lua_State* state);
+bool cleanup_instance();
+void close_state(lua_State* state, bool normal);
 bool is_stop_error(lua_State* state, int index);
 void enable_stop_hook(lua_State* state);
 void register_platform(lua_State* state);

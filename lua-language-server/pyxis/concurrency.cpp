@@ -43,7 +43,6 @@ constexpr size_t total_bytes = 64 * 1024 * 1024;
 constexpr size_t total_items = 1024;
 constexpr size_t table_limit = 8192;
 constexpr size_t value_limit = 65536;
-constexpr size_t frame_bytes = 4 * 1024 * 1024;
 constexpr size_t worker_limit = 8;
 constexpr size_t channel_limit = 32;
 constexpr unsigned depth_limit = 32;
@@ -234,12 +233,7 @@ struct preflight {
 int pack_protected(lua_State* L)
 {
     int size = 0;
-    void* bytes;
-    try {
-        bytes = seri_pack(L, 0, &size);
-    } catch (const std::bad_alloc&) {
-        return luaL_error(L, "LuaLS message serialization memory unavailable");
-    }
+    void* bytes = seri_pack(L, 0, &size);
     lua_pushlightuserdata(L, bytes);
     lua_pushinteger(L, size);
     return 2;
@@ -612,9 +606,7 @@ void worker_main(std::string source, void* parameters)
     if (!error.empty()) {
         request_stop(1);
     }
-    if (L && !close_state(L, stopping() && requested_exit_status() == 0)) {
-        request_stop(1);
-    }
+    close_state(L, stopping() && requested_exit_status() == 0);
     if (!error.empty()) {
         // A failing worker cannot continue supplying its assigned service.
         try {
@@ -778,9 +770,7 @@ bool wait_stream(handle_t handle, uint64_t events, std::string& error)
 int stdio_read(lua_State* L)
 {
     auto length = luaL_checkinteger(L, 1);
-    if (length < 1 || length > static_cast<lua_Integer>(frame_bytes)) {
-        return luaL_error(L, "LuaLS read size must be 1..4 MiB");
-    }
+    luaL_argcheck(L, length >= 0, 1, "negative read size");
     luaL_Buffer buffer;
     char* target = luaL_buffinitsize(L, &buffer, length);
     size_t used = 0;
@@ -829,9 +819,6 @@ int stdio_write(lua_State* L)
 {
     size_t length;
     const char* text = luaL_checklstring(L, 1, &length);
-    if (length > frame_bytes + 8192) {
-        return luaL_error(L, "LuaLS output frame exceeds 4 MiB budget");
-    }
     size_t used = 0;
     std::string error;
     while (used < length && !stopping()) {

@@ -1,4 +1,5 @@
 return {
+  "make/bootstrap.lua",
   "changelog.md",
   "locale/en-us/meta.lua",
   "locale/en-us/script.lua",

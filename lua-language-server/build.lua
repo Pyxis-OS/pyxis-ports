@@ -11,8 +11,8 @@ return function(ctx)
   assert(file:write("version=" .. ctx.metadata.version .. "\n",
     "source=" .. ctx.metadata.source.url .. "\ncommit=" .. ctx.metadata.source.commit .. "\n",
     "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
-    "profile=native byte-pipe stdio; embedded Lua55, real workers, JSON/JSONC configuration\n",
-    "omitted=TCP, subprocess, watchers, formatter, plugins, executable config, persistent cache\n"))
+    "profile=native byte-pipe stdio; embedded Lua55, real workers, upstream Lua configuration and plugins\n",
+    "omitted=TCP, subprocess, watchers, formatter\n"))
   for _, entry in ipairs(ctx.metadata.source.extra) do
     assert(file:write("extra=" .. entry.name .. " " .. entry.commit .. " " .. entry.archive.sha256 .. "\n"))
     for _, patch in ipairs(entry.patches or {}) do assert(file:write("extra_patch=" .. patch .. "\n")) end
