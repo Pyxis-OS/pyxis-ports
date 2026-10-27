@@ -4,6 +4,7 @@
 #include <abi/file.h>
 #include <abi/stream.h>
 #include <abi/launcher.h>
+#include <abi/jit.h>
 #include <abi/memory.h>
 #include <abi/pipe.h>
 #include <abi/tcp.h>
@@ -149,25 +150,27 @@ static int open_program(const struct path_context *context,
  * child's standard streams are the ones the caller selected. */
 static int prepare_bundle(const struct bundle_program *bundle,
     const struct launch_request *request, const struct environment_capture *held,
-    handle_t service, handle_t tcp, struct bundle_launch **prepared)
+    handle_t service, handle_t tcp, handle_t jit, struct bundle_launch **prepared)
 {
   static const char *const names[] = {
-    "memory", "clock", "threads", "random", "launcher", "pipe", "system_info",
+    "memory", "jit", "clock", "threads", "random", "launcher", "pipe", "system_info",
     "udp", "dns_udp", "net_registry", "echo", "profile",
   };
   struct bundle_authority authority[ARRAY_SIZE(names) + 2 + BUNDLE_SOURCE_LIMIT];
   size_t count = 0;
   for (size_t i = 0; i < ARRAY_SIZE(names); ++i) {
     const struct environment_value *value = environment_capture_find(held, names[i]);
-    if (!value || value->kind != ENVIRONMENT_CAP) {
+    handle_t source = !strcmp(names[i], "jit") ? jit :
+        value && value->kind == ENVIRONMENT_CAP ? value->handle : HANDLE_INVALID;
+    if (source == HANDLE_INVALID) {
       continue;
     }
     struct handle_info info;
-    enum call_status status = handle_query(value->handle, &info);
+    enum call_status status = handle_query(source, &info);
     if (status != CALL_OK) {
       return uv__pyxis_status(status);
     }
-    authority[count++] = (struct bundle_authority){names[i], value->handle, info.protocol};
+    authority[count++] = (struct bundle_authority){names[i], source, info.protocol};
   }
   if (service != HANDLE_INVALID) {
     authority[count++] = (struct bundle_authority){"service", service, PROTOCOL_ENDPOINT_SERVICE};
@@ -272,7 +275,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     return error;
   }
   handle_t launcher = HANDLE_INVALID, selected_service = HANDLE_INVALID;
-  handle_t selected_tcp = HANDLE_INVALID;
+  handle_t selected_tcp = HANDLE_INVALID, selected_jit = HANDLE_INVALID;
   struct command_selection *selection = NULL;
   struct command_search_capture search = {0};
   const char *search_path = NULL;
@@ -377,6 +380,9 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     if (status != CALL_OK) {
       error = uv__pyxis_status(status);
       goto done;
+    }
+    if (info.protocol == PROTOCOL_JIT) {
+      continue;
     }
     if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
         !strcmp(value->name, "stderr") ||
@@ -567,8 +573,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   request.grant_count = grant_count;
   request.entry_count = entry_count;
   if (selection->bundle) {
-    handle_t service = HANDLE_INVALID, tcp = HANDLE_INVALID;
-    bool explicit_service = false, explicit_tcp = false;
+    handle_t service = HANDLE_INVALID, tcp = HANDLE_INVALID, jit = HANDLE_INVALID;
+    bool explicit_service = false, explicit_tcp = false, explicit_jit = false;
     for (size_t i = 0; i < extra_count; ++i) {
       const uv_pyxis_resource_t *resource = &extra_resources[i];
       handle_t *destination;
@@ -578,6 +584,9 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       } else if (!strcmp(resource->name, "tcp")) {
         destination = &selected_tcp;
         explicit_tcp = true;
+      } else if (!strcmp(resource->name, "jit")) {
+        destination = &selected_jit;
+        explicit_jit = true;
       } else {
         continue;
       }
@@ -590,7 +599,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     }
     service = selected_service;
     tcp = selected_tcp;
-    if (!explicit_service || !explicit_tcp) {
+    jit = selected_jit;
+    if (!explicit_service || !explicit_tcp || !explicit_jit) {
       /* Private sources satisfy declarations only. Explicit same-name records
        * replace them with the caller's selected attenuation. */
       enum call_status status = environment_capture_init(startup_environment_handle(),
@@ -607,8 +617,13 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       if (!explicit_tcp && value && value->kind == ENVIRONMENT_CAP) {
         tcp = value->handle;
       }
+      value = environment_capture_find(&private_held, "jit");
+      if (!explicit_jit && value && value->kind == ENVIRONMENT_CAP) {
+        jit = value->handle;
+      }
     }
-    error = prepare_bundle(selection->bundle, &request, &selected, service, tcp, &bundle_launch);
+    error = prepare_bundle(selection->bundle, &request, &selected, service, tcp, jit,
+        &bundle_launch);
     if (error) {
       goto done;
     }
@@ -652,6 +667,9 @@ done:
   }
   if (selected_tcp != HANDLE_INVALID) {
     handle_close(selected_tcp);
+  }
+  if (selected_jit != HANDLE_INVALID) {
+    handle_close(selected_jit);
   }
   environment_capture_close(&private_held);
   environment_capture_close(&selected);

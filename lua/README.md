@@ -40,6 +40,11 @@ role. Plain children keep their existing profile, and neither raw launch nor a
 bundle omitting the request gains it. This needs the SDK's declared private
 service-grant support; no compiler rebuild is required.
 
+An explicit bundle `jit/manage` request can select the runtime's held `jit`
+source. It remains private in the child. Automatic capability inheritance omits
+JIT, including aliases. This requires the SDK's JIT ABI and bundle resolver
+support; the shipped Lua bundle does not request JIT.
+
 From the guest shell:
 
 ```text
@@ -215,12 +220,15 @@ roles for raw stages. Raw TCP stages receive CONNECT only. A bundle may
 additionally declare private `service/create` and TCP LISTEN from held authority
 when resources is omitted; an explicit `tcp` selector permits that held source
 for the bundle's declaration, while raw stages still receive CONNECT only.
-An explicit dense list bounds bundle requests as well as raw stages; supported names also include
+An explicit dense list bounds these bundle role requests as well as raw stages;
+supported names also include
 `tcp`, `udp`, `dns_udp`, `net_registry`, `pipe`, `system_info` and `service`.
 `service` explicitly selects CREATE as a private role. Omitting it from an
 explicit list, including `resources={}`, leaves a required bundle service request
 unsatisfied even when the parent holds that constructor. Missing explicit
-selections fail. Omitted roots/cwd/environment take owned current snapshots.
+selections fail. Bundle-only `jit/manage` declarations select the held private
+source separately from these raw resource selectors.
+Omitted roots/cwd/environment take owned current snapshots.
 An explicit root list uses `{name="home", access="read"}` or `"read-write"`;
 rights intersect held authority, and read access strips mutations. The cwd
 chain is rebuilt under these roots before admission. An incompatible or
@@ -236,9 +244,10 @@ Image lookup uses the caller's captured `commands` list, independently of child
 roots/cwd. Missing and empty lists refuse bare-name lookup. Explicit paths resolve
 from the caller's held path context; use `./name.pxe` for a relative filename.
 Thus `roots={}` and `cwd=false` can select a held image without passing its
-content roots to the child. Bundle resource requests use only selected roles
-and roots, selected providers, and configured manifest sources; required requests
-that cannot be satisfied refuse admission. Selected role masks remain bounds on
+content roots to the child. Bundle resource requests use selected roles and roots,
+selected providers, configured manifest sources and explicitly declared JIT
+authority; required requests that cannot be satisfied refuse admission.
+Selected role masks remain bounds on
 bundle requests. Captured stages never inherit terminal/display, launcher,
 `commands` or `job_work`.
 The caller must keep private-tree, provider and credential reachability

@@ -6,6 +6,7 @@
 #include <abi/display.h>
 #include <abi/echo.h>
 #include <abi/keyboard.h>
+#include <abi/jit.h>
 #include <abi/stream.h>
 #include <abi/memory.h>
 #include <abi/net_config.h>
@@ -343,6 +344,9 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
     if (status != CALL_OK) {
       return status;
     }
+    if (info.protocol == PROTOCOL_JIT) {
+      continue;
+    }
     owned->entries[request->entry_count++] = (struct launch_environment_entry){
       (uintptr_t)value->name, ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, request->grant_count, 0};
     owned->grants[request->grant_count++] = (struct launch_grant){value->handle, info.rights, info.transport};
@@ -461,7 +465,7 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
     const struct launch_request *request)
 {
   static const char *names[] = {
-    "input", "output", "memory", "display", "clock", "system_info", "echo",
+    "input", "output", "memory", "jit", "display", "clock", "system_info", "echo",
     "udp", "dns_udp", "net_registry", "tcp", "random", "profile", "launcher", "audio", "screen_capture",
     "threads", "pipe", "keyboard", "pointer",
   };

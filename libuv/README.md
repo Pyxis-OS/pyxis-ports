@@ -36,6 +36,13 @@ is a private runtime role. Plain children keep their existing profile, and neith
 bundle omitting the request gains it. This needs the SDK's declared private
 service-grant support; no compiler rebuild is required.
 
+Bundle children may explicitly request `jit/manage` from the held private `jit`
+source. An explicit extra-resource `jit` replaces that source with its selected
+rights and transport. The resolver keeps the declared role private. Automatic
+capability inheritance omits JIT, including aliases; explicit native extra-resource
+delegation remains available for plain children. This needs the SDK's JIT ABI
+and bundle resolver support. The shipped example bundle does not request JIT.
+
 The native backend supports one loop owner thread, timers, prepare/check/idle
 callbacks, coalesced same-thread async wake, native pipe and console streams,
 explicit child launch and immutable process completion. Loop initialization

@@ -2,6 +2,7 @@
 #include "lauxlib.h"
 #include <abi/clock.h>
 #include <abi/endpoint.h>
+#include <abi/jit.h>
 #include <abi/memory.h>
 #include <abi/net_config.h>
 #include <abi/pipe.h>
@@ -526,7 +527,7 @@ static enum call_status native_program(const struct path_context *context,
 
 static enum call_status bundle_authority(struct preparation *owned)
 {
-  size_t capacity = owned->entry_count + 2 + BUNDLE_SOURCE_LIMIT;
+  size_t capacity = owned->entry_count + 3 + BUNDLE_SOURCE_LIMIT;
   owned->authority = calloc(capacity, sizeof(*owned->authority));
   if (!owned->authority) {
     return CALL_NO_MEMORY;
@@ -570,6 +571,16 @@ static enum call_status bundle_authority(struct preparation *owned)
       owned->authority[owned->authority_count++] = (struct bundle_authority){
         "service", service->handle, PROTOCOL_ENDPOINT_SERVICE};
     }
+  }
+  const struct environment_value *jit = environment_capture_find(&owned->parent, "jit");
+  if (jit && jit->kind == ENVIRONMENT_CAP) {
+    struct handle_info info;
+    enum call_status status = handle_query(jit->handle, &info);
+    if (status != CALL_OK) {
+      return status;
+    }
+    owned->authority[owned->authority_count++] = (struct bundle_authority){
+      "jit", jit->handle, info.protocol};
   }
   size_t sources;
   enum call_status status = bundle_sources_from_capture(&owned->parent,
@@ -727,6 +738,9 @@ static int start(lua_State *state, bool pipeline)
       }
       struct handle_info info;
       status = handle_query(value->handle, &info);
+      if (status == CALL_OK && info.protocol == PROTOCOL_JIT) {
+        continue;
+      }
       if (status == CALL_OK && info.kind == HANDLE_KIND_EXPORTED) {
         bool selected = false;
         for (size_t j = 0; j < owned->entry_count; ++j) {
