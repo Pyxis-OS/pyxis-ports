@@ -1,4 +1,5 @@
 diff --git a/runtime/lua/vim/uri.lua b/runtime/lua/vim/uri.lua
+index 51e8de7..238ef15 100644
 --- a/runtime/lua/vim/uri.lua
 +++ b/runtime/lua/vim/uri.lua
 @@ -56,10 +56,59 @@ function M.uri_decode(str)
@@ -61,15 +62,16 @@ diff --git a/runtime/lua/vim/uri.lua b/runtime/lua/vim/uri.lua
    local volume_path, fname = path:match('^([a-zA-Z]:)(.*)') ---@type string?, string?
    local is_windows = volume_path ~= nil
    if is_windows then
-@@ -81,6 +130,18 @@ end
+@@ -81,6 +130,19 @@ end
  ---@return string URI
  function M.uri_from_bufnr(buf)
    local fname = vim.api.nvim_buf_get_name(buf)
 +  if is_pyxis() then
-+    -- A name is a native file path only when this process holds its root;
-+    -- other schemes, such as man:// or term:// buffers, remain URIs.
++    -- A name is a native file path only when this process holds its root or
++    -- shows a language server's root read-only (vim._pyxis_roots); other
++    -- schemes, such as man:// or term:// buffers, remain URIs.
 +    local root = fname:match(PYXIS_PATH_PATTERN)
-+    if root and vim.uv.fs_stat(root .. '://') then
++    if root and (vim.uv.fs_stat(root .. '://') or require('vim._pyxis_roots').views[root]) then
 +      return pyxis_uri_from_fname(fname)
 +    end
 +    if fname:match(URI_SCHEME_PATTERN) then
@@ -80,7 +82,7 @@ diff --git a/runtime/lua/vim/uri.lua b/runtime/lua/vim/uri.lua
    local volume_path = fname:match('^([a-zA-Z]:).*')
    local is_windows = volume_path ~= nil
    local scheme ---@type string?
-@@ -109,6 +170,9 @@ function M.uri_to_fname(uri)
+@@ -109,6 +171,9 @@ function M.uri_to_fname(uri)
    if fragment_index ~= nil then
      uri = uri:sub(1, fragment_index - 1)
    end

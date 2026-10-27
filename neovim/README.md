@@ -13,6 +13,10 @@ lua build.lua neovim --sdk /path/to/build/sdk \
 These development prefixes provide real static Lua 5.1, LPeg, luv, libuv,
 utf8proc and tree-sitter libraries. Encoding conversion uses SDK libc's iconv.
 Their `share/` trees supply notices and source provenance for the bundle.
+Lua51 defaults to abandoning pending FILE transactions during implicit Lua-state
+teardown. Neovim keeps that default without selecting normal publication or
+adding cleanup-failure diagnostics/exit policy. Its runtime uses Lua51's restored
+`package.cpath` and explicit unsupported `package.loadlib` implementation.
 The build creates native host PUC Lua 5.1 and `nlua0` with Neovim's mpack/bit
 sources and LPeg. Upstream source, Vim syntax and help-tag generators run on
 the host; the build never executes the target editor. Lua bytecode, LuaJIT,
@@ -46,20 +50,20 @@ traversal supplies scheme paths and `:cd`.
 
 File selection proves the existing parent, then anchors the final component to
 an absolute native scheme path; missing/unproved parents refuse selection.
-The selected name stays fixed across `:cd`. New files, `:w newname` and new
-`:saveas` targets create exclusively; files that appeared meanwhile require
-force. `:w!` selects the current writable target before truncation. Plain
-`:w >> missing` refuses; `:w! >> missing` creates and appends. Append uses libc's
-native FILE APPEND, atomic per operation of at most 4,080 bytes. A buffer write
-may span operations and interleave; it does not imply storage sync. Unsupported
-append targets refuse before creation or truncation.
+The selected name stays fixed across `:cd`. Saving follows upstream open,
+truncation, modification-time warning and `:w!` behavior through libc/libuv.
+Existing files use ordinary `O_TRUNC`; new files use upstream `O_CREAT`.
+Plain `:w >> missing` refuses; `:w! >> missing` creates and appends. Append uses
+libc's native FILE APPEND, atomic per operation of at most 4,080 bytes. A buffer
+write may span operations and interleave; it does not imply storage sync.
+Unsupported append targets refuse before creation or truncation. Rename retains
+upstream's unlink/copy fallback, with each operation checked by native grants.
+Writes and fallback operations can leave partial output on failure.
 
-Loaded file buffers retain a file reference until unload. Ordinary
-`:w` compares the held reference with the actual writable target, including
-identity and modification-time validity, before truncation. A replaced target,
-changed timestamp or unavailable comparison metadata requires explicit `:w!`.
-Force still respects native write authority. References do not freeze names or
-contents, and equal timestamps do not prove equal bytes.
+Native stat validity stays explicit. Pathname FileID queries return unavailable
+because their native identity tokens do not survive the released reference;
+no persistent IDs are invented. File-save admission does not require retained
+identity or modification-time metadata. Force still respects native authority.
 
 External jobs and shell commands run as native children over pipes:
 `'shell'` is the Pyxis `shell -c`; collection uses `>%s 2>&1` for stdout
@@ -129,8 +133,8 @@ and query use upstream Tree-sitter defaults. `sysinit.vim` also starts it for
 `c` and `vim` buffers (`runtime/lua/vim/_pyxis_treesitter.lua`, one `FileType`
 autocommand in the `pyxis_treesitter` group, which `init.lua` can clear) and sets
 `g:c_syntax_for_h`, so `.h` files are `c`. A start request for
-a language without a built-in parser quietly leaves/restores legacy syntax;
-`language.add()` still returns no parser and its reason. Explicit dynamic paths
+a language without a built-in parser follows upstream parser-error behavior;
+`language.add()` returns no parser and its reason. Explicit dynamic paths
 remain unsupported. Arbitrary
 configuration can invoke unsupported operations and receive errors: file
 watches (`vim._watch`, LSP file-change registration) and LSP over TCP call luv
@@ -143,11 +147,12 @@ reaching any uv call. QEMU
 qualification covers local editing, highlighting, save and `:cd` with the
 16-colour profile; it does not establish physical-host qualification.
 
-The thirteen ordered patches adapt platform/process APIs, native paths and file
-comparison, the console TUI, core/runtime assumptions, persistent undo, static parser registration, anchored file selection and the swapfile prompt, which no
-longer indexes the passwd record Pyxis refuses to supply. Patches 0009–0013 add native
-external jobs, `ROOT://` file URIs, language-server launch and path handling, the
-`CSI 4 m` underline capability and command lookup through the held command list. Undo
+The nine ordered patches adapt platform/process APIs, native paths and file
+comparison, the console TUI, core/runtime assumptions, persistent undo, static
+parser registration, anchored file selection, external jobs, file URIs and
+language-server resource bindings. Final native process, path, terminal underline
+and command-selection changes live in the original backend patches. Generic
+error handling and missing-parser behavior follow upstream. Undo
 files are created with libc's 0666 creation mode instead of the edited
 file's permission bits. Exact pins,
 checksums and patch order are in `metadata.lua` and the bundle's

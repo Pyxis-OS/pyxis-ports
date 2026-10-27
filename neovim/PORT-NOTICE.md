@@ -34,48 +34,33 @@ licence and SHA-256 are recorded in `app/metadata/source.txt`. Generated C
 parsers and scanners are compiled directly, without fetching or regenerating
 grammars during the target build.
 
-Local changes are recorded as twelve ordered upstream-derived patches, retaining
+Local changes are recorded as nine ordered upstream-derived patches, retaining
 the licences of the files they modify:
 
-1. `0001-pyxis-platform.patch`: native process observation/termination, explicit
-   internal child grants (including optional SYSTEM_INFO READ forwarded to the
-   embedded server), one-thread event loops, and rejected Unix process,
-   socket, signal and PTY paths.
-2. `0002-pyxis-files.patch`: native scheme paths and proved realpath, validity-aware
-   metadata, retained file references and checked overwrite; unavailable
+1. `0001-pyxis-platform.patch`: native process observation and termination,
+   explicit internal child grants (including optional SYSTEM_INFO READ), attached
+   external jobs, one-thread event loops and rejected Unix process/signal paths.
+2. `0002-pyxis-files.patch`: native scheme paths and proved realpath,
+   validity-aware metadata, retained file references, checked overwrite,
+   proved-parent selection and held-list executable probes. Unavailable
    swap/backup operations reject explicitly.
 3. `0003-pyxis-tui.patch`: native console streams, RAW passthrough lifetime,
-   generation-based resize, the 16-colour terminal profile and suppressed
-   terminal probes/query waits.
+   generation-based resize, the 16-colour terminal profile, underline and
+   suppressed unsupported terminal probes. Native writes retain borrowed request
+   and buffer storage through completion.
 4. `0004-pyxis-core.patch`: Pyxis build/runtime selection, static Lua module
-   loading, native home/runtime paths, restricted internal channels and omitted
-   automatic listeners and PID metadata.
+   loading, native home/runtime paths, attached pipe jobs and omitted automatic
+   listeners and PID metadata. Static grammars link in the native build.
 5. `0005-pyxis-undo-mode.patch`: persistent undo files are created with mode
    0666 instead of the edited file's permission bits.
-
-6. `0006-pyxis-static-parsers.patch`: built-in language registration, static grammar
-   linking, and quiet legacy-syntax fallback when a parser is unavailable.
-
-7. `0007-pyxis-no-passwd.patch`: swapfile prompts omit unavailable passwd data.
-8. `0008-pyxis-file-selection.patch`: proved-parent file selection, exclusive
-   new-name creation and native origin lifetime on rename/save-as.
-9. `0009-pyxis-external-jobs.patch`: external jobs and shell commands as native
-   children over pipes, immediate native termination on stop, and executable
-   checks through the shared program lookup; PTY and detached jobs reject.
-10. `0010-pyxis-file-uris.patch`: file URIs carry the native root name as their
-    first path segment (`home://a.c` is `file:///home/a.c`) in `vim.uri`, so LSP
-    never sends a native path as a URI.
-11. `0011-pyxis-language-servers.patch`: language servers are never detached;
-    `vim.fs` parents, absolute paths and joins stop at a native root; a buffer
-    name under a root the editor does not hold is kept as given rather than
-    proved native; `vim.uri` treats server root views as native paths.
-12. `0012-pyxis-underline.patch`: the `pyxis` terminal profile sends `CSI 4 m`
-    for underline, which every underline style falls back to, so diagnostics are
-    underlined.
-
-13. `0013-pyxis-command-selection.patch`: executable probes use shared held-list
-    resolution; language-server resource views copy the actual admitted process
-    selection and retain each buffer's read-only root.
+6. `0006-pyxis-static-parsers.patch`: built-in language registration and grammar
+   lookup with actual ABI checks. Missing-parser behavior follows upstream.
+7. `0008-pyxis-file-selection.patch`: native origin lifetime on read and save.
+8. `0010-pyxis-file-uris.patch`: file URIs carry the native root name as their
+   first segment (`home://a.c` is `file:///home/a.c`), including server root views.
+9. `0011-pyxis-language-servers.patch`: language servers stay attached; resource
+   views copy the actual admitted process selection and retain each buffer's
+   read-only root.
 
 Original recipe, host wrapper, configuration, runtime Lua (`lsp/clangd.lua`,
 `lua/vim/_pyxis_roots.lua`), colourscheme and documentation

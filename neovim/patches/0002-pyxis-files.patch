@@ -1,18 +1,46 @@
 diff --git a/runtime/lua/vim/fs.lua b/runtime/lua/vim/fs.lua
-index 0c71ea4..ce5d9f4 100644
+index 0c71ea4..fbbc61e 100644
 --- a/runtime/lua/vim/fs.lua
 +++ b/runtime/lua/vim/fs.lua
-@@ -160,6 +160,9 @@ function M.joinpath(...)
+@@ -45,9 +45,12 @@ local uv = vim.uv
+ local M = {}
+ 
+ -- Can't use `has('win32')` because the `nvim -ll` test runner doesn't support `vim.fn` yet.
+-local sysname = uv.os_uname().sysname:lower()
++local sysname = vim._ts_add_language_from_static and 'pyxis' or uv.os_uname().sysname:lower()
+ local iswin = not not (sysname:find('windows') or sysname:find('mingw'))
+ local os_sep = iswin and '\\' or '/'
++local ispyxis = vim.fn.has('pyxis') == 1
++-- A Pyxis path is ROOT://rest, and its root is the top of the path.
++local PYXIS_ROOT_PATTERN = '^[%w._+-]+://'
+ 
+ --- Iterate over all the parents of the given path (not expanded/resolved, the caller must do that).
+ ---
+@@ -102,6 +105,12 @@ function M.dirname(file)
+       return file
+     end
+   end
++  local root = ispyxis and file:match(PYXIS_ROOT_PATTERN)
++  if root then
++    local rest = file:sub(#root + 1):gsub('/+$', '')
++    local parent = rest:match('^(.*)/')
++    return parent and root .. parent or root
++  end
+   if not file:match('/') then
+     return '.'
+   elseif file == '/' or file:match('^/[^/]+$') then
+@@ -160,6 +169,10 @@ function M.joinpath(...)
  
    local path = table.concat(segments, '/')
  
-+  if vim.fn.has('pyxis') == 1 then
-+    return path
++  if ispyxis then
++    -- Joining onto a bare root, such as host://, adds no separator of its own.
++    return (path:gsub('^([%w._+-]+://)/+', '%1'))
 +  end
    return (path:gsub(iswin and '[/\\][/\\]*' or '//+', '/'))
  end
  
-@@ -698,6 +701,11 @@ function M.normalize(path, opts)
+@@ -698,6 +711,11 @@ function M.normalize(path, opts)
      path = path:gsub('%$([%w_]+)', uv.os_getenv) --- @type string
    end
  
@@ -24,6 +52,17 @@ index 0c71ea4..ce5d9f4 100644
    if win then
      -- Convert path separator to `/`
      path = path:gsub(os_sep_local, '/')
+@@ -818,6 +836,10 @@ function M.abspath(path)
+   -- Expand ~ to user's home directory
+   path = expand_home(path)
+ 
++  if ispyxis and path:match(PYXIS_ROOT_PATTERN) then
++    return path
++  end
++
+   -- Convert path separator to `/`
+   path = path:gsub(os_sep, '/')
+ 
 diff --git a/runtime/lua/vim/loader.lua b/runtime/lua/vim/loader.lua
 index 6aa79a0..055fb59 100644
 --- a/runtime/lua/vim/loader.lua
@@ -50,7 +89,7 @@ index 6aa79a0..055fb59 100644
    local stat = fs_stat_cached(modpath)
    local cname = cache_filename(modpath)
 diff --git a/src/nvim/buffer.c b/src/nvim/buffer.c
-index 0f0c5cd..db4c476 100644
+index 0f0c5cd..1795419 100644
 --- a/src/nvim/buffer.c
 +++ b/src/nvim/buffer.c
 @@ -316,7 +316,9 @@ int open_buffer(bool read_stdin, exarg_T *eap, int flags_arg)
@@ -63,79 +102,40 @@ index 0f0c5cd..db4c476 100644
  # ifdef OPEN_CHR_FILES
                        || (S_ISCHR(perm)
                            && is_dev_fd_file(curbuf->b_ffname))
-@@ -910,6 +912,10 @@ void buf_freeall(buf_T *buf, int flags)
-   }
+@@ -1953,6 +1955,11 @@ buf_T *buflist_new(char *ffname_arg, char *sfname_arg, linenr_T lnum, int flags)
+   buf_T *buf;
  
-   linenr_T count = buf->b_ml.ml_line_count;
+   fname_expand(curbuf, &ffname, &sfname);       // will allocate ffname
 +#ifdef __pyxis__
-+  buf_release_file_reference(buf);
-+  buf->b_native_file_loaded = false;
++  if (ffname_arg != NULL && ffname == NULL) {
++    return NULL;
++  }
 +#endif
-   ml_close(buf, true);              // close and delete the memline/memfile
-   buf->b_ml.ml_line_count = 0;      // no lines in buffer
  
-@@ -932,6 +938,9 @@ void buf_freeall(buf_T *buf, int flags)
- /// itself (not the file, that must have been done already).
- static void free_buffer(buf_T *buf)
- {
-+#ifdef __pyxis__
-+  buf_release_file_reference(buf);
-+#endif
-   pmap_del(int)(&buffer_handles, buf->b_fnum, NULL);
-   buf_free_count++;
-   // b:changedtick uses an item in buf_T.
-@@ -3287,6 +3296,31 @@ static bool otherfile_buf(buf_T *buf, char *ffname, FileID *file_id_p, bool file
+   // If the file name already exists in the list, update the entry.
+ 
+@@ -3287,6 +3294,7 @@ static bool otherfile_buf(buf_T *buf, char *ffname, FileID *file_id_p, bool file
    return true;
  }
  
-+#ifdef __pyxis__
-+void buf_release_file_reference(buf_T *buf)
-+{
-+  if (buf->b_native_file_ref) {
-+    os_close(buf->b_native_file_fd);
-+    buf->b_native_file_ref = false;
-+    buf->b_native_file_fd = -1;
-+  }
-+  buf->b_native_mtime_valid = false;
-+}
-+
-+bool buf_hold_file_reference(buf_T *buf, int fd)
-+{
-+  int owned = os_dup(fd);
-+  if (owned < 0) {
-+    return false;
-+  }
-+  buf_release_file_reference(buf);
-+  buf->b_native_file_fd = owned;
-+  buf->b_native_file_ref = true;
-+  buf->b_native_file_loaded = true;
-+  return true;
-+}
-+#endif
 +
  /// Set file_id for a buffer.
  /// Must always be called when b_fname is changed!
  void buf_set_file_id(buf_T *buf)
-diff --git a/src/nvim/buffer_defs.h b/src/nvim/buffer_defs.h
-index e02ccbb..2f4dacb 100644
---- a/src/nvim/buffer_defs.h
-+++ b/src/nvim/buffer_defs.h
-@@ -395,6 +395,13 @@ struct file_buffer {
-   char *b_fname;           // current file name, points to b_ffname or
-                            // b_sfname
- 
+@@ -3608,7 +3616,11 @@ void fname_expand(buf_T *buf, char **ffname, char **sfname)
+   if (*sfname == NULL) {  // no short file name given, use ffname
+     *sfname = *ffname;
+   }
 +#ifdef __pyxis__
-+  // Owned descriptor; FileInfo and FileID remain plain value snapshots.
-+  int b_native_file_fd;
-+  bool b_native_file_ref;
-+  bool b_native_file_loaded;
-+  bool b_native_mtime_valid;  // validity of b_mtime_read, not a current path query
++  *ffname = path_native_file_name(*ffname);
++#else
+   *ffname = fix_fname((*ffname));     // expand to full path
 +#endif
-   bool file_id_valid;
-   FileID file_id;
  
+ #ifdef MSWIN
+   if (!buf->b_p_bin) {
 diff --git a/src/nvim/bufwrite.c b/src/nvim/bufwrite.c
-index 68f506f..921b878 100644
+index 68f506f..d50daf2 100644
 --- a/src/nvim/bufwrite.c
 +++ b/src/nvim/bufwrite.c
 @@ -1,5 +1,6 @@
@@ -166,34 +166,7 @@ index 68f506f..921b878 100644
  static const char e_write_error_conversion_failed_make_fenc_empty_to_override[]
    = N_("E513: Write error, conversion failed (make 'fenc' empty to override)");
  static const char e_write_error_conversion_failed_in_line_nr_make_fenc_empty_to_override[]
-@@ -307,6 +313,7 @@ static int buf_write_bytes(struct bw_info *ip)
- /// Check modification time of file, before writing to it.
- /// The size isn't checked, because using a tool like "gzip" takes care of
- /// using the same timestamp but can't set the size.
-+#ifndef __pyxis__
- static int check_mtime(buf_T *buf, FileInfo *file_info)
- {
-   if (buf->b_mtime_read != 0
-@@ -323,6 +330,8 @@ static int check_mtime(buf_T *buf, FileInfo *file_info)
-   return OK;
- }
- 
-+#endif
-+
- /// Generate a BOM in "buf[4]" for encoding "name".
- ///
- /// @return  the length of the BOM (zero when no BOM).
-@@ -458,7 +467,9 @@ static int buf_write_do_autocmds(buf_T *buf, char **fnamep, char **sfnamep, char
-       }
-       if (overwriting) {
-         // Assume the buffer was written, update the timestamp.
-+#ifndef __pyxis__
-         ml_timestamp(buf);
-+#endif
-         if (append) {
-           buf->b_flags &= ~BF_NEW;
-         } else {
-@@ -577,7 +588,7 @@ static void emit_err(Error_T *e)
+@@ -577,7 +583,7 @@ static void emit_err(Error_T *e)
    }
  }
  
@@ -202,63 +175,7 @@ index 68f506f..921b878 100644
  
  static int get_fileinfo_os(char *fname, FileInfo *file_info_old, bool overwriting, int *perm,
                             bool *device, bool *newfile, Error_T *err)
-@@ -673,15 +684,55 @@ static int get_fileinfo(buf_T *buf, char *fname, bool overwriting, bool forceit,
- 
-     // If 'forceit' is false, check if the timestamp hasn't changed since reading the file.
-     if (overwriting && !forceit) {
-+#ifndef __pyxis__
-       int retval = check_mtime(buf, file_info_old);
-       if (retval == FAIL) {
-         return FAIL;
-       }
-+#endif
-     }
-   }
-   return OK;
- }
- 
-+#ifdef __pyxis__
-+static bool native_write_target(buf_T *buf, int fd, bool overwriting, bool forceit, Error_T *err)
-+{
-+  FileInfo target, original;
-+  if (!os_fileinfo_fd(fd, &target)) {
-+    *err = set_err(_("E212: Cannot inspect native write target"));
-+    return false;
-+  }
-+  if (overwriting && buf->b_native_file_loaded && !forceit) {
-+    if (!buf->b_native_file_ref
-+        || !os_fileinfo_fd(buf->b_native_file_fd, &original)
-+        || (original.stat.stat_valid & NVIM_STAT_ID_VALID) != NVIM_STAT_ID_VALID
-+        || (target.stat.stat_valid & NVIM_STAT_ID_VALID) != NVIM_STAT_ID_VALID
-+        || original.stat.st_dev != target.stat.st_dev
-+        || original.stat.st_ino != target.stat.st_ino
-+        || !buf->b_native_mtime_valid
-+        || !(original.stat.stat_valid & NVIM_STAT_MTIME_VALID)
-+        || !(target.stat.stat_valid & NVIM_STAT_MTIME_VALID)) {
-+      *err = set_err(_("E212: Native file replaced or comparison metadata unavailable (use :w!)"));
-+      return false;
-+    }
-+    if (time_differs(&target, buf->b_mtime_read, buf->b_mtime_read_ns)) {
-+      *err = set_err(_("E212: Native file changed since reading (use :w!)"));
-+      return false;
-+    }
-+  }
-+  if (overwriting) {
-+    // Retain the exact writable object before any destructive operation.
-+    if (!buf_hold_file_reference(buf, fd)) {
-+      *err = set_err(_("E212: Cannot retain native write target"));
-+      return false;
-+    }
-+    buf_store_file_info(buf, &target);
-+  }
-+  return true;
-+}
-+#endif
-+
- /// @return The backup file name
- char *buf_get_backup_name(char *fname, char **dirp, bool no_prepend_dot, char *backup_ext)
- {
-@@ -716,6 +767,7 @@ char *buf_get_backup_name(char *fname, char **dirp, bool no_prepend_dot, char *b
+@@ -716,6 +722,7 @@ char *buf_get_backup_name(char *fname, char **dirp, bool no_prepend_dot, char *b
    return backup;
  }
  
@@ -266,7 +183,7 @@ index 68f506f..921b878 100644
  static int buf_write_make_backup(char *fname, bool append, FileInfo *file_info_old, vim_acl_T acl,
                                   int perm, unsigned bkc, bool file_readonly, bool forceit,
                                   bool *backup_copyp, char **backupp, Error_T *err)
-@@ -954,6 +1006,8 @@ nobackup:
+@@ -954,6 +961,8 @@ nobackup:
    return OK;
  }
  
@@ -275,7 +192,7 @@ index 68f506f..921b878 100644
  /// buf_write() - write to file "fname" lines "start" through "end"
  ///
  /// We do our own buffering here because fwrite() is so slow.
-@@ -982,7 +1036,9 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+@@ -982,7 +991,9 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
    bool whole = (start == 1 && end == buf->b_ml.ml_line_count);
    bool write_undo_file = false;
    context_sha256_T sha_ctx;
@@ -285,7 +202,16 @@ index 68f506f..921b878 100644
  
    if (fname == NULL || *fname == NUL) {  // safety check
      return FAIL;
-@@ -1128,6 +1184,12 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+@@ -1044,7 +1055,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+   // Don't do this for Windows, a "cd" in a sub-shell may have moved us to
+   // another directory, which we don't detect.
+   char *ffname = fname;                           // remember full fname
+-#ifdef UNIX
++#if defined(UNIX) && !defined(__pyxis__)
+   fname = sfname;
+ #endif
+ 
+@@ -1128,6 +1139,12 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
  
    // If 'backupskip' is not empty, don't make a backup for some files.
    bool dobackup = (p_wb || p_bk || *p_pm != NUL);
@@ -298,7 +224,7 @@ index 68f506f..921b878 100644
    if (dobackup && *p_bsk != NUL && match_file_list(p_bsk, sfname, ffname)) {
      dobackup = false;
    }
-@@ -1149,6 +1211,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+@@ -1149,6 +1166,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
    //
    // Do not make any backup, if 'writebackup' and 'backup' are both switched
    // off.  This helps when editing large files on almost-full disks.
@@ -306,7 +232,7 @@ index 68f506f..921b878 100644
    if (!(append && *p_pm == NUL) && !filtering && perm >= 0 && dobackup) {
      if (buf_write_make_backup(fname, append, &file_info_old, acl, perm, bkc, file_readonly, forceit,
                                &backup_copy, &backup, &err) == FAIL) {
-@@ -1157,9 +1220,12 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+@@ -1157,9 +1175,12 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
      }
    }
  
@@ -319,7 +245,7 @@ index 68f506f..921b878 100644
    // When using ":w!" and the file was read-only: make it writable
    if (forceit && perm >= 0 && !(perm & 0200)
        && file_info_old.stat.st_uid == getuid()
-@@ -1168,6 +1234,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+@@ -1168,6 +1189,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
      os_setperm(fname, perm);
      made_writable = true;
    }
@@ -327,21 +253,15 @@ index 68f506f..921b878 100644
  #endif
  
    // When using ":w!" and writing to the current file, 'readonly' makes no
-@@ -1309,7 +1376,13 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
-       // false.
+@@ -1310,6 +1332,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
        const int fflags = O_WRONLY | (append
                                       ? (forceit ? (O_APPEND | O_CREAT) : O_APPEND)
-+#ifdef __pyxis__
-+                                     : ((overwriting && buf->b_native_file_loaded && !forceit
-+                                         ? 0 : O_CREAT)
-+                                        | (newfile && !forceit ? O_EXCL : 0)));
-+#else
                                       : (O_CREAT | O_TRUNC));
-+#endif
++
        const int mode = perm < 0 ? 0666 : (perm & 0777);
  
        while ((fd = os_open(wfname, fflags, mode)) < 0) {
-@@ -1317,7 +1390,9 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
+@@ -1317,7 +1340,9 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
          // is still readonly. This may also happen when the directory
          // is read-only. In that case the os_remove() will fail.
          if (err.msg == NULL) {
@@ -352,34 +272,7 @@ index 68f506f..921b878 100644
            FileInfo file_info;
  
            // Don't delete the file when it's a hard or symbolic link.
-@@ -1391,6 +1466,26 @@ restore_backup:
-         }
-         goto fail;
-       }
-+#ifdef __pyxis__
-+      if (!native_write_target(buf, fd, overwriting, forceit, &err)) {
-+        os_close(fd);
-+        if (wfname != fname) {
-+          xfree(wfname);
-+        }
-+        goto fail;
-+      }
-+      if (!append) {
-+        int resize_error = ftruncate(fd, 0);
-+        if (resize_error != 0) {
-+          err = set_err_arg(_("E212: Can't resize native file: %s"), os_translate_sys_error(errno));
-+          os_close(fd);
-+          if (wfname != fname) {
-+            xfree(wfname);
-+          }
-+          goto fail;
-+        }
-+      }
-+#endif
-       write_info.bw_fd = fd;
-     }
-     err = set_err(NULL);
-@@ -1556,7 +1651,7 @@ restore_backup:
+@@ -1556,7 +1581,7 @@ restore_backup:
  #endif
      }
  
@@ -388,27 +281,7 @@ index 68f506f..921b878 100644
      // When creating a new file, set its owner/group to that of the original
      // file.  Get the new device and inode number.
      if (backup != NULL && !backup_copy) {
-@@ -1578,6 +1673,19 @@ restore_backup:
-     }
- #endif
- 
-+#ifdef __pyxis__
-+    if (overwriting && end != 0) {
-+      FileInfo written;
-+      if (os_fileinfo_fd(fd, &written)) {
-+        buf_store_file_info(buf, &written);
-+        buf->b_mtime_read = buf->b_mtime;
-+        buf->b_mtime_read_ns = buf->b_mtime_ns;
-+        buf->b_native_mtime_valid = (written.stat.stat_valid & NVIM_STAT_MTIME_VALID) != 0;
-+      } else {
-+        buf->b_native_mtime_valid = false;
-+      }
-+    }
-+#endif
-     if ((error = os_close(fd)) != 0) {
-       err = set_err_arg(_("E512: Close failed: %s"), error);
-       end = 0;
-@@ -1588,9 +1696,11 @@ restore_backup:
+@@ -1588,9 +1613,11 @@ restore_backup:
        perm &= ~0200;              // reset 'w' bit for security reasons
      }
  #endif
@@ -420,7 +293,7 @@ index 68f506f..921b878 100644
      // Probably need to set the ACL before changing the user (can't set the
      // ACL on a file the user doesn't own).
      if (!backup_copy) {
-@@ -1729,7 +1839,9 @@ restore_backup:
+@@ -1729,7 +1756,9 @@ restore_backup:
    // If written to the current file, update the timestamp of the swap file
    // and reset the BF_WRITE_MASK flags. Also sets buf->b_mtime.
    if (overwriting) {
@@ -430,7 +303,7 @@ index 68f506f..921b878 100644
      if (append) {
        buf->b_flags &= ~BF_NEW;
      } else {
-@@ -1739,6 +1851,7 @@ restore_backup:
+@@ -1739,6 +1768,7 @@ restore_backup:
  
    // If we kept a backup until now, and we are in patch mode, then we make
    // the backup file our 'original' file.
@@ -438,7 +311,7 @@ index 68f506f..921b878 100644
    if (*p_pm && dobackup) {
      char *const org = modname(fname, p_pm, false);
  
-@@ -1776,6 +1889,8 @@ restore_backup:
+@@ -1776,6 +1806,8 @@ restore_backup:
      }
    }
  
@@ -447,7 +320,7 @@ index 68f506f..921b878 100644
    // Remove the backup unless 'backup' option is set
    if (!p_bk && backup != NULL
        && !write_info.bw_conv_error
-@@ -1822,11 +1937,13 @@ nofail:
+@@ -1822,11 +1854,13 @@ nofail:
  
        // Update the timestamp to avoid an "overwrite changed file"
        // prompt when writing again.
@@ -462,10 +335,41 @@ index 68f506f..921b878 100644
    }
    msg_scroll = msg_save;
 diff --git a/src/nvim/eval/funcs.c b/src/nvim/eval/funcs.c
-index afe356a..a28aeb0 100644
+index afe356a..b10fd43 100644
 --- a/src/nvim/eval/funcs.c
 +++ b/src/nvim/eval/funcs.c
-@@ -2653,6 +2653,9 @@ static void f_gettext(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+@@ -3,7 +3,9 @@
+ #include <inttypes.h>
+ #include <limits.h>
+ #include <math.h>
++#ifndef __pyxis__
+ #include <signal.h>
++#endif
+ #include <stdarg.h>
+ #include <stddef.h>
+ #include <stdio.h>
+@@ -1010,6 +1012,8 @@ static void f_debugbreak(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+   DebugBreakProcess(hProcess);
+   CloseHandle(hProcess);
+   rettv->vval.v_number = OK;
++#elif defined(__pyxis__)
++  emsg("Numeric process debugging is unavailable on Pyxis");
+ #else
+   uv_kill(pid, SIGINT);
+ #endif
+@@ -2139,7 +2143,11 @@ static void f_getmarklist(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+ /// "getpid()" function
+ static void f_getpid(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+ {
++#ifdef __pyxis__
++  emsg("numeric process IDs are unavailable on Pyxis");
++#else
+   rettv->vval.v_number = os_get_pid();
++#endif
+ }
+ 
+ /// "getcurpos(string)" function
+@@ -2653,6 +2661,9 @@ static void f_gettext(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
  static void f_has(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
  {
    static const char *const has_list[] = {
@@ -475,10 +379,51 @@ index afe356a..a28aeb0 100644
  #ifdef __ANDROID__
      "android",
  #endif
+@@ -3627,7 +3638,7 @@ void f_jobstart(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+   dict_T *env = create_environment(job_env, clear_env, pty, true, term_name);
+   Channel *chan = channel_job_start(argv, NULL, on_stdout, on_stderr, on_exit, pty,
+                                     rpc, overlapped, detach, stdin_mode, cwd,
+-                                    width, height, env, &rettv->vval.v_number);
++                                    width, height, env, &rettv->vval.v_number, false);
+   if (!chan) {
+     return;
+   } else if (!term) {
+@@ -4960,7 +4971,9 @@ static void init_srand(uint32_t *const x)
+   // The system's random number generator doesn't work,
+   // fall back to os_hrtime() XOR with process ID
+   *x = (uint32_t)os_hrtime();
++#ifndef __pyxis__
+   *x ^= (uint32_t)os_get_pid();
++#endif
+ }
+ 
+ static inline uint32_t splitmix32(uint32_t *const x)
+@@ -6357,6 +6370,12 @@ cleanup:
+ /// "serverstart()" function
+ static void f_serverstart(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+ {
++#ifdef __pyxis__
++  rettv->v_type = VAR_STRING;
++  rettv->vval.v_string = NULL;
++  emsg("Socket listeners are unavailable on Pyxis");
++  return;
++#endif
+   rettv->v_type = VAR_STRING;
+   rettv->vval.v_string = NULL;  // Address of the new server
+ 
 diff --git a/src/nvim/fileio.c b/src/nvim/fileio.c
-index 4ae7e72..7464be7 100644
+index 4ae7e72..4d3e574 100644
 --- a/src/nvim/fileio.c
 +++ b/src/nvim/fileio.c
+@@ -282,7 +282,7 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
+   if (sfname == NULL) {
+     sfname = fname;
+   }
+-#if defined(UNIX)
++#if defined(UNIX) && !defined(__pyxis__)
+   fname = sfname;
+ #endif
+ 
 @@ -373,7 +373,9 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
    if (!read_stdin && !read_buffer && !read_fifo) {
      if (perm >= 0 && !S_ISREG(perm)                 // not a regular file ...
@@ -526,32 +471,15 @@ index 4ae7e72..7464be7 100644
      // Set swap file protection bits after creating it.
      if (swap_mode > 0 && curbuf->b_ml.ml_mfp != NULL
          && curbuf->b_ml.ml_mfp->mf_fname != NULL) {
-@@ -660,6 +667,24 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
+@@ -660,6 +667,7 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
      }
    }
  
-+#ifdef __pyxis__
-+  if (newfile && !read_stdin && !read_buffer && !read_fifo) {
-+    curbuf->b_native_file_loaded = true;
-+    if (!buf_hold_file_reference(curbuf, fd)) {
-+      close(fd);
-+      no_wait_return--;
-+      emsg(_("E212: Cannot retain native file reference"));
-+      goto theend;
-+    }
-+    if (os_fileinfo_fd(fd, &file_info)) {
-+      buf_store_file_info(curbuf, &file_info);
-+      curbuf->b_mtime_read = curbuf->b_mtime;
-+      curbuf->b_mtime_read_ns = curbuf->b_mtime_ns;
-+      curbuf->b_native_mtime_valid = (file_info.stat.stat_valid & NVIM_STAT_MTIME_VALID) != 0;
-+    }
-+  }
-+#endif
 +
    // Autocommands may add lines to the file, need to check if it is empty
    wasempty = (curbuf->b_ml.ml_flags & ML_EMPTY);
  
-@@ -1758,10 +1783,12 @@ failed:
+@@ -1758,10 +1766,12 @@ failed:
          buflen += snprintf(IObuff + buflen, (size_t)(IOSIZE - buflen), _("[fifo]"));
          c = true;
        }
@@ -564,7 +492,7 @@ index 4ae7e72..7464be7 100644
  # ifdef OPEN_CHR_FILES
        if (S_ISCHR(perm)) {                          // or character special
          buflen += snprintf(IObuff + buflen, (size_t)(IOSIZE - buflen), _("[character special]"));
-@@ -2214,6 +2241,11 @@ void msg_add_lines(int insert_space, linenr_T lnum, off_T nchars)
+@@ -2214,6 +2224,11 @@ void msg_add_lines(int insert_space, linenr_T lnum, off_T nchars)
  bool time_differs(const FileInfo *file_info, int64_t mtime, int64_t mtime_ns)
    FUNC_ATTR_CONST
  {
@@ -576,30 +504,15 @@ index 4ae7e72..7464be7 100644
  #if defined(__linux__) || defined(MSWIN)
    return file_info->stat.st_mtim.tv_nsec != mtime_ns
           // On a FAT filesystem, esp. under Linux, there are only 5 bits to store
-@@ -2706,6 +2738,11 @@ int vim_rename(const char *from, const char *to)
+@@ -2706,6 +2721,7 @@ int vim_rename(const char *from, const char *to)
      }
    }
  
-+#ifdef __pyxis__
-+  // Native rename is the authorized operation; no unlink or copy fallback.
-+  return os_rename(from, to) == OK ? 0 : -1;
-+#endif
 +
    // Fail if the "from" file doesn't exist. Avoids that "to" is deleted.
    FileInfo from_info;
    if (!os_fileinfo(from, &from_info)) {
-@@ -2897,6 +2934,10 @@ static int move_lines(buf_T *frombuf, buf_T *tobuf)
- int buf_check_timestamp(buf_T *buf)
-   FUNC_ATTR_NONNULL_ALL
- {
-+#ifdef __pyxis__
-+  // The write guard queries both held references; path snapshots cannot refresh it.
-+  return 0;
-+#endif
-   int retval = 0;
-   char *mesg = NULL;
-   char *mesg2 = "";
-@@ -3313,7 +3354,9 @@ static void vim_mktempdir(void)
+@@ -3313,7 +3329,9 @@ static void vim_mktempdir(void)
  
    // Make sure the umask doesn't remove the executable bit.
    // "repl" has been reported to use "0177".
@@ -609,7 +522,7 @@ index 4ae7e72..7464be7 100644
    for (size_t i = 0; i < ARRAY_SIZE(temp_dirs); i++) {
      // Expand environment variables, leave room for "/tmp/nvim.<user>/XXXXXX/999999999".
      size_t tmplen = expand_env((char *)temp_dirs[i], tmp, TEMP_FILE_PATH_MAXLEN - 64);
-@@ -3385,7 +3428,9 @@ static void vim_mktempdir(void)
+@@ -3385,7 +3403,9 @@ static void vim_mktempdir(void)
      // Couldn't set `vim_tempdir` to `path` so remove created directory.
      os_rmdir(path);
    }
@@ -620,10 +533,24 @@ index 4ae7e72..7464be7 100644
  
  /// Core part of "readdir()" function.
 diff --git a/src/nvim/memline.c b/src/nvim/memline.c
-index 3f382b5..63060a2 100644
+index 3f382b5..ac75d0a 100644
 --- a/src/nvim/memline.c
 +++ b/src/nvim/memline.c
-@@ -481,6 +481,13 @@ void ml_open_files(void)
+@@ -337,11 +337,13 @@ int ml_open(buf_T *buf)
+     b0p->b0_dirty = buf->b_changed ? B0_DIRTY : 0;
+     b0p->b0_flags = (char)(get_fileformat(buf) + 1);
+     set_b0_fname(b0p, buf);
++#ifndef __pyxis__
+     os_get_username(b0p->b0_uname, B0_UNAME_SIZE);
+     b0p->b0_uname[B0_UNAME_SIZE - 1] = NUL;
+     os_get_hostname(b0p->b0_hname, B0_HNAME_SIZE);
+     b0p->b0_hname[B0_HNAME_SIZE - 1] = NUL;
+     long_to_char((long)os_get_pid(), b0p->b0_pid);
++#endif
+   }
+ 
+   // Always sync block number 0 to disk, so we can check the file name in
+@@ -481,6 +483,13 @@ void ml_open_files(void)
  /// and the memfile will be in memory only (no recovery possible).
  void ml_open_file(buf_T *buf)
  {
@@ -637,7 +564,7 @@ index 3f382b5..63060a2 100644
    memfile_T *mfp = buf->b_ml.ml_mfp;
    if (mfp == NULL || mfp->mf_fd >= 0 || !buf->b_p_swf
        || (cmdmod.cmod_flags & CMOD_NOSWAPFILE)
-@@ -611,7 +618,9 @@ void ml_close_notmod(void)
+@@ -611,7 +620,9 @@ void ml_close_notmod(void)
  /// Used when the file has been written.
  void ml_timestamp(buf_T *buf)
  {
@@ -647,7 +574,7 @@ index 3f382b5..63060a2 100644
  }
  
  /// Checks whether the IDs in b0 are valid.
-@@ -682,6 +691,11 @@ static void set_b0_fname(ZeroBlock *b0p, buf_T *buf)
+@@ -682,6 +693,11 @@ static void set_b0_fname(ZeroBlock *b0p, buf_T *buf)
          memmove(b0p->b0_fname + 1, uname, ulen);
        }
      }
@@ -659,7 +586,7 @@ index 3f382b5..63060a2 100644
      FileInfo file_info;
      if (os_fileinfo(buf->b_ffname, &file_info)) {
        long_to_char(file_info.stat.st_mtim.tv_sec, b0p->b0_mtime);
-@@ -699,6 +713,7 @@ static void set_b0_fname(ZeroBlock *b0p, buf_T *buf)
+@@ -699,6 +715,7 @@ static void set_b0_fname(ZeroBlock *b0p, buf_T *buf)
        buf->b_orig_size = 0;
        buf->b_orig_mode = 0;
      }
@@ -667,7 +594,7 @@ index 3f382b5..63060a2 100644
    }
  
    // Also add the 'fileencoding' if there is room.
-@@ -742,6 +757,10 @@ static void add_b0_fenc(ZeroBlock *b0p, buf_T *buf)
+@@ -742,6 +759,10 @@ static void add_b0_fenc(ZeroBlock *b0p, buf_T *buf)
  /// @return PID, or 0 if process is not running or the swapfile is from before a reboot.
  static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
  {
@@ -678,7 +605,7 @@ index 3f382b5..63060a2 100644
    FileInfo st;
    double uptime;
    // If the system rebooted after when the swapfile was written then the
-@@ -753,6 +772,7 @@ static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
+@@ -753,6 +774,7 @@ static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
    }
    int pid = (int)char_to_long(b0p->b0_pid);
    return os_proc_running(pid) ? pid : 0;
@@ -686,7 +613,7 @@ index 3f382b5..63060a2 100644
  }
  
  /// Try to recover curbuf from the .swp file.
-@@ -760,6 +780,10 @@ static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
+@@ -760,6 +782,10 @@ static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
  /// @param checkext  if true, check the extension and detect whether it is a swapfile.
  void ml_recover(bool checkext)
  {
@@ -698,27 +625,35 @@ index 3f382b5..63060a2 100644
    memfile_T *mfp = NULL;
    char *fname_used = NULL;
 diff --git a/src/nvim/os/fs.c b/src/nvim/os/fs.c
-index 8ad75cc..514e5f7 100644
+index 8ad75cc..f3df8b8 100644
 --- a/src/nvim/os/fs.c
 +++ b/src/nvim/os/fs.c
-@@ -126,10 +126,15 @@ bool os_isrealdir(const char *name)
+@@ -61,6 +61,12 @@
+ # include "nvim/strings.h"
+ #endif
+ 
++#ifdef __pyxis__
++# include <handle.h>
++# include <program.h>
++# include <pyxis/working_path.h>
++#endif
++
+ #include "os/fs.c.generated.h"
+ 
+ #ifdef HAVE_XATTR
+@@ -126,9 +132,11 @@ bool os_isrealdir(const char *name)
    if (uv_fs_lstat(NULL, &request, name, NULL) != kLibuvSuccess) {
      return false;
    }
 +#ifndef __pyxis__
    if (S_ISLNK(request.statbuf.st_mode)) {
-+    uv_fs_req_cleanup(&request);
      return false;
    }
--  return S_ISDIR(request.statbuf.st_mode);
 +#endif
-+  bool directory = S_ISDIR(request.statbuf.st_mode);
-+  uv_fs_req_cleanup(&request);
-+  return directory;
+   return S_ISDIR(request.statbuf.st_mode);
  }
  
- /// Check if the given path exists and is a directory.
-@@ -163,9 +168,11 @@ int os_nodetype(const char *name)
+@@ -163,9 +171,11 @@ int os_nodetype(const char *name)
    if (S_ISREG(statbuf.st_mode) || S_ISDIR(statbuf.st_mode)) {
      return NODE_NORMAL;
    }
@@ -730,29 +665,58 @@ index 8ad75cc..514e5f7 100644
    // Everything else is writable?
    // buf_write() expects NODE_WRITABLE for char device /dev/stderr.
    return NODE_WRITABLE;
-@@ -242,6 +249,13 @@ int os_exepath(char *buffer, size_t *size)
+@@ -242,6 +252,15 @@ int os_exepath(char *buffer, size_t *size)
  bool os_can_exe(const char *name, char **abspath, bool use_path)
    FUNC_ATTR_NONNULL_ARG(1)
  {
 +#ifdef __pyxis__
-+  // External programs are outside this profile; no POSIX execute-bit or PATH probe.
++  // Probe the current held command list; spawn retains its own actual selection.
++  (void)use_path;
++  bool found = program_exists(name);
 +  if (abspath != NULL) {
-+    *abspath = NULL;
++    *abspath = found ? xstrdup(name) : NULL;
 +  }
-+  return false;
++  return found;
 +#else
    if (!use_path || gettail_dir(name) != name) {
  #ifdef MSWIN
      return is_executable_ext(name, abspath);
-@@ -254,6 +268,7 @@ bool os_can_exe(const char *name, char **abspath, bool use_path)
+@@ -254,8 +273,34 @@ bool os_can_exe(const char *name, char **abspath, bool use_path)
    }
  
    return is_executable_in_path(name, abspath);
 +#endif
  }
  
++#ifdef __pyxis__
++/// Probe shared lookup without retaining authority or promising a later result.
++static bool program_exists(const char *name)
++{
++  const struct path_context *context;
++  if (pyxis_working_context(&context) != CALL_OK) {
++    return false;
++  }
++  size_t length = strlen(name);
++  size_t capacity = length + PROGRAM_LOOKUP_EXTRA;
++  struct path_workspace workspace = {
++    .directories = xmalloc((context->count + capacity) * sizeof(handle_t)),
++    .directory_capacity = context->count + capacity,
++    .component = xmalloc(capacity),
++    .component_capacity = capacity,
++  };
++  struct command_selection *selection = NULL;
++  enum call_status status = program_open(context, name, &workspace, &selection);
++  command_selection_close(selection);
++  xfree(workspace.component);
++  xfree(workspace.directories);
++  return status == CALL_OK;
++}
++#endif
++
  /// Returns true if `name` is an executable file.
-@@ -419,6 +434,10 @@ int os_open(const char *path, int flags, int mode)
+ ///
+ /// @param[in]            name     Filename to check.
+@@ -419,6 +464,10 @@ int os_open(const char *path, int flags, int mode)
    if (path == NULL) {  // uv_fs_open asserts on NULL. #7561
      return UV_EINVAL;
    }
@@ -763,7 +727,7 @@ index 8ad75cc..514e5f7 100644
    int r;
    RUN_UV_FS_FUNC(r, uv_fs_open, path, flags, mode, NULL);
    return r;
-@@ -897,11 +916,16 @@ void os_free_acl(vim_acl_T aclent)
+@@ -897,11 +946,16 @@ void os_free_acl(vim_acl_T aclent)
  bool os_file_owned(const char *fname)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -780,7 +744,7 @@ index 8ad75cc..514e5f7 100644
  }
  #else
  bool os_file_owned(const char *fname)
-@@ -1232,8 +1256,13 @@ bool os_fileinfo_fd(int file_descriptor, FileInfo *file_info)
+@@ -1232,8 +1286,13 @@ bool os_fileinfo_fd(int file_descriptor, FileInfo *file_info)
  bool os_fileinfo_id_equal(const FileInfo *file_info_1, const FileInfo *file_info_2)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -794,7 +758,7 @@ index 8ad75cc..514e5f7 100644
  }
  
  /// Get the `FileID` of a `FileInfo`
-@@ -1243,8 +1272,12 @@ bool os_fileinfo_id_equal(const FileInfo *file_info_1, const FileInfo *file_info
+@@ -1243,8 +1302,12 @@ bool os_fileinfo_id_equal(const FileInfo *file_info_1, const FileInfo *file_info
  void os_fileinfo_id(const FileInfo *file_info, FileID *file_id)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -807,7 +771,7 @@ index 8ad75cc..514e5f7 100644
  }
  
  /// Get the inode of a `FileInfo`
-@@ -1255,7 +1288,11 @@ void os_fileinfo_id(const FileInfo *file_info, FileID *file_id)
+@@ -1255,7 +1318,11 @@ void os_fileinfo_id(const FileInfo *file_info, FileID *file_id)
  uint64_t os_fileinfo_inode(const FileInfo *file_info)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -819,7 +783,7 @@ index 8ad75cc..514e5f7 100644
  }
  
  /// Get the size of a file from a `FileInfo`.
-@@ -1293,6 +1330,11 @@ uint64_t os_fileinfo_blocksize(const FileInfo *file_info)
+@@ -1293,6 +1360,11 @@ uint64_t os_fileinfo_blocksize(const FileInfo *file_info)
  bool os_fileid(const char *path, FileID *file_id)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -831,7 +795,7 @@ index 8ad75cc..514e5f7 100644
    uv_stat_t statbuf;
    if (os_stat(path, &statbuf) == kLibuvSuccess) {
      file_id->inode = statbuf.st_ino;
-@@ -1300,6 +1342,7 @@ bool os_fileid(const char *path, FileID *file_id)
+@@ -1300,6 +1372,7 @@ bool os_fileid(const char *path, FileID *file_id)
      return true;
    }
    return false;
@@ -839,7 +803,7 @@ index 8ad75cc..514e5f7 100644
  }
  
  /// Check if two `FileID`s are equal
-@@ -1310,8 +1353,12 @@ bool os_fileid(const char *path, FileID *file_id)
+@@ -1310,8 +1383,12 @@ bool os_fileid(const char *path, FileID *file_id)
  bool os_fileid_equal(const FileID *file_id_1, const FileID *file_id_2)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -852,7 +816,7 @@ index 8ad75cc..514e5f7 100644
  }
  
  /// Check if a `FileID` is equal to a `FileInfo`
-@@ -1322,8 +1369,12 @@ bool os_fileid_equal(const FileID *file_id_1, const FileID *file_id_2)
+@@ -1322,8 +1399,12 @@ bool os_fileid_equal(const FileID *file_id_1, const FileID *file_id_2)
  bool os_fileid_equal_fileinfo(const FileID *file_id, const FileInfo *file_info)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -865,7 +829,7 @@ index 8ad75cc..514e5f7 100644
  }
  
  /// Return the canonicalized absolute pathname.
-@@ -1338,8 +1389,29 @@ bool os_fileid_equal_fileinfo(const FileID *file_id, const FileInfo *file_info)
+@@ -1338,6 +1419,24 @@ bool os_fileid_equal_fileinfo(const FileID *file_id, const FileInfo *file_info)
  char *os_realpath(const char *name, char *buf, size_t len)
    FUNC_ATTR_NONNULL_ARG(1)
  {
@@ -889,13 +853,8 @@ index 8ad75cc..514e5f7 100644
 +#else
    uv_fs_t request;
    int result = uv_fs_realpath(NULL, &request, name, NULL);
-+  if (result == kLibuvSuccess && strlen(request.ptr) >= len) {
-+    result = UV_ENAMETOOLONG;
-+  }
    if (result == kLibuvSuccess) {
-     if (buf == NULL) {
-       buf = xmalloc(len);
-@@ -1348,6 +1420,7 @@ char *os_realpath(const char *name, char *buf, size_t len)
+@@ -1348,6 +1447,7 @@ char *os_realpath(const char *name, char *buf, size_t len)
    }
    uv_fs_req_cleanup(&request);
    return result == kLibuvSuccess ? buf : NULL;
@@ -921,10 +880,19 @@ index e5355dd..50f796d 100644
  
  typedef struct {
 diff --git a/src/nvim/path.c b/src/nvim/path.c
-index d370143..a849a8a 100644
+index d370143..2171049 100644
 --- a/src/nvim/path.c
 +++ b/src/nvim/path.c
-@@ -207,7 +207,9 @@ int path_head_length(void)
+@@ -22,6 +22,8 @@
+ #include "nvim/macros_defs.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
++#include "nvim/message.h"
++#include "nvim/gettext_defs.h"
+ #include "nvim/option.h"
+ #include "nvim/option_vars.h"
+ #include "nvim/os/fs.h"
+@@ -207,7 +209,9 @@ int path_head_length(void)
  bool is_path_head(const char *path)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -935,7 +903,7 @@ index d370143..a849a8a 100644
    return isalpha((uint8_t)path[0]) && path[1] == ':';
  #else
    return vim_ispathsep(*path);
-@@ -222,7 +224,11 @@ char *get_past_head(const char *path)
+@@ -222,7 +226,11 @@ char *get_past_head(const char *path)
  {
    const char *retval = path;
  
@@ -948,7 +916,7 @@ index d370143..a849a8a 100644
    // May skip "c:"
    if (is_path_head(path)) {
      retval = path + 2;
-@@ -240,7 +246,7 @@ char *get_past_head(const char *path)
+@@ -240,7 +248,7 @@ char *get_past_head(const char *path)
  /// Note that for MS-Windows this includes the colon.
  bool vim_ispathsep(int c)
  {
@@ -957,7 +925,7 @@ index d370143..a849a8a 100644
    return c == '/';          // Unix has ':' inside file names
  #else
  # ifdef BACKSLASH_IN_FILENAME
-@@ -264,7 +270,9 @@ bool vim_ispathsep_nocolon(int c)
+@@ -264,7 +272,9 @@ bool vim_ispathsep_nocolon(int c)
  /// @return true if 'c' is a path list separator.
  bool vim_ispathlistsep(int c)
  {
@@ -968,7 +936,7 @@ index d370143..a849a8a 100644
    return c == ':';
  #else
    return c == ';';      // might not be right for every system...
-@@ -529,6 +537,14 @@ char *FullName_save(const char *fname, bool force)
+@@ -529,6 +539,14 @@ char *FullName_save(const char *fname, bool force)
  
    char *buf = xmalloc(MAXPATHL);
    if (vim_FullName(fname, buf, MAXPATHL, force) == FAIL) {
@@ -983,7 +951,7 @@ index d370143..a849a8a 100644
      xfree(buf);
      return xstrdup(fname);
    }
-@@ -1577,6 +1593,10 @@ void addfile(garray_T *gap, char *f, int flags)
+@@ -1577,6 +1595,10 @@ void addfile(garray_T *gap, char *f, int flags)
  size_t simplify_filename(char *filename)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -994,7 +962,50 @@ index d370143..a849a8a 100644
    int components = 0;
    bool stripping_disabled = false;
    bool relative = true;
-@@ -2298,6 +2318,10 @@ bool match_suffix(char *fname)
+@@ -1908,6 +1930,42 @@ char *fix_fname(const char *fname)
+ #endif
+ }
+ 
++#ifdef __pyxis__
++// A root is held when its own directory opens, such as home:// for home://a.
++static bool path_native_root_held(const char *fname)
++{
++  char root[MAXPATHL];
++  size_t len = (size_t)(strchr(fname, ':') + 3 - fname);
++  memcpy(root, fname, len);
++  root[len] = NUL;
++  return os_isdir(root);
++}
++
++// File selection must anchor a possibly absent leaf to a proved existing parent.
++char *path_native_file_name(const char *fname)
++{
++  if (fname == NULL) {
++    return NULL;
++  }
++  if (strlen(fname) >= MAXPATHL) {
++    emsg(_("E212: Native file name too long"));
++    return NULL;
++  }
++  char *full = xmalloc(MAXPATHL);
++  if (path_to_absolute(fname, full, MAXPATHL, true) == FAIL) {
++    xfree(full);
++    // As with URLs elsewhere, a root this process does not hold names no
++    // native file; Lua may still show the buffer, e.g. a language server root.
++    if (path_is_absolute(fname) && !path_native_root_held(fname)) {
++      return xstrdup(fname);
++    }
++    emsg(_("E212: Cannot prove native file parent"));
++    return NULL;
++  }
++  return full;
++}
++#endif
++
+ /// Set the case of the file name, if it already exists.  This will cause the
+ /// file name to remain exactly the same.
+ /// Only required for file systems where case is ignored and preserved.
+@@ -2298,6 +2356,10 @@ bool match_suffix(char *fname)
  int path_full_dir_name(char *directory, char *buffer, size_t len)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -1005,7 +1016,7 @@ index d370143..a849a8a 100644
    if (strlen(directory) == 0) {
      return os_dirname(buffer, len);
    }
-@@ -2325,6 +2349,7 @@ int path_full_dir_name(char *directory, char *buffer, size_t len)
+@@ -2325,6 +2387,7 @@ int path_full_dir_name(char *directory, char *buffer, size_t len)
    }
  
    return OK;
@@ -1013,7 +1024,22 @@ index d370143..a849a8a 100644
  }
  
  // Append to_append to path with a slash in between.
-@@ -2422,7 +2447,12 @@ static int path_to_absolute(const char *fname, char *buf, size_t len, int force)
+@@ -2400,8 +2463,14 @@ static int path_to_absolute(const char *fname, char *buf, size_t len, int force)
+         p += 3;
+       }
+       assert(p >= fname);
++#ifdef __pyxis__
++      size_t parent_length = (size_t)(p - fname) + (*p != NUL);
++      memcpy(relative_directory, fname, parent_length);
++      relative_directory[parent_length] = NUL;
++#else
+       memcpy(relative_directory, fname, (size_t)(p - fname + 1));
+       relative_directory[p - fname + 1] = NUL;
++#endif
+       end_of_path = (vim_ispathsep(*p) ? p + 1 : p);
+     } else {
+       relative_directory[0] = NUL;
+@@ -2422,7 +2491,12 @@ static int path_to_absolute(const char *fname, char *buf, size_t len, int force)
  bool path_is_absolute(const char *fname)
    FUNC_ATTR_NONNULL_ALL
  {
