@@ -10,7 +10,7 @@ return {
   version = "3.12.0",
   license = "MIT",
   dependencies = { host = { "make", "cmake" }, pyxis = { "libc", "libc++" } },
-  patches = { "patches/0001-respect-libcxx-filesystem-configuration.patch" },
+  patches = {},
   outputs = {
     header = "dev/include/nlohmann/json.hpp",
     package = "dev/share/cmake/nlohmann_json/nlohmann_jsonConfig.cmake",

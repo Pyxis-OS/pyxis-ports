@@ -20,7 +20,6 @@ return function(ctx)
   local provenance = assert(io.open(ctx.stage .. "/dev/share/json/source.txt", "w"))
   assert(provenance:write("source=", ctx.metadata.source.archive.url,
     "\nsha256=", ctx.metadata.source.archive.sha256,
-    "\nprofile=header-only; libc++ filesystem conversions follow its configured availability\n",
-    "patch=", ctx.metadata.patches[1], "\n"))
+    "\nprofile=header-only; upstream filesystem conversions\n"))
   assert(provenance:close())
 end
