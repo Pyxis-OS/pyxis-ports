@@ -675,14 +675,17 @@ index d3bc8b7..fd46732 100644
 +#endif
 diff --git a/src/nvim/os/pyxis_defs.h b/src/nvim/os/pyxis_defs.h
 new file mode 100644
-index 0000000..128045b
+index 0000000..2fe0671
 --- /dev/null
 +++ b/src/nvim/os/pyxis_defs.h
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,16 @@
 +#pragma once
 +// IWYU pragma: private, include "nvim/os/os_defs.h"
 +
 +#include <unistd.h>  // IWYU pragma: export
++#if defined(HAVE_TERMIOS_H)
++# include <termios.h>
++#endif
 +
 +// Temporary files belong in the RAM tmp:// root, never the edited project or home.
 +#define TEMP_DIR_NAMES { "$TMPDIR", "tmp://" }
