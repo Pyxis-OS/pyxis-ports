@@ -478,6 +478,9 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       name = inherited_environment.capture.values[i].name;
       value = inherited_environment.capture.values[i].text;
     }
+    if (explicit_path && !strcmp(name, "path.skipped")) {
+      continue;
+    }
     if (!strcmp(name, "PATH")) {
       search_path = value;
     }
