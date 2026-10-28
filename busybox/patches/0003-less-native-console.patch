@@ -178,7 +178,7 @@ diff --git a/miscutils/less.c b/miscutils/less.c
  }
  
  /* Grab a character from input without requiring the return key.
-@@ -1822,24 +1820,9 @@
+@@ -1822,12 +1820,6 @@
  		number_process(keypress);
  }
  
@@ -188,13 +188,10 @@ diff --git a/miscutils/less.c b/miscutils/less.c
 -	kill_myself_with_sig(sig); /* does not return */
 -}
 -
--#if ENABLE_FEATURE_LESS_WINCH
--static void sigwinch_handler(int sig UNUSED_PARAM)
--{
--	winch_counter++;
--}
--#endif
--
+ #if ENABLE_FEATURE_LESS_WINCH
+ static void sigwinch_handler(int sig UNUSED_PARAM)
+ {
+@@ -1838,8 +1830,6 @@
  int less_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
  int less_main(int argc, char **argv)
  {
@@ -203,7 +200,7 @@ diff --git a/miscutils/less.c b/miscutils/less.c
  
  	INIT_G();
  
-@@ -1880,8 +1863,6 @@
+@@ -1880,8 +1870,6 @@
  		}
  	}
  
@@ -212,7 +209,7 @@ diff --git a/miscutils/less.c b/miscutils/less.c
  	if (!isatty(STDOUT_FILENO))
  		return bb_cat(argv);
  
-@@ -1897,45 +1878,14 @@
+@@ -1897,45 +1885,17 @@
  	if (option_mask32 & FLAG_TILDE)
  		empty_line_marker = "";
  
@@ -257,9 +254,9 @@ diff --git a/miscutils/less.c b/miscutils/less.c
 -
 -	/* We want to restore term_orig on exit */
 -	bb_signals(BB_FATAL_SIGS, sig_catcher);
--#if ENABLE_FEATURE_LESS_WINCH
--	signal(SIGWINCH, sigwinch_handler);
--#endif
+ #if ENABLE_FEATURE_LESS_WINCH
+ 	signal(SIGWINCH, sigwinch_handler);
+ #endif
 +	printf(CLEAR);
  
  	buffer = xmalloc((max_displayed_line+1) * sizeof(char *));

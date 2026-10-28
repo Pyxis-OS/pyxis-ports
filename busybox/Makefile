@@ -5,7 +5,7 @@ include $(SDK)/share/pyxis.mk
 # getopt32, list/numeric/string helpers and tar traversal use upstream sources.
 CPPFLAGS := $(PYXIS_CPPFLAGS) -I$(RECIPE) -I$(SOURCE)/include
 GETOPT_OBJECTS := $(BUILD)/getopt32.o $(BUILD)/llist.o $(BUILD)/xatonum.o $(BUILD)/printf_number.o $(BUILD)/tar_string.o $(BUILD)/tar_compare.o $(BUILD)/last_char_is.o $(BUILD)/skip_whitespace.o
-READ_KEY_OBJECTS := $(BUILD)/read_key.o $(BUILD)/read.o $(BUILD)/safe_poll.o $(BUILD)/poll_with_signals.o $(BUILD)/tar_perror.o $(BUILD)/console_verror.o
+READ_KEY_OBJECTS := $(BUILD)/read_key.o $(BUILD)/read.o $(BUILD)/safe_poll.o $(BUILD)/poll_with_signals.o $(BUILD)/signals.o $(BUILD)/tar_perror.o $(BUILD)/console_verror.o
 OBJECTS := $(BUILD)/vi.o $(BUILD)/busybox_pyxis.o $(GETOPT_OBJECTS) $(READ_KEY_OBJECTS)
 
 .PHONY: all
@@ -15,7 +15,7 @@ all: $(BUILD)/vi.pxe $(BUILD)/less.pxe $(BUILD)/tar.pxe $(BUILD)/printf.pxe
 # intentional case fallthrough that BusyBox's own flags do not report.
 VI_WARNINGS := -Wno-unused-parameter -Wno-sign-compare -Wno-implicit-fallthrough
 
-$(addprefix $(BUILD)/,$(addsuffix .o,read_key read safe_poll poll_with_signals)): $(BUILD)/%.o: $(SOURCE)/libbb/%.c $(RECIPE)/libbb.h $(RECIPE)/vi_config.h
+$(addprefix $(BUILD)/,$(addsuffix .o,read_key read safe_poll poll_with_signals signals)): $(BUILD)/%.o: $(SOURCE)/libbb/%.c $(RECIPE)/libbb.h $(RECIPE)/vi_config.h
 	$(CC) $(CPPFLAGS) $(PYXIS_CFLAGS) $(VI_WARNINGS) -c $< -o $@
 
 # The console adapter retains its fatal wrappers and output-flush policy.

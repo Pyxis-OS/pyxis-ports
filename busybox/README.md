@@ -21,9 +21,10 @@ and `output` console grants that the shell gives foreground commands, plus the
 usual memory and directory grants. Ctrl+C reaches vi as input for the whole
 session, so the shell cannot terminate it and discard unsaved edits.
 
-Keyboard input uses the upstream read_key decoder and libc poll on an adopted
-named input descriptor, separate from stdin. A narrow no-signals branch selects
-ordinary poll; no signal mask or handler is supplied. The descriptor owns the
+Keyboard input uses the upstream read_key decoder and its signal-aware ppoll
+helper on an adopted named input descriptor, separate from stdin. The helper
+uses libc masks around its atomic wait. vi keeps signal handlers disabled; less
+installs its upstream flag-only SIGWINCH handler. The descriptor owns the
 Ctrl+C raw hold through libc's existing native terminal API.
 
 ## vi build
@@ -33,9 +34,9 @@ multicall dispatcher:
 
 - `vi_config.h` selects colon commands, yank/marks, BRE search, dot repeat,
   read-only mode, `:set` options, undo with its queue, verbose status and
-  screen-size queries. Signals, the cursor-position size probe, `:!` and 8-bit
-  display stay off: signal delivery, a POSIX shell interface and a non-ASCII
-  renderer are unavailable to these applets.
+  screen-size queries. vi's signal/job-control bundle, the cursor-position size
+  probe, `:!` and 8-bit display stay off. Cooperative resize delivery does not
+  supply vi's suspend/job-control behavior, a POSIX shell or a non-ASCII renderer.
 - `libbb.h` declares the libbb helpers vi references.
 - `busybox_pyxis.c` supplies the standalone entry and console adapter. Option,
   list, numeric, string and vector helpers use their upstream sources.
@@ -49,8 +50,9 @@ The patch preserves native console ownership and replaces Unix permission checks
   Backspace accepts BS and DEL rather than the termios erase character.
 - **Input.** Upstream read_key decodes bytes and escape sequences, using its
   50 ms continuation waits and vi's own input buffer. Upstream mysleep polls
-  the keyboard descriptor without consuming or predecoding a key. The narrow
-  signal-free helper uses libc poll; signals and job control stay disabled.
+  the keyboard descriptor without consuming or predecoding a key. The upstream
+  signal-aware helper uses libc ppoll and masks; vi handlers and job control
+  stay disabled.
 - **Output.** Screen output is buffered and written to the output console
   before vi waits for input.
 - **Loading.** Upstream `fstat` validates a regular file and sizes its read;
@@ -119,8 +121,10 @@ Upstream poll loops and temporary content O_NONBLOCK handle content separately
 from keyboard input. Native PIPE values remain ordinary file bytes; backing FILE
 I/O may still wait. Output is buffered before each key read. Ctrl+C passthrough stays
 held until exit. Marks, bracket matching, raw escapes,
-shell commands, signals and automatic resizing are disabled. Upstream `s` log
-saving and ignored `-s`/`-X` options are retained. Redirected output and a
+shell commands and fatal signal handlers are disabled. Automatic resizing uses
+the upstream SIGWINCH counter, poll interruption and re-wrap/redraw loop through
+libc cooperative delivery. Upstream `s` log saving and ignored `-s`/`-X` options
+are retained. Redirected output and a
 console too small for paging use the upstream-style plain-copy fallback.
 
 ```text
@@ -141,8 +145,9 @@ Cached navigation does not fetch further input. There is no live refresh or
 nonblocking pipe readiness; a stalled producer can delay key handling during a
 refill. Read lines stay in memory for backward paging, up to the selected
 9,999,999-line limit; the upstream limit behaves as end of input.
-The screen size is measured at startup. The renderer is ASCII; regex uses libc's
-ASCII-only classes/folding and pinned back-reference limits. The added named-input grant does not apply to downstream intermediate stages or
+The screen size is measured at startup and after SIGWINCH. The renderer is ASCII;
+regex uses libc's ASCII-only classes/folding and pinned back-reference limits.
+The added named-input grant does not apply to downstream intermediate stages or
 file/pipe stdin with non-console stdout; redirected output uses the plain-copy
 fallback without console grants. The first stage's original console-input rule
 remains intact, and interactive drawing uses the named output console.
@@ -177,3 +182,8 @@ Upstream string, integer and floating formats, `%b`, escapes, optional `--` and
 format reuse are retained. Invalid formats or numeric arguments print a diagnostic
 and return failure. The embedded-shell `fcntl(F_GETFL)` check is removed:
 this standalone applet uses the normal libc stream lifetime.
+
+Upstream less has a resize defect while a search/line prompt is open: its WINCH
+counter can produce repeated backslashes and stop consuming keys. Ordinary
+idle resize works; close the affected mux pane if this occurs. This is kept
+upstream rather than rewritten in the Pyxis adapter.

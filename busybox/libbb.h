@@ -19,6 +19,7 @@
 #include <poll.h>
 #include <regex.h>
 #include <setjmp.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +31,7 @@
 
 #include "vi_config.h"
 
+#define FIX_ALIASING __attribute__((__may_alias__))
 #define FAST_FUNC
 #define ALWAYS_INLINE __attribute__((always_inline)) inline
 #define NOINLINE __attribute__((noinline))
@@ -133,6 +135,8 @@ ssize_t full_read(int descriptor, void *buffer, size_t size);
 ssize_t safe_read(int descriptor, void *buffer, size_t size);
 int safe_poll(struct pollfd *descriptors, nfds_t count, int timeout);
 int check_got_signal_and_poll(struct pollfd descriptors[1], int timeout);
+int sigprocmask2(int how, sigset_t *set);
+extern smallint bb_got_signal;
 void bb_simple_perror_msg(const char *message);
 int ndelay_on(int descriptor);
 int ndelay_off(int descriptor);

@@ -333,26 +333,6 @@ diff --git a/editors/vi.c b/editors/vi.c
  		}
  
  		if (cmds) {
-diff --git a/libbb/poll_with_signals.c b/libbb/poll_with_signals.c
---- a/libbb/poll_with_signals.c
-+++ b/libbb/poll_with_signals.c
-@@ -22,6 +22,10 @@
-  */
- int FAST_FUNC check_got_signal_and_poll(struct pollfd pfd[1], int timeout)
- {
-+#ifdef __pyxis__
-+	/* Signals are unavailable; preserve the upstream decoder's wait. */
-+	return poll(pfd, 1, timeout);
-+#else
- 	int n;
- 	struct timespec tv;
- 	sigset_t orig_mask;
-@@ -45,4 +49,5 @@
- 	n = ppoll(pfd, 1, timeout >= 0 ? &tv : NULL, &orig_mask);
- 	sigprocmask2(SIG_SETMASK, &orig_mask);
- 	return n;
-+#endif
- }
 diff --git a/libbb/verror_msg.c b/libbb/verror_msg.c
 --- a/libbb/verror_msg.c
 +++ b/libbb/verror_msg.c
@@ -380,5 +360,38 @@ diff --git a/libbb/verror_msg.c b/libbb/verror_msg.c
  void FAST_FUNC bb_simple_error_msg_and_die(const char *s)
  {
  	bb_error_msg_and_die("%s", s);
+ }
++#endif
+diff --git a/libbb/signals.c b/libbb/signals.c
+--- a/libbb/signals.c
++++ b/libbb/signals.c
+@@ -13,6 +13,7 @@
+ /* All known arches use small ints for signals */
+ smallint bb_got_signal;
+ 
++#if !defined(__pyxis__)
+ void record_signo(int signo)
+ {
+ 	bb_got_signal = signo;
+@@ -24,6 +25,8 @@
+ 	return sigaction(signum, act, NULL);
+ }
+ 
++#endif
++
+ int FAST_FUNC sigprocmask2(int how, sigset_t *set)
+ {
+ 	// Grr... gcc 8.1.1:
+@@ -34,6 +37,7 @@
+ 	return sigprocmask(how, set, oset);
+ }
+ 
++#if !defined(__pyxis__)
+ int FAST_FUNC sigprocmask_allsigs(int how)
+ {
+ 	sigset_t set;
+@@ -140,3 +144,4 @@
+ 	sa.sa_handler = handler;
+ 	sigaction_set(sig, &sa);
  }
 +#endif
