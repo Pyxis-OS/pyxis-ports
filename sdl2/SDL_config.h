@@ -80,6 +80,7 @@
 #define HAVE_TRUNC 1
 #define HAVE_FSEEKO 1
 #define HAVE_SETJMP 1
+#define HAVE_SYSCONF 1
 #define HAVE__EXIT 1
 
 /* Facilities Pyxis does not provide yet; SDL reports them as unsupported. */
