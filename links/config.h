@@ -19,6 +19,7 @@
 #define HAVE_UNISTD_H 1
 #define HAVE_FCNTL_H 1
 #define HAVE_TIME_H 1
+#define HAVE_SYS_TIME_H 1
 #define HAVE_MATH_H 1
 #define HAVE_SETJMP_H 1
 #define HAVE_DIRENT_H 1
@@ -67,7 +68,7 @@
 #define HAVE_STRTOLL 1
 #define HAVE_STRTOUL 1
 
-/* A port-local header under include/ supplies fd_set for pyxis_select. */
+/* SDK fd_set represents the real and retained virtual descriptor sets. */
 #define HAVE_SYS_SELECT_H 1
 /* Port-local socket declarations (include/sys/socket.h); calls fail. */
 #define HAVE_SOCKLEN_T 1

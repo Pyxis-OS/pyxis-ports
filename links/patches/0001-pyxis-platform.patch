@@ -48,10 +48,9 @@ index c7c1ee3..5fe4a2a 100644
  		hard_write(h, term_seq_tw_mouse, (int)strlen(cast_const_char term_seq_tw_mouse));
  	} else {
 diff --git a/os_dep.c b/os_dep.c
-index e89944c..5e2295d 100644
 --- a/os_dep.c
 +++ b/os_dep.c
-@@ -299,7 +299,7 @@ void init_page_size(void)
+@@ -299,7 +299,7 @@
  	if (getpg > 0 && !(getpg & (getpg - 1))) page_size = (int)getpg;
  }
  
@@ -60,7 +59,7 @@ index e89944c..5e2295d 100644
  void init_os(void)
  {
  	/* Disable per-thread heap */
-@@ -450,6 +450,19 @@ static inline int get_e(unsigned char *env)
+@@ -450,6 +450,19 @@
  	return 0;
  }
  
@@ -80,16 +79,16 @@ index e89944c..5e2295d 100644
  void do_signal(int sig, void (*handler)(int))
  {
  	errno = 0;
-@@ -472,6 +485,8 @@ void ignore_signals(void)
+@@ -471,6 +484,8 @@
+ #endif
  #endif
  }
- 
-+#endif
 +
++#endif
+ 
  time_t get_absolute_seconds(void)
  {
- 	time_t t;
-@@ -489,6 +504,7 @@ uttime get_absolute_time(void)
+@@ -489,6 +504,7 @@
  	return (uttime)tv.tv_sec * 1000 + (unsigned)tv.tv_usec / 1000;
  }
  
@@ -97,7 +96,7 @@ index e89944c..5e2295d 100644
  uttime get_time(void)
  {
  #if defined(OS2) || defined(WIN)
-@@ -523,6 +539,7 @@ uttime get_time(void)
+@@ -523,6 +539,7 @@
  	return get_absolute_time();
  #endif
  }
@@ -105,7 +104,7 @@ index e89944c..5e2295d 100644
  
  
  static unsigned char *clipboard = NULL;
-@@ -655,7 +672,7 @@ void get_terminal_size(int *x, int *y)
+@@ -655,7 +672,7 @@
  	}
  }
  
@@ -114,7 +113,7 @@ index e89944c..5e2295d 100644
  
  void get_terminal_size(int *x, int *y)
  {
-@@ -728,8 +745,11 @@ static void fd_unlock(void)
+@@ -728,8 +745,11 @@
  
  static void new_fd_cloexec(int fd)
  {
@@ -126,7 +125,19 @@ index e89944c..5e2295d 100644
  }
  
  static void new_fd_bin(int fd)
-@@ -794,6 +814,7 @@ int c_pipe(int fd[2])
+@@ -744,7 +764,10 @@
+ 
+ void set_nonblock(int fd)
+ {
+-#ifdef O_NONBLOCK
++#if defined(PYXIS)
++	/* The selected virtual pipes are already nonblocking. */
++	(void)fd;
++#elif defined(O_NONBLOCK)
+ 	int rs;
+ 	EINTRLOOP(rs, fcntl(fd, F_SETFL, O_NONBLOCK));
+ #elif defined(FIONBIO)
+@@ -794,6 +817,7 @@
  	return r;
  }
  
@@ -134,7 +145,7 @@ index e89944c..5e2295d 100644
  int c_dup(int oh)
  {
  	int h;
-@@ -815,6 +836,7 @@ int c_dup(int oh)
+@@ -815,6 +839,7 @@
  	} while (h == -1 && cleanup_fds());
  	return h;
  }
@@ -142,7 +153,7 @@ index e89944c..5e2295d 100644
  
  int c_socket(int d, int t, int p)
  {
-@@ -1017,7 +1039,7 @@ int is_xterm(void)
+@@ -1017,7 +1042,7 @@
  	return xt;
  }
  
@@ -151,16 +162,17 @@ index e89944c..5e2295d 100644
  
  int is_xterm(void)
  {
-@@ -1418,9 +1440,17 @@ unsigned char *os_fixup_external_program(unsigned char *prog)
+@@ -1418,9 +1443,17 @@
  #endif
  
  
 -#if defined(UNIX) || defined(INTERIX) || defined(BEOS) || defined(RISCOS) || defined(ATHEOS) || defined(SPAD) || defined(OPENVMS) || defined(DOS) || defined(HAIKU)
+-
+-#if defined(BEOS) && defined(HAVE_SETPGID)
 +#if defined(UNIX) || defined(INTERIX) || defined(BEOS) || defined(RISCOS) || defined(ATHEOS) || defined(SPAD) || defined(OPENVMS) || defined(DOS) || defined(HAIKU) || defined(PYXIS)
 +
 +#if defined(PYXIS)
- 
--#if defined(BEOS) && defined(HAVE_SETPGID)
++
 +/* Links starts no other programs on Pyxis. */
 +int exe(unsigned char *path, int fg)
 +{
@@ -171,7 +183,7 @@ index e89944c..5e2295d 100644
  
  int exe(unsigned char *path, int fg)
  {
-@@ -2738,7 +2768,7 @@ int start_thread(void (*fn)(void *, int), void *ptr, int l, int counted)
+@@ -2738,7 +2771,7 @@
  	return -1;
  }
  
@@ -293,10 +305,9 @@ index ed4ba33..b958afa 100644
  		internal_error("connection already suspended");
  	}
 diff --git a/select.c b/select.c
-index dfa1422..3041077 100644
 --- a/select.c
 +++ b/select.c
-@@ -127,7 +127,7 @@ int can_read(int fd)
+@@ -127,7 +127,7 @@
  
  int close_std_handle(int std)
  {
@@ -305,7 +316,7 @@ index dfa1422..3041077 100644
  	int n, h, rs;
  	if (std == 1)
  		fflush(stdout);
-@@ -156,7 +156,7 @@ fail1:
+@@ -156,7 +156,7 @@
  
  void restore_std_handle(int std, int h)
  {
@@ -314,6 +325,40 @@ index dfa1422..3041077 100644
  	int rs;
  	if (std == 1)
  		fflush(stdout);
+@@ -806,11 +806,14 @@
+ #endif
+ }
+ 
++#ifndef PYXIS
+ static sigset_t sig_old_mask;
+ static int sig_unblock = 0;
++#endif
+ 
+ void block_signals(int except1, int except2)
+ {
++#ifndef PYXIS
+ 	int rs;
+ 	sigset_t mask;
+ 	sig_fill_set(&mask);
+@@ -837,15 +840,18 @@
+ #endif
+ 	EINTRLOOP(rs, do_sigprocmask(SIG_BLOCK, &mask, &sig_old_mask));
+ 	if (!rs) sig_unblock = 1;
++#endif
+ }
+ 
+ void unblock_signals(void)
+ {
++#ifndef PYXIS
+ 	int rs;
+ 	if (sig_unblock) {
+ 		EINTRLOOP(rs, do_sigprocmask(SIG_SETMASK, &sig_old_mask, NULL));
+ 		sig_unblock = 0;
+ 	}
++#endif
+ }
+ 
+ static int check_signals(void)
 diff --git a/vpipe.inc b/vpipe.inc
 index 9a16728..8a4d191 100644
 --- a/vpipe.inc
@@ -377,3 +422,35 @@ index 9a16728..8a4d191 100644
  err0:
  	return -1;
  }
+diff --git a/links.h b/links.h
+--- a/links.h
++++ b/links.h
+@@ -384,10 +384,12 @@
+ int raise(int);
+ #endif
+ #ifndef HAVE_GETTIMEOFDAY
++#ifndef PYXIS
+ struct timeval {
+ 	long tv_sec;
+ 	long tv_usec;
+ };
++#endif
+ struct timezone {
+ 	int tz_minuteswest;
+ 	int tz_dsttime;
+@@ -480,6 +482,7 @@
+ 	(ret_) = (call_);				\
+ } while (!(ret_) && errno == EINTR)
+ 
++#ifndef PYXIS
+ #if defined(HAVE_PTHREAD_SIGMASK) && !defined(__BIONIC__)
+ static inline int do_sigprocmask(int how, const sigset_t *set, sigset_t *oset)
+ {
+@@ -542,6 +545,7 @@
+ 	memset(set, -1, sizeof(sigset_t));
+ }
+ #endif
++#endif /* !PYXIS: no signal-mask operations or fallback mask type. */
+ 
+ #define option option_dirty_workaround_for_name_clash_with_include_on_cygwin
+ #define table table_dirty_workaround_for_name_clash_with_libraries_on_macos

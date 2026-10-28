@@ -1,5 +1,5 @@
 /* Links platform layer for Pyxis, modelled on dos.c: one process, virtual
- * pipes between Links' internal "threads", terminal input through libterm,
+ * pipes between Links' internal "threads", terminal input through libc,
  * and every page loaded through libc.
  *
  * Part of the Pyxis port of Links; distributed under the GPL like Links
@@ -8,6 +8,7 @@
 #include "pyxis_console.h"
 #include <http_navigation.h>
 #include <pyxis/stdio.h>
+#include <poll.h>
 
 #define VIRTUAL_PIPE_SIZE	512
 
@@ -15,9 +16,6 @@
  * Libc numbers its descriptors from zero, lowest free first, and Links never
  * holds hundreds of files open, so the two ranges do not meet. */
 #define PIPE_NUMBER_BASE	(FD_SETSIZE / 2)
-
-/* Bytes taken from the console by a wait, kept for the next read. */
-#define INPUT_CAPACITY		64
 
 #undef read
 #undef write
@@ -67,32 +65,16 @@ static inline void pipe_wake(void)
  * otherwise they stay libc's standard streams (for example with -dump). */
 static int console_available;
 
-static unsigned char input[INPUT_CAPACITY];
-static size_t input_start;
-static size_t input_count;
-static int input_ended;
-static int input_error;
-
-/* Returns 0 if the wait timed out, 1 once there is input, EOF or an error. */
-static int fill_input(long timeout_ms)
+/* Observe the owned keyboard descriptor without consuming input. */
+static int input_ready(struct timeval *timeout)
 {
-	long r = pyxis_console_read(input, sizeof input, timeout_ms);
-	if (r == -1)
-		return 0;
-	if (r == -2) {
-		input_error = errno;
-	} else if (r == 0) {
-		input_ended = 1;
-	} else {
-		input_start = 0;
-		input_count = (size_t)r;
+	struct pollfd input = { .fd = pyxis_console_input_fd(), .events = POLLIN };
+	struct timespec span;
+	if (timeout) {
+		span.tv_sec = timeout->tv_sec;
+		span.tv_nsec = timeout->tv_usec * 1000;
 	}
-	return 1;
-}
-
-static int input_ready(void)
-{
-	return input_count || input_ended || input_error;
+	return ppoll(&input, 1, timeout ? &span : NULL, NULL);
 }
 
 int pyxis_pipe(int fd[2])
@@ -105,23 +87,8 @@ int pyxis_read(int fd, void *buf, size_t size)
 	int r = vpipe_read(fd, buf, size);
 	if (r != -2)
 		return r;
-	if (fd == 0 && console_available) {
-		if (!input_ready())
-			fill_input(-1);
-		if (input_count) {
-			if (size > input_count)
-				size = input_count;
-			memcpy(buf, input + input_start, size);
-			input_start += size;
-			input_count -= size;
-			return (int)size;
-		}
-		if (input_error) {
-			errno = input_error;
-			return -1;
-		}
-		return 0;
-	}
+	if (fd == 0 && console_available)
+		fd = pyxis_console_input_fd();
 	return (int)read(fd, buf, size);
 }
 
@@ -146,17 +113,8 @@ int pyxis_close(int fd)
 	return close(fd);
 }
 
-static long timeout_ms(struct timeval *t)
-{
-	if (t->tv_sec < 0 || (t->tv_sec == 0 && t->tv_usec <= 0))
-		return 0;
-	if (t->tv_sec >= LONG_MAX / 1000 - 1)
-		return LONG_MAX;
-	return t->tv_sec * 1000 + (t->tv_usec + 999) / 1000;
-}
-
-/* Only virtual pipes and console input can be waited on. Other descriptors
- * are libc files, which never block, so they are always reported ready. */
+/* Virtual pipes and console input are the waiting sources in this profile.
+ * Ordinary FILE descriptors are always ready; their backing I/O can still wait. */
 int pyxis_select(int n, fd_set *rs, fd_set *ws, fd_set *es, struct timeval *t)
 {
 	fd_set ready_rs, ready_ws;
@@ -169,9 +127,12 @@ int pyxis_select(int n, fd_set *rs, fd_set *ws, fd_set *es, struct timeval *t)
 			int ready;
 			if (pipe_desc[i])
 				ready = vpipe_may_read(i);
-			else if (i == 0 && console_available)
-				ready = input_ready();
-			else
+			else if (i == 0 && console_available) {
+				struct timeval zero = {0};
+				ready = input_ready(&zero);
+				if (ready < 0)
+					return -1;
+			} else
 				ready = 1;
 			if (ready)
 				FD_SET(i, &ready_rs), count++;
@@ -185,13 +146,16 @@ int pyxis_select(int n, fd_set *rs, fd_set *ws, fd_set *es, struct timeval *t)
 	 * only console input or the timeout can end the wait. */
 	if (!count) {
 		if (rs && n > 0 && FD_ISSET(0, rs) && console_available) {
-			if (fill_input(t ? timeout_ms(t) : -1))
+			int ready = input_ready(t);
+			if (ready < 0)
+				return -1;
+			if (ready)
 				FD_SET(0, &ready_rs), count++;
 		} else {
 			if (!t)
 				internal_error("pyxis_select: waiting for nothing without a timeout");
-			if (!pyxis_sleep_ms(timeout_ms(t)))
-				fatal_exit("Pyxis clock cannot sleep");
+			if (select(0, NULL, NULL, NULL, t) < 0)
+				return -1;
 		}
 	}
 	if (rs)

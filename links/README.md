@@ -29,8 +29,8 @@ Configure cannot run against the SDK, so the recipe supplies:
 - `config.h`, listing only what Pyxis libc provides. Everything else takes
   Links' own fallback or the Pyxis platform block.
 - `include/`, declarations for Unix interfaces that Links compiles but this
-  port never reaches: socket and name-lookup types, signal numbers and
-  `fd_set`.
+  port never reaches: socket and name-lookup types and signal numbers. The SDK
+  supplies `fd_set`, `timeval` and the wait-signature signal type.
 - `network.c`, where every socket call fails with ENOTSUP and
   `gethostbyname` finds nothing.
 - `pyxis.c`, the platform layer, modelled on Links' `dos.c`.
@@ -47,7 +47,8 @@ to empty units.
     `__pyxis__`. Like DOS, it has no fork, signals, asynchronous DNS, SMB,
     shell or file-security checks.
   - **Redirected calls.** `read`, `write`, `pipe`, `close` and `select` go to
-    `pyxis.c`.
+    `pyxis.c`. Console input uses an adopted libc descriptor; virtual pipes
+    retain their existing process-local dispatch.
   - **Nonblocking pipes.** Virtual pipes take descriptor numbers from
     `pyxis.c` instead of opening `/dev/null`, and are nonblocking as on DOS.
   - **No other programs.** `exe` fails, since Links starts no other programs.
@@ -108,11 +109,11 @@ to empty units.
 
 Links' internal threads talk through virtual pipes in one process, as on DOS.
 
-- **Waiting.** `pyxis_select` returns ready pipes at once. Otherwise it waits
-  for console input with the next timer as its timeout, and keeps the bytes it
-  read for the next `read`. Without terminal input to wait for, it sleeps on
-  the clock until the timeout.
-- **Ctrl+C.** Raw mode holds libterm Ctrl+C passthrough. Ctrl+C reaches Links
+- **Waiting.** `pyxis_select` returns ready virtual pipes at once. Console
+  readiness uses libc ppoll on an adopted named-input descriptor, without
+  consuming or prefetching input. The next timer supplies its timeout; an
+  input-free timeout uses libc select. Content stdin remains separate.
+- **Ctrl+C.** Raw mode holds Ctrl+C passthrough through libc's native terminal API. Ctrl+C reaches Links
   as a key, and Links quits on it as it does upstream.
 - **Screen size.** The size is read when the terminal starts. There is no
   resize notification.

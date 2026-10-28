@@ -10,49 +10,48 @@
 #include <environment.h>
 #include <abi/directory.h>
 #include <term.h>
+#include <unistd.h>
+#include <pyxis/descriptor.h>
+#include <pyxis/terminal.h>
 #include "pyxis_console.h"
 
 #define NANOSECONDS_PER_MILLISECOND UINT64_C(1000000)
 
 static struct terminal terminal;
 static handle_t clock_handle;
-static handle_t passthrough = HANDLE_INVALID;
+static int input_fd = -1;
+static struct pyxis_terminal_state *raw_state;
 
 bool pyxis_console_open(void)
 {
-  if (terminal.input != HANDLE_INVALID) {
-    handle_close(terminal.input);
+  if (input_fd >= 0) {
+    close(input_fd);
+    input_fd = -1;
   }
+  pyxis_terminal_state_free(raw_state);
+  raw_state = NULL;
   if (terminal.output != HANDLE_INVALID) {
     handle_close(terminal.output);
   }
   if (clock_handle != HANDLE_INVALID) {
     handle_close(clock_handle);
   }
-  environment_capability(startup_environment_handle(), "input", &terminal.input);
+  handle_t input = HANDLE_INVALID;
+  environment_capability(startup_environment_handle(), "input", &input);
+  if (input != HANDLE_INVALID) {
+    input_fd = pyxis_descriptor_adopt(&input, PYXIS_DESCRIPTOR_READ);
+    if (input_fd < 0) {
+      handle_close(input);
+    }
+  }
   environment_capability(startup_environment_handle(), "output", &terminal.output);
   environment_capability(startup_environment_handle(), "clock", &clock_handle);
-  return terminal.input != HANDLE_INVALID && terminal.output != HANDLE_INVALID;
+  return input_fd >= 0 && terminal.output != HANDLE_INVALID;
 }
 
-long pyxis_console_read(void *bytes, size_t capacity, long timeout_ms)
+int pyxis_console_input_fd(void)
 {
-  size_t count = 0;
-  enum call_status status;
-  if (timeout_ms < 0) {
-    status = term_read(&terminal, bytes, capacity, &count);
-  } else {
-    uint32_t bound = timeout_ms > UINT32_MAX ? UINT32_MAX : (uint32_t)timeout_ms;
-    status = term_read_timeout(&terminal, bytes, capacity, bound, &count);
-  }
-  if (status == CALL_TIMED_OUT) {
-    return -1;
-  }
-  if (status != CALL_OK) {
-    errno = EIO;
-    return -2;
-  }
-  return (long)count;
+  return input_fd;
 }
 
 bool pyxis_console_write(const void *bytes, size_t size)
@@ -78,14 +77,13 @@ bool pyxis_console_size(int *columns, int *rows)
 
 void pyxis_console_hold_ctrl_c(bool hold)
 {
-  if (hold && passthrough == HANDLE_INVALID) {
+  if (hold && !raw_state) {
     /* Without passthrough Links still runs; Ctrl+C then ends it. */
-    if (term_passthrough(&terminal, &passthrough) != CALL_OK) {
-      passthrough = HANDLE_INVALID;
-    }
-  } else if (!hold && passthrough != HANDLE_INVALID) {
-    handle_close(passthrough);
-    passthrough = HANDLE_INVALID;
+    pyxis_terminal_make_raw(input_fd, &raw_state);
+  } else if (!hold && raw_state) {
+    pyxis_terminal_restore(input_fd, raw_state);
+    pyxis_terminal_state_free(raw_state);
+    raw_state = NULL;
   }
 }
 
@@ -97,15 +95,6 @@ bool pyxis_clock_ms(uint64_t *milliseconds)
   }
   *milliseconds = now / NANOSECONDS_PER_MILLISECOND;
   return true;
-}
-
-bool pyxis_sleep_ms(uint64_t milliseconds)
-{
-  if (milliseconds > UINT64_MAX / NANOSECONDS_PER_MILLISECOND) {
-    milliseconds = UINT64_MAX / NANOSECONDS_PER_MILLISECOND;
-  }
-  return clock_sleep_for(clock_handle,
-      milliseconds * NANOSECONDS_PER_MILLISECOND) == CALL_OK;
 }
 
 bool pyxis_scheme_is_root(const char *scheme)
