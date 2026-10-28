@@ -138,8 +138,9 @@ a language without a built-in parser follows upstream parser-error behavior;
 remain unsupported. Arbitrary
 configuration can invoke unsupported operations and receive errors: file
 watches (`vim._watch`, LSP file-change registration) and LSP over TCP call luv
-functions that report ENOSYS, `vim.uv.available_parallelism()`, `os_getpid()` and
-`os_homedir()` without `home` return nil where the runtime handles it, and
+functions that report ENOSYS. `vim.uv.available_parallelism()` reports the
+startup usable CPU count. `os_getpid()` and `os_homedir()` without `home` return
+nil where the runtime handles it, and
 `vim.uv.os_get_passwd()` always returns nil. The client forwards its SYSTEM_INFO
 grant to the embedded server, where Lua runs. `vim.fs.normalize('~')` yields
 `home:/`, and `:checkhealth` stops at E5009 on the runtime scheme path before

@@ -191,6 +191,10 @@ metadata remain unknown even though legacy fields are zero-initialized.
 
 ## Operating-system queries
 
+`uv_available_parallelism` uses libc's startup usable CPU count through
+`sysconf(_SC_NPROCESSORS_ONLN)`, with upstream's minimum of one. This does not
+enable worker threads or CPU inventory queries.
+
 Four `uv_os_*` queries answer from native sources; each succeeds or returns a
 negative error and never invents a value.
 

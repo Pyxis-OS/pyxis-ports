@@ -17,3 +17,5 @@ READ, and uv_os_homedir/uv_os_tmpdir from the caller's home/tmp roots. Without
 SYSTEM_INFO, uname retains Pyxis/x86_64 and empty release/version fields;
 hostname returns UV_EACCES. Missing directory roots return UV_ENOENT. Passwd,
 group and priority queries remain unsupported rather than inventing values.
+uv_available_parallelism uses libc sysconf and the upstream generic minimum-one
+result; it does not enable worker threads or supply CPU inventory.

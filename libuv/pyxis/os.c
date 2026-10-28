@@ -5,6 +5,7 @@
 #include <abi/directory.h>
 #include <string.h>
 #include <system_info.h>
+#include <unistd.h>
 
 /* Operating-system queries that native objects can answer. Passwd, group and
  * priority queries have no native meaning and stay in unsupported.c. */
@@ -12,6 +13,15 @@
 #define PYXIS_SYSNAME "Pyxis"
 /* Pyxis runs only on x86-64; used when the identity query is unavailable. */
 #define PYXIS_MACHINE "x86_64"
+
+unsigned int uv_available_parallelism(void)
+{
+  long count = sysconf(_SC_NPROCESSORS_ONLN);
+  if (count < 1) {
+    count = 1;
+  }
+  return (unsigned)count;
+}
 
 /* The directory is the caller's own root; a program that was not given it has
  * no such directory, which libuv reports as UV_ENOENT. */
