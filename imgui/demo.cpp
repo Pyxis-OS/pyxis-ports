@@ -90,7 +90,7 @@ int main()
     ImGui::SetNextWindowPos(ImVec2(28, 28), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(570, 410), ImGuiCond_FirstUseEver);
     ImGui::Begin("Dear ImGui on Pyxis");
-    ImGui::Text("Dear ImGui %s / SDL2 / Mesa softpipe", IMGUI_VERSION);
+    ImGui::Text("Dear ImGui %s / SDL2 / Mesa software OpenGL", IMGUI_VERSION);
     ImGui::Separator();
     ImGui::TextWrapped("A reusable native C++ UI library. Keyboard navigation, text input, pointer and resizing use the declared SDL2 grants.");
     ImGui::InputText("Text", text, sizeof(text));
