@@ -8,17 +8,6 @@
  	| fiwix* \
  	| freebsd* \
  	| fuchsia* \
---- a/configure
-+++ b/configure
-@@ -29141,7 +29141,7 @@ case "x${ac_cv_header_termios_h}${ac_cv_header_termio_h}${ac_cv_header_sgtty_h}$
- 	;;
- (*)
- 	case "$cf_cv_system_name" in
--	(*mingw32*|*mingw64*|*-msvc*)
-+	(*mingw32*|*mingw64*|*-msvc*|*pyxis*)
- 		;;
- 	(*)
- 		{ { echo "$as_me:29147: error: No termio/termios/sgtty found" >&5
 --- a/configure.in
 +++ b/configure.in
 @@ -1146,7 +1146,7 @@ AC_SUBST(NCURSES_SP_FUNCS)
