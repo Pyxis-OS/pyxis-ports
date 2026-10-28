@@ -28,6 +28,8 @@
 #include <path.h>
 #include <process.h>
 #include <program.h>
+#include <program_runtime.h>
+#include <script_scope.h>
 #include <pyxis/stdio.h>
 #include <pyxis/environment.h>
 #include <pyxis/working_path.h>
@@ -47,6 +49,9 @@ enum { RESOURCE_LIMIT = 16 };
 
 struct resources {
   handle_t object, child;
+  struct program_image *input;
+  struct execution_group_create_reply group;
+  size_t grant_capacity, entry_capacity;
   struct command_selection *selection;
   struct command_search_capture search;
   struct bundle_launch *launch;
@@ -63,11 +68,15 @@ struct resources {
 
 static enum call_status release_resources(struct resources *owned)
 {
-  enum call_status status = CALL_OK;
+  struct script_scope_close_result closed = script_scope_close(&owned->group);
+  enum call_status status = closed.status != CALL_OK ? closed.status :
+      closed.close_failed ? CALL_BAD_HANDLE : CALL_OK;
   if (owned->launch) {
     bundle_launch_close(owned->launch);
     owned->launch = NULL;
   }
+  program_image_close(owned->input);
+  owned->input = NULL;
   command_selection_close(owned->selection);
   owned->selection = NULL;
   command_search_capture_close(&owned->search);
@@ -253,7 +262,8 @@ static_assert(sizeof(ordinary_resources) / sizeof(ordinary_resources[0]) + 3 <= 
 
 static bool runtime_resource_name(const char *name)
 {
-  if (!strcmp(name, "input") || !strcmp(name, "keyboard") || !strcmp(name, "pointer")) {
+  if (!strcmp(name, "input") || !strcmp(name, "keyboard") || !strcmp(name, "pointer") ||
+      !strcmp(name, "child_launcher")) {
     return true;
   }
   for (size_t i = 0; i < sizeof(ordinary_resources) / sizeof(ordinary_resources[0]); ++i) {
@@ -267,6 +277,12 @@ static bool runtime_resource_name(const char *name)
 static enum call_status add_resource(struct resources *owned, struct launch_request *request,
     const struct resource_policy *policy)
 {
+  if (!strcmp(policy->name, "launcher") && program_runtime_active()) {
+    handle_t admission, child;
+    enum call_status status = program_runtime_route(true, HANDLE_INVALID, &admission, &child);
+    if (status != CALL_OK) return status;
+    if (child == HANDLE_INVALID) return CALL_OK;
+  }
   const struct environment_value *value = environment_capture_find(&owned->parent, policy->name);
   if (!value || value->kind != ENVIRONMENT_CAP) {
     return CALL_OK;
@@ -300,11 +316,15 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   }
   const struct path_context *context = &owned->working.context;
   size_t depth = context->count;
-  size_t capacity = owned->parent.count + owned->environment.capture.count + RESOURCE_LIMIT + 6;
+  const struct program_sources *sources = program_runtime_sources();
+  size_t capacity = owned->parent.count + owned->environment.capture.count + RESOURCE_LIMIT + 10 +
+      (sources ? sources->count : 0);
   if (capacity > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->entries) ||
       depth > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->grants) - capacity) {
     return CALL_LIMIT;
   }
+  owned->grant_capacity = capacity + depth;
+  owned->entry_capacity = capacity;
   owned->grants = calloc(capacity + depth, sizeof(*owned->grants));
   owned->entries = calloc(capacity, sizeof(*owned->entries));
   owned->directories = depth ? malloc(depth * sizeof(*owned->directories)) : NULL;
@@ -472,37 +492,91 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
 static enum call_status prepare_bundle_launch(struct resources *owned,
     const struct launch_request *request)
 {
-  static const char *names[] = {
-    "input", "output", "memory", "jit", "display", "clock", "system_info", "echo",
-    "udp", "dns_udp", "net_registry", "tcp", "random", "profile", "launcher", "audio", "screen_capture",
-    "threads", "pipe", "keyboard", "pointer",
-  };
-  struct bundle_authority inventory[sizeof(names) / sizeof(names[0]) + 1 + BUNDLE_SOURCE_LIMIT];
-  size_t count = 0;
-  for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
-    const struct environment_value *value = environment_capture_find(&owned->parent, names[i]);
-    handle_t source = value && value->kind == ENVIRONMENT_CAP ? value->handle : HANDLE_INVALID;
-    if (source != HANDLE_INVALID) {
-      struct handle_info info;
-      enum call_status status = handle_query(source, &info);
-      if (status != CALL_OK) {
-        return status;
-      }
-      inventory[count++] = (struct bundle_authority){names[i], source, info.protocol};
+  const struct program_sources *runtime = program_runtime_sources();
+  size_t capacity = runtime ? runtime->count : owned->parent.count;
+  struct bundle_authority *inventory = capacity ? malloc(capacity * sizeof(*inventory)) : NULL;
+  if (capacity && !inventory) return CALL_NO_MEMORY;
+  size_t count = capacity;
+  enum call_status status = CALL_OK;
+  if (runtime) {
+    memcpy(inventory, runtime->authority, count * sizeof(*inventory));
+  } else {
+    status = program_sources_from_capture(&owned->parent, inventory, capacity, &count);
+  }
+  handle_t admission, child;
+  if (status == CALL_OK && runtime) {
+    status = program_runtime_route(true, owned->group.launcher, &admission, &child);
+    for (size_t i = 0; status == CALL_OK && i < count; ++i) {
+      if (!strcmp(inventory[i].resource, "launcher") ||
+          !strcmp(inventory[i].resource, "child_launcher")) inventory[i].source = child;
     }
   }
-  const struct environment_value *service = environment_capture_find(&owned->parent, "service");
-  if (service && service->kind == ENVIRONMENT_CAP) {
-    inventory[count++] = (struct bundle_authority){"service", service->handle, PROTOCOL_ENDPOINT_SERVICE};
+  if (status == CALL_OK) {
+    status = bundle_launch_prepare(owned->selection->bundle, request, inventory, count,
+        &owned->launch);
   }
-  size_t source_count;
-  enum call_status status = bundle_sources_from_capture(&owned->parent, inventory + count,
-      BUNDLE_SOURCE_LIMIT, &source_count);
-  if (status != CALL_OK) {
-    return status;
+  free(inventory);
+  return status;
+}
+
+/* Resolve code once; only exact held interpreter identities continue sources. */
+static enum call_status prepare_interpreter(struct resources *owned,
+    struct launch_request *request, handle_t child_launcher)
+{
+  enum call_status status = program_image_prepare(owned->selection->image, &owned->input);
+  if (status != CALL_OK) return status;
+  const struct program_interpreters *interpreters = program_runtime_interpreters();
+  const char *path = program_image_interpreter(owned->input);
+  handle_t selected = owned->selection->image, opened = HANDLE_INVALID;
+  if (path) {
+    if (interpreters && !strcmp(path, "boot://init-shell.pxe")) {
+      selected = interpreters->records[PROGRAM_INTERPRETER_SHELL - 1].image;
+      status = selected == HANDLE_INVALID ? CALL_NOT_FOUND : CALL_OK;
+    } else {
+      status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &opened);
+      selected = opened;
+    }
+    if (status == CALL_OK) status = program_image_select_interpreter(owned->input, selected);
   }
-  return bundle_launch_prepare(owned->selection->bundle, request, inventory, count + source_count,
-      &owned->launch);
+  bool continuation = status == CALL_OK && interpreters &&
+      program_interpreters_match(interpreters, selected) != PROGRAM_INTERPRETER_NONE;
+  if (opened != HANDLE_INVALID) handle_close(opened);
+  if (status != CALL_OK) return status;
+  if (program_runtime_active() && (continuation || program_runtime_interactive())) {
+    handle_t admission;
+    status = program_runtime_route(true, HANDLE_INVALID, &admission, &child_launcher);
+    if (status == CALL_OK) status = launcher_create_group(admission, &owned->group);
+    if (status == CALL_OK) status = program_runtime_route(true, owned->group.launcher,
+        &admission, &child_launcher);
+    if (status != CALL_OK) return status;
+  }
+  if (!continuation) return CALL_OK;
+  const struct program_sources *sources = program_runtime_sources();
+  if (!owned->selection->bundle) {
+    struct bundle_authority *inventory = sources->ordinary_count ?
+        malloc(sources->ordinary_count * sizeof(*inventory)) : NULL;
+    if (sources->ordinary_count && !inventory) return CALL_NO_MEMORY;
+    memcpy(inventory, sources->authority, sources->ordinary_count * sizeof(*inventory));
+    for (size_t i = 0; i < sources->ordinary_count; ++i) {
+      if (!strcmp(inventory[i].resource, "launcher") ||
+          !strcmp(inventory[i].resource, "child_launcher")) inventory[i].source = child_launcher;
+    }
+    status = program_sources_stage(inventory, sources->ordinary_count, request, owned->grants,
+        owned->grant_capacity, owned->entries, owned->entry_capacity);
+    free(inventory);
+    if (status == CALL_OK) status = bundle_sources_forward_capture(&sources->capture,
+        owned->grants, owned->grant_capacity, &request->grant_count,
+        owned->entries, owned->entry_capacity, &request->entry_count);
+    for (size_t i = 0; i < request->entry_count; ++i) {
+      if (owned->entries[i].kind == ENVIRONMENT_CAP &&
+          !strcmp((const char *)(uintptr_t)owned->entries[i].name, "input")) {
+        owned->grants[owned->entries[i].value].rights &= CONSOLE_RIGHT_READ;
+      }
+    }
+  }
+  if (status == CALL_OK) status = program_interpreters_stage(interpreters, request,
+      owned->grants, owned->grant_capacity, owned->entries, owned->entry_capacity);
+  return status;
 }
 
 static int run_program(lua_State *state)
@@ -577,13 +651,35 @@ static int run_program(lua_State *state)
     request.image = owned->selection->image;
     status = prepare_grants(owned, &request);
   }
+  handle_t child_launcher = HANDLE_INVALID;
+  if (status == CALL_OK && program_runtime_active()) {
+    status = program_runtime_route(true, HANDLE_INVALID, &launcher, &child_launcher);
+    for (size_t i = 0; status == CALL_OK && i < request.entry_count; ++i) {
+      if (owned->entries[i].kind == ENVIRONMENT_CAP &&
+          !strcmp((const char *)(uintptr_t)owned->entries[i].name, "launcher")) {
+        owned->grants[owned->entries[i].value].source = child_launcher;
+      }
+    }
+  }
+  if (status == CALL_OK) status = prepare_interpreter(owned, &request, child_launcher);
+  if (status == CALL_OK && program_runtime_active()) {
+    status = program_runtime_route(true, owned->group.launcher, &launcher, &child_launcher);
+    for (size_t i = 0; status == CALL_OK && i < request.entry_count; ++i) {
+      const char *name = (const char *)(uintptr_t)owned->entries[i].name;
+      if (owned->entries[i].kind == ENVIRONMENT_CAP &&
+          (!strcmp(name, "launcher") || !strcmp(name, "child_launcher"))) {
+        owned->grants[owned->entries[i].value].source = child_launcher;
+      }
+    }
+  }
   if (status == CALL_OK && owned->selection->bundle) {
     status = prepare_bundle_launch(owned, &request);
   }
   if (status == CALL_OK) {
     const struct launch_request *prepared = owned->launch ?
         bundle_launch_request(owned->launch) : &request;
-    status = program_launch(launcher, prepared, &owned->working.context, &owned->child);
+    status = program_launch_prepared(launcher, prepared, owned->input,
+        &owned->working.context, &owned->child);
   }
   if (status != CALL_OK) {
     return native_error(state, owned, "run", status);

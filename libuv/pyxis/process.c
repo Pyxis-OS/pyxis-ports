@@ -20,6 +20,9 @@
 #include <pipe.h>
 #include <process.h>
 #include <program.h>
+#include <program_interpreters.h>
+#include <program_runtime.h>
+#include <program_sources.h>
 #include <pyxis/environment.h>
 #include <pyxis/job.h>
 #include <pyxis/working_path.h>
@@ -154,51 +157,30 @@ static int open_program(const struct path_context *context,
   return uv__pyxis_status(status);
 }
 
-/* A bundle child receives what its manifest declares from the runtime authority
- * this process holds. The console and devices stay with the parent; the
- * child's standard streams are the ones the caller selected. */
-static int prepare_bundle(const struct bundle_program *bundle,
-    const struct launch_request *request, const struct environment_capture *held,
-    handle_t service, handle_t tcp, handle_t jit, struct bundle_launch **prepared)
+/* Embeddings keep the established declaration profile. Standalone interpreter
+ * contexts opt into the shared source inventory through program_runtime. */
+static bool ordinary_bundle_source(const struct environment_value *value)
 {
   static const char *const names[] = {
     "memory", "jit", "clock", "threads", "random", "launcher", "pipe", "system_info",
-    "udp", "dns_udp", "net_registry", "echo", "profile",
+    "udp", "dns_udp", "net_registry", "echo", "profile", "service", "tcp",
   };
-  struct bundle_authority authority[ARRAY_SIZE(names) + 2 + BUNDLE_SOURCE_LIMIT];
-  size_t count = 0;
+  if (!strcmp(value->name, "service") || !strcmp(value->name, "tcp") ||
+      !strcmp(value->name, "jit")) {
+    return true;
+  }
+  if (!(value->flags & ENVIRONMENT_EXPORTED)) {
+    return false;
+  }
+  if (!strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1)) {
+    return true;
+  }
   for (size_t i = 0; i < ARRAY_SIZE(names); ++i) {
-    const struct environment_value *value = environment_capture_find(held, names[i]);
-    handle_t source = !strcmp(names[i], "jit") ? jit :
-        value && value->kind == ENVIRONMENT_CAP ? value->handle : HANDLE_INVALID;
-    if (source == HANDLE_INVALID) {
-      continue;
+    if (!strcmp(value->name, names[i])) {
+      return true;
     }
-    struct handle_info info;
-    enum call_status status = handle_query(source, &info);
-    if (status != CALL_OK) {
-      return uv__pyxis_status(status);
-    }
-    authority[count++] = (struct bundle_authority){names[i], source, info.protocol};
   }
-  if (service != HANDLE_INVALID) {
-    authority[count++] = (struct bundle_authority){"service", service, PROTOCOL_ENDPOINT_SERVICE};
-  }
-  if (tcp != HANDLE_INVALID) {
-    struct handle_info info;
-    enum call_status status = handle_query(tcp, &info);
-    if (status != CALL_OK) {
-      return uv__pyxis_status(status);
-    }
-    authority[count++] = (struct bundle_authority){"tcp", tcp, info.protocol};
-  }
-  size_t source_count;
-  enum call_status status = bundle_sources_from_capture(held, authority + count,
-      BUNDLE_SOURCE_LIMIT, &source_count);
-  if (status == CALL_OK) {
-    status = bundle_launch_prepare(bundle, request, authority, count + source_count, prepared);
-  }
-  return uv__pyxis_status(status);
+  return false;
 }
 
 static bool resource_named(const uv_pyxis_resource_t *resources, size_t count,
@@ -210,6 +192,77 @@ static bool resource_named(const uv_pyxis_resource_t *resources, size_t count,
     }
   }
   return false;
+}
+
+/* The view borrows the source capture and the caller's restricted copies.
+ * Explicit replacements must also bound declarations and later continuations. */
+static bool background_source(const char *name, bool continuation)
+{
+  return strcmp(name, "keyboard") && strcmp(name, "pointer") && strcmp(name, "gamepad") &&
+      (!continuation || strcmp(name, "input"));
+}
+
+static int select_sources(const struct environment_capture *held, bool runtime,
+    bool continuation, const uv_pyxis_resource_t *resources, size_t resource_count,
+    handle_t child_launcher,
+    struct environment_capture *view, handle_t *restricted,
+    struct bundle_authority *authority, size_t capacity, size_t *count,
+    size_t *ordinary_count)
+{
+  for (size_t i = 0; i < held->count; ++i) {
+    const struct environment_value *value = &held->values[i];
+    if (value->kind != ENVIRONMENT_CAP ||
+        resource_named(resources, resource_count, value->name) ||
+        (runtime && !background_source(value->name, continuation)) ||
+        (!strcmp(value->name, BUNDLE_TCP_LISTEN_SOURCE) &&
+         resource_named(resources, resource_count, "tcp")) ||
+        (!runtime && !ordinary_bundle_source(value))) {
+      continue;
+    }
+    if (runtime && child_launcher == HANDLE_INVALID &&
+        (!strcmp(value->name, "launcher") || !strcmp(value->name, "child_launcher"))) {
+      continue;
+    }
+    view->values[view->count] = *value;
+    if (runtime && (!strcmp(value->name, "launcher") ||
+        !strcmp(value->name, "child_launcher"))) {
+      view->values[view->count].handle = child_launcher;
+    }
+    ++view->count;
+  }
+  for (size_t i = 0; i < resource_count; ++i) {
+    const uv_pyxis_resource_t *resource = &resources[i];
+    if (runtime && !background_source(resource->name, continuation)) {
+      continue;
+    }
+    if (strnlen(resource->name, ENVIRONMENT_NAME_MAX + 1) > ENVIRONMENT_NAME_MAX) {
+      return UV_EINVAL;
+    }
+    enum call_status status = handle_copy_restricted(resource->source,
+        resource->rights, resource->transport, &restricted[i]);
+    if (status != CALL_OK) {
+      return uv__pyxis_status(status);
+    }
+    struct environment_value *value = &view->values[view->count++];
+    strcpy(value->name, resource->name);
+    value->kind = ENVIRONMENT_CAP;
+    value->flags = ENVIRONMENT_EXPORTED;
+    value->handle = restricted[i];
+    if (!runtime && !ordinary_bundle_source(value)) {
+      --view->count;
+    }
+  }
+  enum call_status status = program_sources_from_capture(view, authority, capacity, count);
+  struct bundle_authority configured[BUNDLE_SOURCE_LIMIT];
+  size_t configured_count = 0;
+  if (status == CALL_OK) {
+    status = bundle_sources_from_capture(view, configured, ARRAY_SIZE(configured),
+        &configured_count);
+  }
+  if (status == CALL_OK) {
+    *ordinary_count = *count - configured_count;
+  }
+  return uv__pyxis_status(status);
 }
 
 static int validate_resources(const uv_pyxis_resource_t *resources, size_t count)
@@ -239,6 +292,38 @@ static int validate_resources(const uv_pyxis_resource_t *resources, size_t count
     }
   }
   return 0;
+}
+
+static enum call_status stage_configured_sources(const struct environment_capture *capture,
+    struct launch_request *request, struct launch_grant *grants, size_t grant_capacity,
+    struct launch_environment_entry *entries, size_t entry_capacity)
+{
+  for (size_t i = 0; i < capture->count; ++i) {
+    const struct environment_value *value = &capture->values[i];
+    if (strncmp(value->name, BUNDLE_SOURCE_PREFIX, sizeof(BUNDLE_SOURCE_PREFIX) - 1)) {
+      continue;
+    }
+    size_t entry = 0;
+    while (entry < request->entry_count &&
+        strcmp(value->name, (const char *)(uintptr_t)entries[entry].name)) {
+      ++entry;
+    }
+    if (entry < request->entry_count) {
+      if (entries[entry].kind != ENVIRONMENT_CAP) {
+        return CALL_ALREADY_EXISTS;
+      }
+      /* An explicit configured source is already attenuated in this request. */
+      entries[entry].flags = 0;
+      continue;
+    }
+    const struct environment_capture one = {.values = (struct environment_value *)value, .count = 1};
+    enum call_status status = bundle_sources_forward_capture(&one, grants, grant_capacity,
+        &request->grant_count, entries, entry_capacity, &request->entry_count);
+    if (status != CALL_OK) {
+      return status;
+    }
+  }
+  return CALL_OK;
 }
 
 int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
@@ -283,15 +368,22 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   if (error) {
     return error;
   }
-  handle_t launcher = HANDLE_INVALID, selected_service = HANDLE_INVALID;
-  handle_t selected_tcp = HANDLE_INVALID, selected_jit = HANDLE_INVALID;
+  handle_t launcher = HANDLE_INVALID;
+  handle_t admission_launcher = HANDLE_INVALID, child_launcher = HANDLE_INVALID;
+  bool runtime = program_runtime_active();
   struct command_selection *selection = NULL;
+  struct program_image *input = NULL;
+  bool continuation = false;
   struct command_search_capture search = {0};
   const char *search_path = NULL;
   struct bundle_launch *bundle_launch = NULL;
   struct pyxis_working_snapshot working = {0};
   struct pyxis_environment_snapshot inherited_environment = {0};
   struct environment_capture selected = {0}, private_held = {0};
+  struct environment_capture source_view = {0};
+  struct bundle_authority *authority = NULL;
+  handle_t *restricted = NULL;
+  size_t authority_count = 0, ordinary_count = 0;
   struct launch_grant *grants = NULL;
   struct launch_environment_entry *entries = NULL;
   uint64_t *directories = NULL;
@@ -305,6 +397,21 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   snapshot_status = environment_capture_init(startup_environment_handle(), 0, &selected);
   if (snapshot_status != CALL_OK) {
     error = uv__pyxis_status(snapshot_status);
+    goto done;
+  }
+  snapshot_status = runtime ? program_runtime_route(false, HANDLE_INVALID,
+      &admission_launcher, &child_launcher) :
+      environment_capability(startup_environment_handle(), "launcher", &launcher);
+  if (snapshot_status != CALL_OK) {
+    error = uv__pyxis_status(snapshot_status);
+    goto done;
+  }
+  if (!runtime) {
+    admission_launcher = launcher;
+    child_launcher = launcher;
+  }
+  if (admission_launcher == HANDLE_INVALID) {
+    error = UV_EACCES;
     goto done;
   }
   handle_t command_list = HANDLE_INVALID;
@@ -351,7 +458,9 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     }
     environment_count = inherited_environment.capture.count;
   }
-  size_t capacity = selected.count + extra_count + environment_count + 6;
+  const struct program_sources *runtime_sources = program_runtime_sources();
+  size_t source_capacity = runtime_sources ? runtime_sources->capture.count : 0;
+  size_t capacity = selected.count + extra_count + environment_count + source_capacity + 9;
   size_t depth = working.context.count;
   if (capacity > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*entries) ||
       depth > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*grants) - capacity) {
@@ -365,12 +474,60 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     error = UV_ENOMEM;
     goto done;
   }
+  error = open_program(&working.context, &search, options->file, &selection);
+  if (error) {
+    goto done;
+  }
+  snapshot_status = program_image_prepare(selection->image, &input);
+  if (snapshot_status != CALL_OK) {
+    error = uv__pyxis_status(snapshot_status);
+    goto done;
+  }
+  if (runtime) {
+    const struct program_interpreters *interpreters = program_runtime_interpreters();
+    handle_t image = selection->image;
+    const char *interpreter = program_image_interpreter(input);
+    struct command_selection *interpreter_selection = NULL;
+    if (interpreter) {
+      if (!strcmp(interpreter, "boot://init-shell.pxe")) {
+        image = interpreters->records[PROGRAM_INTERPRETER_SHELL - 1].image;
+        error = image == HANDLE_INVALID ? UV_ENOENT : 0;
+      } else {
+        error = open_program(&working.context, &search, interpreter, &interpreter_selection);
+        if (!error && interpreter_selection->bundle) {
+          error = UV_EINVAL;
+        }
+        if (!error) {
+          image = interpreter_selection->image;
+        }
+      }
+      if (!error) {
+        error = uv__pyxis_status(program_image_select_interpreter(input, image));
+      }
+    }
+    if (!error) {
+      continuation = program_interpreters_match(interpreters, image) != PROGRAM_INTERPRETER_NONE;
+    }
+    command_selection_close(interpreter_selection);
+    if (error) {
+      goto done;
+    }
+  }
   const char *resource_names[] = {"memory", "clock", "launcher"};
   const uint64_t resource_rights[] = {MEMORY_RIGHT_MANAGE, CLOCK_RIGHTS, LAUNCHER_RIGHT_LAUNCH};
   for (size_t i = 0; i < selected.count; ++i) {
     const struct environment_value *value = &selected.values[i];
     /* Replaced entries do not participate in validation or inheritance. */
     if (resource_named(extra_resources, extra_count, value->name)) {
+      continue;
+    }
+    if (runtime && !strcmp(value->name, "child_launcher")) {
+      continue;
+    }
+    if (continuation && !background_source(value->name, true)) {
+      continue;
+    }
+    if (runtime && child_launcher == HANDLE_INVALID && !strcmp(value->name, "launcher")) {
       continue;
     }
     if (!strcmp(value->name, "path")) {
@@ -426,7 +583,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     }
     entries[entry_count++] = (struct launch_environment_entry){
       (uintptr_t)value->name, ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, grant_count, 0};
-    grants[grant_count++] = (struct launch_grant){value->handle, rights, info.transport};
+    handle_t source = runtime && !strcmp(value->name, "launcher") ? child_launcher : value->handle;
+    grants[grant_count++] = (struct launch_grant){source, rights, info.transport};
   }
   for (size_t i = 0; i < extra_count; ++i) {
     const uv_pyxis_resource_t *resource = &extra_resources[i];
@@ -524,19 +682,37 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     .working_path = (uintptr_t)working.path,
     .argv = (uintptr_t)options->args,
   };
+  request.image = selection->image;
   while (options->args[request.argc]) {
     ++request.argc;
   }
-  snapshot_status = environment_capability(startup_environment_handle(), "launcher", &launcher);
-  if (snapshot_status != CALL_OK) {
-    error = uv__pyxis_status(snapshot_status);
-    goto done;
+  if (selection->bundle || continuation) {
+    const struct environment_capture *sources;
+    if (runtime) {
+      sources = &runtime_sources->capture;
+    } else {
+      snapshot_status = environment_capture_init(startup_environment_handle(),
+          ENVIRONMENT_SNAPSHOT_INCLUDE_PRIVATE, &private_held);
+      if (snapshot_status != CALL_OK) {
+        error = uv__pyxis_status(snapshot_status);
+        goto done;
+      }
+      sources = &private_held;
+    }
+    size_t count = sources->count + extra_count;
+    source_view.values = uv__calloc(count ? count : 1, sizeof(*source_view.values));
+    authority = uv__calloc(count ? count : 1, sizeof(*authority));
+    restricted = uv__calloc(extra_count ? extra_count : 1, sizeof(*restricted));
+    if (!source_view.values || !authority || !restricted) {
+      error = UV_ENOMEM;
+      goto done;
+    }
+    error = select_sources(sources, runtime, continuation, extra_resources, extra_count, child_launcher,
+        &source_view, restricted, authority, count, &authority_count, &ordinary_count);
+    if (error) {
+      goto done;
+    }
   }
-  error = open_program(&working.context, &search, options->file, &selection);
-  if (error) {
-    goto done;
-  }
-  request.image = selection->image;
   for (size_t i = 0; i < ENVIRONMENT_STREAM_COUNT; ++i) {
     if (streams[i].stream) {
       struct pipe_create_reply pair;
@@ -584,66 +760,43 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   }
   request.grant_count = grant_count;
   request.entry_count = entry_count;
+  if (continuation) {
+    if (!selection->bundle) {
+      enum call_status status = program_sources_stage(authority, ordinary_count,
+          &request, grants, capacity + depth, entries, capacity);
+      if (status == CALL_OK) {
+        status = stage_configured_sources(&source_view, &request, grants,
+            capacity + depth, entries, capacity);
+      }
+      if (status != CALL_OK) {
+        error = uv__pyxis_status(status);
+        goto done;
+      }
+      for (size_t i = 0; i < request.entry_count; ++i) {
+        if (entries[i].kind == ENVIRONMENT_CAP &&
+            !strcmp((const char *)(uintptr_t)entries[i].name, "input")) {
+          grants[entries[i].value].rights &= CONSOLE_RIGHT_READ;
+        }
+      }
+    }
+    enum call_status status = program_interpreters_stage(program_runtime_interpreters(),
+        &request, grants, capacity + depth, entries, capacity);
+    if (status != CALL_OK) {
+      error = uv__pyxis_status(status);
+      goto done;
+    }
+  }
   if (selection->bundle) {
-    handle_t service = HANDLE_INVALID, tcp = HANDLE_INVALID, jit = HANDLE_INVALID;
-    bool explicit_service = false, explicit_tcp = false, explicit_jit = false;
-    for (size_t i = 0; i < extra_count; ++i) {
-      const uv_pyxis_resource_t *resource = &extra_resources[i];
-      handle_t *destination;
-      if (!strcmp(resource->name, "service")) {
-        destination = &selected_service;
-        explicit_service = true;
-      } else if (!strcmp(resource->name, "tcp")) {
-        destination = &selected_tcp;
-        explicit_tcp = true;
-      } else if (!strcmp(resource->name, "jit")) {
-        destination = &selected_jit;
-        explicit_jit = true;
-      } else {
-        continue;
-      }
-      enum call_status status = handle_copy_restricted(resource->source,
-          resource->rights, resource->transport, destination);
-      if (status != CALL_OK) {
-        error = uv__pyxis_status(status);
-        goto done;
-      }
-    }
-    service = selected_service;
-    tcp = selected_tcp;
-    jit = selected_jit;
-    if (!explicit_service || !explicit_tcp || !explicit_jit) {
-      /* Private sources satisfy declarations only. Explicit same-name records
-       * replace them with the caller's selected attenuation. */
-      enum call_status status = environment_capture_init(startup_environment_handle(),
-          ENVIRONMENT_SNAPSHOT_INCLUDE_PRIVATE, &private_held);
-      if (status != CALL_OK) {
-        error = uv__pyxis_status(status);
-        goto done;
-      }
-      const struct environment_value *value = environment_capture_find(&private_held, "service");
-      if (!explicit_service && value && value->kind == ENVIRONMENT_CAP) {
-        service = value->handle;
-      }
-      value = environment_capture_find(&private_held, "tcp");
-      if (!explicit_tcp && value && value->kind == ENVIRONMENT_CAP) {
-        tcp = value->handle;
-      }
-      value = environment_capture_find(&private_held, "jit");
-      if (!explicit_jit && value && value->kind == ENVIRONMENT_CAP) {
-        jit = value->handle;
-      }
-    }
-    error = prepare_bundle(selection->bundle, &request, &selected, service, tcp, jit,
-        &bundle_launch);
+    error = uv__pyxis_status(bundle_launch_prepare(selection->bundle, &request,
+        authority, authority_count, &bundle_launch));
     if (error) {
       goto done;
     }
   }
   handle_t observer = HANDLE_INVALID;
-  enum call_status status = program_launch(launcher,
+  enum call_status status = program_launch_prepared(admission_launcher,
       bundle_launch ? bundle_launch_request(bundle_launch) : &request,
-      &working.context, &observer);
+      input, &working.context, &observer);
   bundle_launch_admitted(bundle_launch, status, observer);
   if (status != CALL_OK) {
     error = uv__pyxis_status(status);
@@ -674,15 +827,17 @@ done:
   if (launcher != HANDLE_INVALID) {
     handle_close(launcher);
   }
-  if (selected_service != HANDLE_INVALID) {
-    handle_close(selected_service);
+  program_image_close(input);
+  if (restricted) {
+    for (size_t i = 0; i < extra_count; ++i) {
+      if (restricted[i] != HANDLE_INVALID) {
+        handle_close(restricted[i]);
+      }
+    }
   }
-  if (selected_tcp != HANDLE_INVALID) {
-    handle_close(selected_tcp);
-  }
-  if (selected_jit != HANDLE_INVALID) {
-    handle_close(selected_jit);
-  }
+  uv__free(restricted);
+  uv__free(authority);
+  uv__free(source_view.values);
   environment_capture_close(&private_held);
   environment_capture_close(&selected);
   pyxis_environment_snapshot_close(&inherited_environment);

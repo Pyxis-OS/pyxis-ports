@@ -41,7 +41,22 @@ service-grant support; no compiler rebuild is required.
 An explicit bundle `jit/manage` request can select the runtime's held `jit`
 source. It remains private in the child. Automatic capability inheritance omits
 JIT, including aliases. This requires the SDK's JIT ABI and bundle resolver
-support; the shipped Lua bundle does not request JIT.
+support. The shipped Lua bundle requests JIT optionally; a context without a
+JIT source remains without one.
+
+The standalone CLI initializes a source-only SDK runtime before startup chunks
+or user code. `pyxis.run` is foreground; exact held shell/Lua interpreter
+continuation receives the available sources, while other native programs retain
+their ordinary profile and bundles select their declarations. Code identity is a
+held native READ FILE, never a name or manifest ID. Embeddings do not initialize
+this context just by linking liblua.
+
+Handed/shebang scripts own a foreground subgroup; explicit filename, `-e` and
+stdin scripts keep child launches under their positional owner. The REPL has no
+script-wide group. Normal return, unhandled error and `os.exit` use the same
+routing and cleanup as the corresponding shell mode. Enclosing owners can still
+stop children outside a handed script's foreground subgroup. Captured jobs below
+remain leaf jobs, without new script expansion or implicit provisioners.
 
 From the guest shell:
 

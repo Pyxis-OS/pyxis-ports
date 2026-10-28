@@ -113,29 +113,29 @@ index 57615e6..0fe0e36 100644
    createmeta(L);
    /* create (and set) default files */
 diff --git a/loslib.c b/loslib.c
-index 0bd45fe..cb2848d 100644
+index 78630df..b171711 100644
 --- a/loslib.c
 +++ b/loslib.c
-@@ -369,6 +369,7 @@ static int os_exit (lua_State *L) {
+@@ -373,6 +373,7 @@ static int os_exit (lua_State *L) {
      status = (lua_toboolean(L, 1) ? EXIT_SUCCESS : EXIT_FAILURE);
    else
      status = (int)luaL_optinteger(L, 1, EXIT_SUCCESS);
 +  lua_pyxis_io_shutdown(L, 1);
    if (lua_toboolean(L, 2))
      lua_close(L);
-   if (L) exit(status);  /* 'if' to avoid warnings for unreachable 'return' */
+ #ifdef __pyxis__
 diff --git a/lua.c b/lua.c
-index 32d18d0..9e792e1 100644
+index c1d4bd9..80640ba 100644
 --- a/lua.c
 +++ b/lua.c
-@@ -800,6 +800,7 @@ int main (int argc, char **argv) {
+@@ -857,6 +857,7 @@ int main (int argc, char **argv) {
    status = lua_pcall(L, 2, 1, 0);  /* do the call */
    result = lua_toboolean(L, -1);  /* get result */
    report(L, status);
 +  lua_pyxis_io_shutdown(L, result && status == LUA_OK);
    lua_close(L);
-   return (result && status == LUA_OK) ? EXIT_SUCCESS : EXIT_FAILURE;
- }
+ #ifdef __pyxis__
+   return program_runtime_finish((result && status == LUA_OK) ? EXIT_SUCCESS : EXIT_FAILURE);
 diff --git a/lualib.h b/lualib.h
 index 068f60a..11fb7ac 100644
 --- a/lualib.h

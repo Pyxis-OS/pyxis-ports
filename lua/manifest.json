@@ -24,6 +24,9 @@
     {"name": "keyboard", "resource": "keyboard", "rights": ["input"], "required": false},
     {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false},
     {"name": "audio", "resource": "audio", "rights": ["create"], "required": false},
-    {"name": "screen_capture", "resource": "screen_capture", "rights": ["capture"], "required": false}
+    {"name": "screen_capture", "resource": "screen_capture", "rights": ["capture"], "required": false},
+    {"name": "jit", "resource": "jit", "rights": ["manage"], "required": false},
+    {"name": "child_launcher", "resource": "launcher", "rights": ["launch"], "required": false},
+    {"name": "net_registry", "resource": "net_registry", "rights": ["read"], "required": false}
   ]
 }

@@ -9,6 +9,24 @@
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
     {"name": "launcher", "resource": "launcher", "rights": ["launch"], "required": true},
     {"name": "pipe", "resource": "pipe", "rights": ["create"], "required": true},
-    {"name": "random", "resource": "random", "rights": ["read"], "required": false}
+    {"name": "random", "resource": "random", "rights": ["read"], "required": false},
+    {"name": "threads", "resource": "threads", "rights": ["manage"], "required": false},
+    {"name": "job_work", "resource": "job_work", "rights": ["create", "remove", "read-files", "write-files"], "required": false},
+    {"name": "system_info", "resource": "system_info", "rights": ["read"], "required": false},
+    {"name": "echo", "resource": "echo", "rights": ["send"], "required": false},
+    {"name": "tcp", "resource": "tcp", "rights": ["connect"], "required": false},
+    {"name": "udp", "resource": "udp", "rights": ["open"], "required": false},
+    {"name": "dns_udp", "resource": "dns_udp", "rights": ["open"], "required": false},
+    {"name": "display", "resource": "display", "rights": ["draw"], "required": false},
+    {"name": "profile", "resource": "profile", "rights": ["memory", "host"], "required": false},
+    {"name": "input", "resource": "input", "rights": ["read"], "required": false},
+    {"name": "output", "resource": "output", "rights": ["write"], "required": false},
+    {"name": "keyboard", "resource": "keyboard", "rights": ["input"], "required": false},
+    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false},
+    {"name": "audio", "resource": "audio", "rights": ["create"], "required": false},
+    {"name": "screen_capture", "resource": "screen_capture", "rights": ["capture"], "required": false},
+    {"name": "jit", "resource": "jit", "rights": ["manage"], "required": false},
+    {"name": "child_launcher", "resource": "launcher", "rights": ["launch"], "required": false},
+    {"name": "net_registry", "resource": "net_registry", "rights": ["read"], "required": false}
   ]
 }

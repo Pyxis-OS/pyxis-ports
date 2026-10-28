@@ -247,3 +247,11 @@ and MIT notice; the other adapter files are original MPL-2.0 material.
 Bundle-child launch can deliver held `dns_udp` and read-only `net_registry`
 authority when the child's manifest declares them. Packet scope is retained;
 this does not add network authority to applications that hold none.
+
+Standalone Pyxis Lua CLIs explicitly initialize the shared SDK launch-source
+context. In that context spawn uses the shell background route and exact held
+interpreter FILE identity for source continuation. Bundles remain declaration
+bounded; explicit `pyxis_resources` replacements also bound continuation, with
+no fallback to fuller sources. Embeddings keep the existing source profile and
+captured leaf jobs are unchanged. Scope ownership is in the standalone CLI, not
+the libuv loop or process-handle garbage collector.

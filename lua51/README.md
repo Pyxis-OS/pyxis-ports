@@ -10,7 +10,7 @@ Ordinary `io.open` reads consume HTTP streams through libc. A staged HTTP
 Garbage collection abandons pending requests without submission. A successful
 standalone interpreter shutdown closes its Lua state normally; an unhandled
 Lua error selects abandonment. `os.exit(status)` follows upstream process exit
-without forcing `lua_close`. Explicitly check flush/close results; automatic
+without forcing `lua_close`, while finishing the standalone script scope. Explicitly check flush/close results; automatic
 cleanup adds no Lua diagnostics or exit-status aggregation. These operations
 use existing declared grants. See the [Lua HTTP stream examples](../lua/README.md#http-files);
 Lua 5.1 has no lexical-scope `__close` support.
@@ -57,6 +57,20 @@ directory, or `LUA_PATH` when set, including upstream `;;` default expansion. Th
 libc's shared stores: `uv.chdir` changes where relative paths and `require`
 look, and `os.getenv` sees variables set with `uv.os_setenv`. `lpeg` and `luv` are linked in and found
 through `package.preload`.
+
+The standalone CLI initializes the shared SDK source inventory before `LUA_INIT`
+and user code. Its optional declarations include threads and JIT; a declaring
+child can receive only sources this context actually holds. Exact held shell/Lua
+interpreter continuation retains those sources; normal programs and bundles
+keep their profile/declaration rules. luv spawn follows the shell background
+route. Handed scripts own only their foreground subgroup, positional file/`-e`/
+stdin scripts own their children, and the REPL has no script-wide group. Return,
+unhandled error and `os.exit` apply the corresponding shell cleanup. An outer
+owner can still stop background children. Linking liblua/luv in an embedding
+never initializes this CLI context.
+
+A shebang main script consumes the handed native READ FILE rather than reopening
+its diagnostic filename. Ordinary loadfile/dofile keep their upstream semantics.
 
 ## Standard library profile
 

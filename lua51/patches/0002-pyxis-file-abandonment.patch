@@ -89,17 +89,17 @@ index 649f9a5..bd21bfa 100644
    /* create (private) environment (with fields IO_INPUT, IO_OUTPUT, __close) */
    newfenv(L, io_fclose);
 diff --git a/src/lua.c b/src/lua.c
-index a5490a6..fa549a6 100644
+index 7114ee8..8e6c429 100644
 --- a/src/lua.c
 +++ b/src/lua.c
-@@ -382,6 +382,7 @@ int main (int argc, char **argv) {
+@@ -464,6 +464,7 @@ int main (int argc, char **argv) {
    s.argv = argv;
    status = lua_cpcall(L, &pmain, &s);
    report(L, status);
 +  lua_pyxis_io_shutdown(L, !(status || s.status));
    lua_close(L);
-   return (status || s.status) ? EXIT_FAILURE : EXIT_SUCCESS;
- }
+ #ifdef __pyxis__
+   return program_runtime_finish((status || s.status) ? EXIT_FAILURE : EXIT_SUCCESS);
 diff --git a/src/lualib.h b/src/lualib.h
 index 469417f..1504ab5 100644
 --- a/src/lualib.h
