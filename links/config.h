@@ -48,6 +48,7 @@
 #define HAVE_MEMMOVE 1
 #define HAVE_MEMRCHR 1
 #define HAVE_MEMSET 1
+#define HAVE_RAISE 1
 #define HAVE_SNPRINTF 1
 #define HAVE_VPRINTF 1
 #define HAVE_STRCHR 1

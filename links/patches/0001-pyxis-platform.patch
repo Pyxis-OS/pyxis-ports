@@ -359,6 +359,15 @@ diff --git a/select.c b/select.c
  }
  
  static int check_signals(void)
+@@ -876,7 +882,7 @@
+ 	return r;
+ }
+ 
+-#ifdef SIGCHLD
++#if defined(SIGCHLD) && !defined(PYXIS)
+ static void sigchld(void *p)
+ {
+ 	pid_t pid;
 diff --git a/vpipe.inc b/vpipe.inc
 index 9a16728..8a4d191 100644
 --- a/vpipe.inc
@@ -454,3 +463,15 @@ diff --git a/links.h b/links.h
  
  #define option option_dirty_workaround_for_name_clash_with_include_on_cygwin
  #define table table_dirty_workaround_for_name_clash_with_libraries_on_macos
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -97,7 +97,7 @@
+ 	}
+ 	if (r == -2) {
+ 		/* This will unblock externally spawned viewer, if it exists */
+-#ifdef SIGCONT
++#if defined(SIGCONT) && !defined(PYXIS)
+ 		EINTRLOOP(r, kill(0, SIGCONT));
+ #endif
+ 	}
