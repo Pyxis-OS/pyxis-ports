@@ -7,8 +7,6 @@
 #include <stdexcept>
 
 namespace pyxis_luals {
-int open_filesystem(lua_State* state);
-
 inline void system_error(const char* operation)
 {
     int error = errno;

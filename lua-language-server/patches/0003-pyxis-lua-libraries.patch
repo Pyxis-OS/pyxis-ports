@@ -342,3 +342,60 @@ index e6fe284..140db7f 100644
      return (result && status == LUA_OK) ? EXIT_SUCCESS : EXIT_FAILURE;
 +#endif
  }
+diff --git a/bee/lua/module.h b/bee/lua/module.h
+--- a/bee/lua/module.h
++++ b/bee/lua/module.h
+@@ -5,7 +5,7 @@
+ 
+ #if defined(_WIN32)
+ #    include <Windows.h>
+-#else
++#elif !defined(__pyxis__)
+ #    include <dlfcn.h>
+ #endif
+ 
+@@ -34,7 +34,7 @@
+         }
+         return (lua_CFunction)GetProcAddress(lib, sym);
+     }
+-#else
++#elif !defined(__pyxis__)
+     inline lua_CFunction get_sym(const char* sym) {
+         void* lib = dlopen(NULL, RTLD_NOW | RTLD_LOCAL);
+         if (!lib) {
+@@ -51,9 +51,11 @@
+             lua_setfield(L, -2, m.name);
+         }
+         lua_pop(L, 1);
++#if !defined(__pyxis__)
+         if (auto bee_preload_module = get_sym("_bee_preload_module")) {
+             bee_preload_module(L);
+         }
++#endif
+         return 0;
+     }
+ }
+diff --git a/bee/nonstd/format.h b/bee/nonstd/format.h
+--- a/bee/nonstd/format.h
++++ b/bee/nonstd/format.h
+@@ -25,7 +25,8 @@
+ #    endif
+ #endif
+ 
+-#if defined(__cpp_lib_format) && (__cpp_lib_format >= 202200L)  // see https://wg21.link/P2508R1
++#if defined(__cpp_lib_format) && ((__cpp_lib_format >= 202200L) || \
++    (defined(__pyxis__) && __cpp_lib_format >= 202110L))
+ #    include <format>
+ #else
+ #    if defined(_MSC_VER)
+diff --git a/bee/lua/binding.h b/bee/lua/binding.h
+--- a/bee/lua/binding.h
++++ b/bee/lua/binding.h
+@@ -10,6 +10,7 @@
+ #include <limits>
+ #include <lua.hpp>
+ #include <string_view>
++#include <type_traits>
+ 
+ namespace bee::lua {
+     inline std::string_view checkstrview(lua_State* L, int idx) {

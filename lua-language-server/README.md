@@ -43,7 +43,12 @@ and workers are joined before Lua/C++ finalization. Lua core uses its supported
 C++ exception mode with C API linkage so error unwinding releases binding
 owners. Missing clocks, files and rights report actual failures.
 
-The runtime does not use std::filesystem, procfs, fake PIDs or a fake CPU clock.
+Upstream Bee filesystem bindings use the SDK's native `std::filesystem` and
+C++23 formatting; the Pyxis build selects the SDK's supplied `format_string` API.
+Unsupported operations, including real-file copying, report the SDK error.
+Builtin metadata generation writes its in-memory templates through upstream FILE
+operations. Retained native handles still identify owned instance state during
+cleanup. The runtime uses no procfs, fake PIDs or fake CPU clock.
 Its URI codec matches Neovim's native `ROOT://rest` / `file:///ROOT/rest` mapping.
 Actual linked size, startup and manual runtime qualification are recorded by
 the parent task; no unrun behavior or native performance is claimed here.

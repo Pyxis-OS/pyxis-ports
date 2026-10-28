@@ -3,6 +3,8 @@
 #include <climits>
 #include <ctime>
 
+extern "C" int luaopen_bee_filesystem(lua_State* state);
+
 #define PYXIS_STRINGIFY_INNER(value) #value
 #define PYXIS_STRINGIFY(value) PYXIS_STRINGIFY_INNER(value)
 
@@ -90,7 +92,7 @@ int open_time(lua_State* state)
 void register_platform(lua_State* state)
 {
     luaL_getsubtable(state, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE);
-    lua_pushcfunction(state, binding<open_filesystem>);
+    lua_pushcfunction(state, luaopen_bee_filesystem);
     lua_setfield(state, -2, "bee.filesystem");
     lua_pushcfunction(state, binding<open_sys>);
     lua_setfield(state, -2, "bee.sys");
