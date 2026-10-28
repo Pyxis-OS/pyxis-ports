@@ -12,7 +12,7 @@ standalone interpreter shutdown closes its Lua state normally; an unhandled
 Lua error selects abandonment. `os.exit(status)` follows upstream process exit
 without forcing `lua_close`. Explicitly check flush/close results; automatic
 cleanup adds no Lua diagnostics or exit-status aggregation. These operations
-use existing declared grants. See the [Lua HTTP stream examples](../lua/README.md#http-streams);
+use existing declared grants. See the [Lua HTTP stream examples](../lua/README.md#http-files);
 Lua 5.1 has no lexical-scope `__close` support.
 
 Embeddings call `lua_pyxis_io_shutdown(state, normal)` immediately before
@@ -102,6 +102,7 @@ console streams, child processes and synchronous filesystem calls.
 - **Operating system:** `uv.os_uname`, `uv.os_homedir`, `uv.os_tmpdir` and
   `uv.os_gethostname` answer from native sources, listed in the
   [libuv notes](../libuv/README.md#operating-system-queries).
+  `uv.available_parallelism()` returns the startup usable CPU count through libuv.
 - **Unsupported:** TCP, UDP, DNS, file watches, signals, `kill`, thread and work
   queueing, callback-style filesystem calls, user and group IDs, interface
   addresses, memory/load/CPU/metrics introspection, handle printing, passwd and

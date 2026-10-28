@@ -122,17 +122,12 @@ diff --git a/src/misc.c b/src/misc.c
 index 5b648e1..930ac45 100644
 --- a/src/misc.c
 +++ b/src/misc.c
-@@ -259,12 +259,21 @@ static int luv_getrusage_thread(lua_State *L) {
+@@ -259,12 +259,16 @@ static int luv_getrusage_thread(lua_State *L) {
  
  #if LUV_UV_VERSION_GEQ(1, 44, 0)
  static int luv_available_parallelism(lua_State* L) {
-+#ifdef __pyxis__
-+  /* Pyxis: libuv omits this value-only introspection. */
-+  return luv_error(L, UV_ENOSYS);
-+#else
    lua_pushinteger(L, uv_available_parallelism());
    return 1;
-+#endif
  }
  #endif
  
@@ -144,7 +139,7 @@ index 5b648e1..930ac45 100644
    uv_cpu_info_t* cpu_infos = NULL;
    int count = 0, i;
    int ret = uv_cpu_info(&cpu_infos, &count);
-@@ -298,9 +307,14 @@ static int luv_cpu_info(lua_State* L) {
+@@ -298,9 +302,14 @@ static int luv_cpu_info(lua_State* L) {
  
    uv_free_cpu_info(cpu_infos, count);
    return 1;
@@ -159,7 +154,7 @@ index 5b648e1..930ac45 100644
    uv_interface_address_t* interfaces;
    int count, i;
    char ip[INET6_ADDRSTRLEN];
-@@ -348,15 +362,21 @@ static int luv_interface_addresses(lua_State* L) {
+@@ -348,15 +357,21 @@ static int luv_interface_addresses(lua_State* L) {
    }
    uv_free_interface_addresses(interfaces, count);
    return 1;
@@ -181,7 +176,7 @@ index 5b648e1..930ac45 100644
  }
  
  static int luv_exepath(lua_State* L) {
-@@ -402,6 +422,10 @@ static int luv_os_homedir(lua_State* L) {
+@@ -402,6 +417,10 @@ static int luv_os_homedir(lua_State* L) {
  }
  
  static int luv_os_get_passwd(lua_State* L) {
@@ -192,7 +187,7 @@ index 5b648e1..930ac45 100644
    uv_passwd_t pwd;
    int ret = uv_os_get_passwd(&pwd);
    if (ret < 0) return luv_error(L, ret);
-@@ -429,24 +453,40 @@ static int luv_os_get_passwd(lua_State* L) {
+@@ -429,24 +448,40 @@ static int luv_os_get_passwd(lua_State* L) {
    }
    uv_os_free_passwd(&pwd);
    return 1;
@@ -233,7 +228,7 @@ index 5b648e1..930ac45 100644
  }
  
  static int luv_hrtime(lua_State* L) {
-@@ -454,13 +494,36 @@ static int luv_hrtime(lua_State* L) {
+@@ -454,13 +489,36 @@ static int luv_hrtime(lua_State* L) {
    return 1;
  }
  
@@ -271,7 +266,7 @@ index 5b648e1..930ac45 100644
  static int luv_getuid(lua_State* L){
    int uid = getuid();
    lua_pushinteger(L, uid);
-@@ -490,18 +553,31 @@ static int luv_setgid(lua_State* L){
+@@ -490,18 +548,31 @@ static int luv_setgid(lua_State* L){
    }
    return 0;
  }
@@ -303,7 +298,7 @@ index 5b648e1..930ac45 100644
  }
  #endif
  #endif
-@@ -600,14 +676,24 @@ static int luv_if_indextoiid(lua_State* L) {
+@@ -600,14 +671,24 @@ static int luv_if_indextoiid(lua_State* L) {
  }
  
  static int luv_os_getppid(lua_State* L) {
@@ -330,7 +325,7 @@ index 5b648e1..930ac45 100644
    return 1;
  }
  #endif
-@@ -807,8 +893,13 @@ static int luv_cpumask_size(lua_State* L) {
+@@ -807,8 +888,13 @@ static int luv_cpumask_size(lua_State* L) {
  }
  
  static int luv_get_available_memory(lua_State* L) {
@@ -344,7 +339,7 @@ index 5b648e1..930ac45 100644
  }
  
  // These are the same order as uv_clock_id which also starts at 0
-@@ -833,15 +924,24 @@ static int luv_clock_gettime(lua_State* L) {
+@@ -833,15 +919,24 @@ static int luv_clock_gettime(lua_State* L) {
  #if LUV_UV_VERSION_GEQ(1, 49, 0)
  
  static int luv_utf16_length_as_wtf8(lua_State* L) {
@@ -369,7 +364,7 @@ index 5b648e1..930ac45 100644
    int ret;
    size_t sz;
    char *wtf8;
-@@ -862,18 +962,28 @@ static int luv_utf16_to_wtf8(lua_State *L) {
+@@ -862,18 +957,28 @@ static int luv_utf16_to_wtf8(lua_State *L) {
    }
    free(wtf8);
    return ret;
@@ -398,7 +393,7 @@ index 5b648e1..930ac45 100644
    size_t sz;
    uint16_t *utf16;
    const char* wtf8 = luaL_checklstring(L, 1, &sz);
-@@ -885,6 +995,7 @@ static int luv_wtf8_to_utf16(lua_State *L) {
+@@ -885,6 +990,7 @@ static int luv_wtf8_to_utf16(lua_State *L) {
    lua_pushlstring(L, (const char*)utf16, (ssz-1) * 2);
    free(utf16);
    return 1;
