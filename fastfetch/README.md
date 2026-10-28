@@ -18,6 +18,7 @@ Run in the guest:
 fastfetch
 fastfetch --json
 fastfetch --config home://fastfetch.jsonc
+fastfetch --gen-config home://fastfetch.jsonc
 fastfetch --structure OS:Kernel:CPU:Memory:Uptime:TerminalSize:Disk:Colors
 ```
 
@@ -33,8 +34,9 @@ and links SDK startup/static libraries with compiler-rt builtins. LLD writes the
 P1F executable directly; there is no host-libc link.
 
 Native adapters provide identity, CPU, allocator, clock, console, disk and battery
-observations with existing grants. Unix locale/signals, process helpers, optional
-graphics/interpreter libraries and Fastfetch's threaded detection closure remain
+observations with existing grants. Unix locale, general signal handling, process
+helpers, optional graphics/interpreter libraries and Fastfetch's threaded detection
+closure remain
 omitted. Pyxis itself supports threads; that omission describes this port's
 selected dependency closure. Standard libc buffering and atexit are used.
 
@@ -158,9 +160,14 @@ filesystem label `npfs`. Normal text type visibility options and module/key/size
 formatting remain upstream; JSON retains upstream type-filter behavior. No Unix
 folder glob runtime is added.
 
-Recursive preset/logo listing, interactive config generation, image logos,
-Lua/JS formats, Fastfetch detection threads, executable helpers and other modules
-are outside this port. Upstream help still lists broader options. Unsupported module/format/logo
+Interactive config generation uses upstream raw input, poll and a flag-only
+SIGWINCH handler through libc cooperative delivery. It lists the selected modules.
+Resize notification follows libc's automatic console selection from stdout, stderr,
+then stdin.
+
+Recursive preset/logo listing, image logos, Lua/JS formats, Fastfetch detection
+threads, executable helpers and other modules are outside this port. Upstream help
+still lists broader options. Unsupported module/format/logo
 requests follow upstream diagnostics or fallback behavior; the port does not
 prevalidate every option or redefine the process exit status for module errors.
 In particular, a module error does not guarantee a nonzero exit status. Explicit
@@ -173,6 +180,9 @@ makes no guarantee of graceful OOM recovery or terminal restoration after a faul
 
 ## Validation
 
+The restored interactive generator needs build and interactive resize qualification
+with the cooperative-signal SDK. The earlier checks below predate that restoration.
+
 The patch cleanup passed an ordinary fetch/apply/configure/build/stage with the
 current LLVM 23.1.3 toolchain and SDK. Reconstructed source matched the ordinary
 runner's patched source. The battery adapter retains its `system_info` handle
@@ -184,3 +194,6 @@ QEMU/native qualification; the ordinary build does not prove those outcomes.
 Earlier native/Disk runs described in the parent subsystem documentation concern
 the previous profile. No native battery or changed-profile runtime pass is claimed
 here. No new tests or fault injection were added.
+
+The terminal does not yet implement autowrap-disable (`CSI ? 7 h/l`); the
+upstream generator's long help rows can wrap in narrow mux panes.

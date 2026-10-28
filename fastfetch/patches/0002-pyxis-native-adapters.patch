@@ -113,7 +113,7 @@ new file mode 100644
 index 0000000..7afc50b
 --- /dev/null
 +++ b/src/common/impl/io_pyxis.c
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,125 @@
 +/* SPDX-License-Identifier: MPL-2.0 */
 +#include "common/io.h"
 +
@@ -161,17 +161,22 @@ index 0000000..7afc50b
 +  return success;
 +}
 +
-+bool ffWriteFDBuffer(FFNativeFD fd, const FFstrbuf *buffer)
++bool ffWriteFDData(FFNativeFD fd, size_t data_size, const void *data)
 +{
 +  size_t offset = 0;
-+  while (offset < buffer->length) {
-+    ssize_t count = write(fd, buffer->chars + offset, buffer->length - offset);
++  while (offset < data_size) {
++    ssize_t count = write(fd, (const char *)data + offset, data_size - offset);
 +    if (count <= 0) {
 +      return false;
 +    }
 +    offset += (size_t) count;
 +  }
 +  return true;
++}
++
++bool ffWriteFDBuffer(FFNativeFD fd, const FFstrbuf *buffer)
++{
++  return ffWriteFDData(fd, buffer->length, buffer->chars);
 +}
 +
 +bool ffPathExists(const char *path, FFPathType path_type)
@@ -272,10 +277,9 @@ index 0000000..254700c
 +  return nanosleep(&(struct timespec) { msec / 1000, (long) (msec % 1000) * 1000000 }, nullptr) == 0;
 +}
 diff --git a/src/common/io.h b/src/common/io.h
-index 78da571..61801b5 100644
 --- a/src/common/io.h
 +++ b/src/common/io.h
-@@ -3,6 +3,24 @@
+@@ -3,6 +3,25 @@
  #include "common/FFstrbuf.h"
  #include "common/FFlist.h"
  
@@ -293,6 +297,7 @@ index 78da571..61801b5 100644
 +bool ffIsTerminal(int fd);
 +bool ffAppendFDBuffer(FFNativeFD fd, FFstrbuf* buffer);
 +bool ffAppendFileBuffer(const char* path, FFstrbuf* buffer);
++bool ffWriteFDData(FFNativeFD fd, size_t dataSize, const void* data);
 +bool ffWriteFDBuffer(FFNativeFD fd, const FFstrbuf* buffer);
 +bool ffPathExists(const char* path, FFPathType pathType);
 +bool ffWriteFileData(const char* fileName, size_t dataSize, const void* data);
@@ -300,7 +305,25 @@ index 78da571..61801b5 100644
  #ifdef _WIN32
      #include <fileapi.h>
      #include <handleapi.h>
-@@ -305,3 +323,5 @@ bool ffIsTerminal(int fd);
+@@ -92,6 +111,8 @@
+     return ffWriteFileData(fileName, buffer->length, buffer->chars);
+ }
+ 
++#endif
++
+ [[gnu::nonnull(3)]]
+ static inline ssize_t ffReadFDData(FFNativeFD fd, size_t dataSize, void* data) {
+ #ifndef _WIN32
+@@ -105,6 +126,8 @@
+     return (ssize_t) bytesRead;
+ #endif
+ }
++
++#if !defined(__pyxis__)
+ 
+ [[gnu::nonnull(2)]] bool ffAppendFDBuffer(FFNativeFD fd, FFstrbuf* buffer);
+ 
+@@ -305,3 +328,5 @@
  // The representation is uniform across platforms so that a value derived from it means the
  // same thing everywhere, which matters for callers that store it as a cache key.
  [[gnu::nonnull(1)]] uint64_t ffPathGetMtime(const char* path);
@@ -821,40 +844,6 @@ index 4591301..1de8e54 100644
  }
  
  [[gnu::cold]]
-@@ -602,6 +613,9 @@ static void enableJsonOutput(FFdata* data) {
- }
- 
- static void genConfigCommon(FFdata* data, const char* value) {
-+#if defined(__pyxis__)
-+    generateConfigFile(data, value);
-+#else
-     if (!getenv("NO_COLOR") && ffIsTerminal(STDOUT_FILENO) && ffIsTerminal(STDIN_FILENO)
-         #ifdef _WIN32
-             && ffIsWindows10OrGreater()
-@@ -612,6 +626,7 @@ static void genConfigCommon(FFdata* data, const char* value) {
-     } else {
-         generateConfigFile(data, value);
-     }
-+#endif
- }
- 
- static void parseCommand(FFdata* data, char* key, char* value) {
-@@ -919,6 +934,7 @@ int main(int argc, char** argv) {
-         if (data.structure.length == 0) {
-             ffStrbufSetS(&data.structure, FASTFETCH_DATATEXT_STRUCTURE); // Cannot use `ffStrbufSetStatic` here because we will modify the string
-         }
-+#if !defined(__pyxis__)
-         if (data.genConfigInteractive && !ffGenConfigInteractive(&data)) {
-             // User canceled the interactive config generation
-             ffStrbufDestroy(&data.structure);
-@@ -927,6 +943,7 @@ int main(int argc, char** argv) {
-             ffStrbufDestroy(&data.genConfigPath);
-             return 0;
-         }
-+#endif
-         writeConfigFile(&data);
-     }
- 
 diff --git a/src/logo/logo.c b/src/logo/logo.c
 index 9a580e4..a5fa4e9 100644
 --- a/src/logo/logo.c
