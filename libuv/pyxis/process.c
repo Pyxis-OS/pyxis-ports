@@ -308,16 +308,16 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     goto done;
   }
   handle_t command_list = HANDLE_INVALID;
-  bool explicit_commands = false;
+  bool explicit_path = false;
   for (size_t i = 0; i < extra_count; ++i) {
-    if (!strcmp(extra_resources[i].name, "commands")) {
+    if (!strcmp(extra_resources[i].name, "path")) {
       command_list = extra_resources[i].source;
-      explicit_commands = true;
+      explicit_path = true;
       break;
     }
   }
-  if (!explicit_commands) {
-    const struct environment_value *value = environment_capture_find(&selected, "commands");
+  if (!explicit_path) {
+    const struct environment_value *value = environment_capture_find(&selected, "path");
     if (value) {
       if (value->kind != ENVIRONMENT_CAP) {
         error = uv__pyxis_status(CALL_WRONG_TYPE);
@@ -373,7 +373,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     if (resource_named(extra_resources, extra_count, value->name)) {
       continue;
     }
-    if (!strcmp(value->name, "commands")) {
+    if (!strcmp(value->name, "path")) {
       enum call_status status = value->kind == ENVIRONMENT_CAP ?
           command_list_validate(value->handle) : CALL_WRONG_TYPE;
       if (status != CALL_OK) {
@@ -430,7 +430,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   }
   for (size_t i = 0; i < extra_count; ++i) {
     const uv_pyxis_resource_t *resource = &extra_resources[i];
-    if (!strcmp(resource->name, "commands")) {
+    if (!strcmp(resource->name, "path")) {
       enum call_status status = command_list_validate(resource->source);
       if (status != CALL_OK || !(resource->rights & COMMAND_LIST_RIGHT_READ) || resource->transport) {
         error = uv__pyxis_status(status != CALL_OK ? status : CALL_DENIED);
@@ -483,8 +483,8 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     }
     /* Explicit descriptor selection replaces/removes standard names and the
      * stream companions only in this child's entry staging. */
-    if (!strcmp(name, "commands")) {
-      if (!options->env && explicit_commands) {
+    if (!strcmp(name, "path")) {
+      if (!options->env && explicit_path) {
         continue;
       }
       error = uv__pyxis_status(CALL_WRONG_TYPE);

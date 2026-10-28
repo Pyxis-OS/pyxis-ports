@@ -783,10 +783,10 @@ static int start(lua_State *state, bool pipeline)
     bare |= !program_is_explicit(owned->stages[i].argv[0]);
   }
   if (status == CALL_OK && bare) {
-    const struct environment_value *commands = environment_capture_find(&owned->parent, "commands");
-    if (commands) {
-      status = commands->kind == ENVIRONMENT_CAP ?
-          command_search_capture_list(commands->handle, &owned->search) : CALL_WRONG_TYPE;
+    const struct environment_value *path = environment_capture_find(&owned->parent, "path");
+    if (path) {
+      status = path->kind == ENVIRONMENT_CAP ?
+          command_search_capture_list(path->handle, &owned->search) : CALL_WRONG_TYPE;
     }
   }
   for (size_t i = 0; i < count && status == CALL_OK; ++i) {

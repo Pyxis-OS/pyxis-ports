@@ -101,11 +101,11 @@ slots, buffered inherited input and detached, setuid or setgid flags reject
 before launch; Windows-only presentation flags are ignored, as on other
 non-Windows platforms.
 
-`options->file` uses shared libpyxis lookup over one captured held command
-list. Bare names have no fallback roots or development catalog; explicit paths
-keep their meaning. A supplied `commands` resource selects that same list for
-lookup and child inheritance, replacing even a malformed inherited `commands`
-entry. The supplied list is still validated; explicit TEXT `commands` refuses.
+`options->file` uses shared libpyxis lookup over one captured held `path`
+capability list. Bare names have no fallback roots or development catalog;
+explicit paths keep their meaning. A supplied `path` resource selects that same list for
+lookup and child inheritance, replacing even a malformed inherited `path`
+entry. The supplied list is still validated; explicit TEXT `path` refuses.
 Absent `PATH` uses the list; a supplied or inherited
 `PATH` must equal its colon-joined diagnostic labels for a bare-name launch.
 Unsupported textual search refuses instead of being ignored. A bundle child

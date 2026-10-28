@@ -318,7 +318,7 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   request->working_path = (uintptr_t)owned->working.path;
   for (size_t i = 0; i < owned->parent.count; ++i) {
     const struct environment_value *value = &owned->parent.values[i];
-    if (!strcmp(value->name, "commands") && (value->flags & ENVIRONMENT_EXPORTED)) {
+    if (!strcmp(value->name, "path") && (value->flags & ENVIRONMENT_EXPORTED)) {
       if (value->kind != ENVIRONMENT_CAP) {
         return CALL_WRONG_TYPE;
       }
@@ -367,7 +367,7 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   /* Live descriptor selection replaces all standard names in child staging. */
   for (size_t i = 0; i < owned->environment.capture.count; ++i) {
     const struct environment_value *value = &owned->environment.capture.values[i];
-    if (!strcmp(value->name, "commands")) {
+    if (!strcmp(value->name, "path")) {
       return CALL_WRONG_TYPE;
     }
     if (!strcmp(value->name, "stdin") || !strcmp(value->name, "stdout") ||
@@ -564,10 +564,10 @@ static int run_program(lua_State *state)
   }
   struct launch_request request = {.argv = (uintptr_t)owned->argv, .argc = count};
   if (status == CALL_OK && !program_is_explicit(owned->argv[0])) {
-    const struct environment_value *commands = environment_capture_find(&owned->parent, "commands");
-    if (commands) {
-      status = commands->kind == ENVIRONMENT_CAP ?
-          command_search_capture_list(commands->handle, &owned->search) : CALL_WRONG_TYPE;
+    const struct environment_value *path = environment_capture_find(&owned->parent, "path");
+    if (path) {
+      status = path->kind == ENVIRONMENT_CAP ?
+          command_search_capture_list(path->handle, &owned->search) : CALL_WRONG_TYPE;
     }
   }
   if (status == CALL_OK) {

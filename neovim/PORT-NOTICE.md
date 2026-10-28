@@ -42,8 +42,8 @@ the licences of the files they modify:
    external jobs, one-thread event loops and rejected Unix process/signal paths.
 2. `0002-pyxis-files.patch`: native scheme paths and proved realpath,
    validity-aware metadata, retained file references, checked overwrite,
-   proved-parent selection and held-list executable probes. Unavailable
-   swap/backup operations reject explicitly.
+   proved-parent selection and executable probes over the held `path` list.
+   Unavailable swap/backup operations reject explicitly.
 3. `0003-pyxis-tui.patch`: native console streams, RAW passthrough lifetime,
    generation-based resize, the 16-colour terminal profile, underline and
    suppressed unsupported terminal probes. Native writes retain borrowed request

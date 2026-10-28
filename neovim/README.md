@@ -67,10 +67,10 @@ identity or modification-time metadata. Force still respects native authority.
 
 External jobs and shell commands run as native children over pipes:
 `'shell'` is the Pyxis `shell -c`; collection uses `>%s 2>&1` for stdout
-and stderr. Executable checks use the shared program
-lookup, `jobstop` and Ctrl+C terminate at once, and temporary files live in
-`tmp://`. A child startup failure keeps its native completion reason and maps
-to job status 1. `:terminal`, PTY and detached jobs, socket listeners, Unix signals,
+and stderr. Executable checks use shared program lookup over the exported
+`path` capability list. `jobstop` and Ctrl+C terminate at once, and temporary
+files live in `tmp://`. A child startup failure keeps its native completion
+reason and maps to job status 1. `:terminal`, PTY and detached jobs, socket listeners, Unix signals,
 numeric PID operations, workers, asynchronous filesystem calls and watches are
 outside this profile. Swap/backup recovery and patchmode are unavailable.
 `vim.uri` maps a native path to a file URI with its root name as the first
@@ -79,7 +79,7 @@ is a native path only when the editor holds that root.
 Language servers run as attached children. The port ships an opt-in clangd
 configuration (`vim.lsp.enable('clangd')`) using the bare `clangd` command
 exported by the installed `clang-hosted` package. It resolves through the held
-command list's live package view, so the next server launch sees a package switch
+`path` list's live package view, so the next server launch sees a package switch
 without restarting the space. A missing command refuses without an archive or
 home-directory fallback. The editor declares `"sdk": "optional"` and passes its
 `sdk://` to clangd, which therefore sees the package set captured when the

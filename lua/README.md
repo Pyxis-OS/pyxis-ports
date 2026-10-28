@@ -236,7 +236,7 @@ sources are excluded.
 Capability and text selections share exact names; collisions refuse admission.
 Text rejects NUL; finite stdin and captured output remain binary.
 
-Image lookup uses the caller's captured `commands` list, independently of child
+Image lookup uses the caller's captured `path` list, independently of child
 roots/cwd. Missing and empty lists refuse bare-name lookup. Explicit paths resolve
 from the caller's held path context; use `./name.pxe` for a relative filename.
 Thus `roots={}` and `cwd=false` can select a held image without passing its
@@ -245,7 +245,7 @@ selected providers, configured manifest sources and explicitly declared JIT
 authority; required requests that cannot be satisfied refuse admission.
 Selected role masks remain bounds on
 bundle requests. Captured stages never inherit terminal/display, launcher,
-`commands` or `job_work`.
+`path` or `job_work`.
 The caller must keep private-tree, provider and credential reachability
 consistent with the core's capture audit for the job's lifetime.
 
@@ -287,7 +287,7 @@ known bytes on read failure, without trimming. Explicit `LUA_PATH` still control
 file module search, including this module.
 
 `pyxis.run`, `pyxis.job` and `pyxis.pipeline` use libpyxis's shared command
-selection. Bare names walk the captured ordered `commands` capability list;
+selection. Bare names walk the captured ordered `path` capability list;
 missing or empty lists provide no search. Only an absent command permits the
 next entry. A denied, malformed, incomplete or conflicting plain/bundle target
 reports its error. There is no implicit bin, boot, home, cwd or development
@@ -296,7 +296,7 @@ a `.pxb` path selects the bundle's default command. These native APIs do not
 interpret textual `PATH`; child environment text does not alter parent lookup.
 
 `pyxis.run` captures the current libc cwd and environment for child launch.
-It forwards the exported command list used for lookup. Explicitly exported
+It forwards the exported `path` list used for lookup. Explicitly exported
 named capabilities, including native FILEs and controllers, retain their actual
 rights and transport in plain children. Fixed runtime roles keep their protocol
 checks, narrowed masks and conditional input selection; stdio and bundle-owned
