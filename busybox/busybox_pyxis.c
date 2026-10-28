@@ -2,13 +2,15 @@
  * SPDX-License-Identifier: GPL-2.0-only
  *
  * vi draws on the named output console and reads the named input console
- * through libterm, as Kilo does. Those grants are separate from stdio, so
+ * through libc descriptors. Those grants are separate from stdio, so
  * stdout/stderr only carry usage text and fatal diagnostics. */
 #include <handle.h>
 #include <stdarg.h>
 #include <startup.h>
 #include <environment.h>
 #include <term.h>
+#include <pyxis/descriptor.h>
+#include <pyxis/terminal.h>
 #include "libbb.h"
 
 int vi_main(int argc, char **argv);
@@ -29,16 +31,12 @@ const char *applet_name = "vi";
 #endif
 
 static struct terminal terminal;
-static handle_t passthrough = HANDLE_INVALID;
+static int input_fd = -1;
+static struct pyxis_terminal_state *raw_state;
 
 /* Screen updates are collected and written when vi waits for input. */
 static char output[4096];
 static size_t output_length;
-
-/* A key read while vi only asked whether input was waiting. */
-static bool key_pending;
-static int64_t pending_key;
-static int pending_errno;
 
 static NORETURN void fail(const char *message)
 {
@@ -101,10 +99,18 @@ unsigned FAST_FUNC string_array_len(char **argv)
 
 int main(int argc, char **argv)
 {
-  environment_capability(startup_environment_handle(), "input", &terminal.input);
+  handle_t input = HANDLE_INVALID;
+  environment_capability(startup_environment_handle(), "input", &input);
+  if (input != HANDLE_INVALID) {
+    input_fd = pyxis_descriptor_adopt(&input, PYXIS_DESCRIPTOR_READ);
+    if (input_fd < 0) {
+      handle_close(input);
+      fail("cannot adopt input console");
+    }
+  }
   environment_capability(startup_environment_handle(), "output", &terminal.output);
 #ifndef PYXIS_APPLET_LESS
-  if (terminal.input == HANDLE_INVALID || terminal.output == HANDLE_INVALID) {
+  if (input_fd < 0 || terminal.output == HANDLE_INVALID) {
     fail("input and output console capabilities are required");
   }
 #endif
@@ -182,22 +188,6 @@ char *regcomp_or_errmsg(regex_t *pattern, const char *text, int flags)
   return message;
 }
 
-ssize_t full_read(int descriptor, void *buffer, size_t size)
-{
-  size_t total = 0;
-  while (total < size) {
-    ssize_t count = read(descriptor, (char *)buffer + total, size - total);
-    if (count < 0) {
-      return total ? (ssize_t)total : -1;
-    }
-    if (!count) {
-      break;
-    }
-    total += (size_t)count;
-  }
-  return (ssize_t)total;
-}
-
 ssize_t full_write(int descriptor, const void *buffer, size_t size)
 {
   size_t total = 0;
@@ -260,92 +250,49 @@ int get_terminal_width_height(int descriptor, unsigned *width, unsigned *height)
   return 0;
 }
 
+int pyxis_vi_input_fd(void)
+{
+  return input_fd;
+}
+
 void pyxis_vi_terminal_raw(void)
 {
-  if (passthrough != HANDLE_INVALID) {
+  if (raw_state) {
     return;
   }
-  if (term_passthrough(&terminal, &passthrough) != CALL_OK) {
-    passthrough = HANDLE_INVALID;
+  if (pyxis_terminal_make_raw(input_fd, &raw_state) < 0) {
     bb_simple_error_msg_and_die(PASSTHROUGH_ERROR);
   }
 }
 
 void pyxis_vi_terminal_cooked(void)
 {
-  if (passthrough == HANDLE_INVALID) {
+  if (!raw_state) {
     return;
   }
   /* A failed withdrawal leaves nothing to retry; process exit withdraws it. */
-  handle_close(passthrough);
-  passthrough = HANDLE_INVALID;
+  pyxis_terminal_restore(input_fd, raw_state);
+  pyxis_terminal_state_free(raw_state);
+  raw_state = NULL;
 }
 
-static int64_t translate_key(unsigned key)
+/* Selected libbb/xfuncs.c helpers, unchanged from the pinned upstream. */
+int FAST_FUNC ndelay_on(int fd)
 {
-  switch (key) {
-  case TERM_KEY_LEFT: return KEYCODE_LEFT;
-  case TERM_KEY_RIGHT: return KEYCODE_RIGHT;
-  case TERM_KEY_UP: return KEYCODE_UP;
-  case TERM_KEY_DOWN: return KEYCODE_DOWN;
-  case TERM_KEY_HOME: return KEYCODE_HOME;
-  case TERM_KEY_END: return KEYCODE_END;
-  case TERM_KEY_DELETE: return KEYCODE_DELETE;
-  case TERM_KEY_PAGE_UP: return KEYCODE_PAGEUP;
-  case TERM_KEY_PAGE_DOWN: return KEYCODE_PAGEDOWN;
-  default: return key;
-  }
+	int flags = fcntl(fd, F_GETFL);
+	if (flags & O_NONBLOCK)
+		return flags;
+	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+	return flags;
 }
 
-/* One decoded key, an EOF/error (-1 with errno), or false for no key yet.
- * Negative timeout blocks. Unsupported escape sequences are dropped. */
-static bool read_one_key(int timeout, int64_t *key, int *error)
+int FAST_FUNC ndelay_off(int fd)
 {
-  for (;;) {
-    unsigned raw;
-    enum call_status status = timeout < 0 ?
-        term_read_key(&terminal, &raw) :
-        term_read_key_timeout(&terminal, (uint32_t)timeout, &raw);
-    if (status == CALL_TIMED_OUT) {
-      return false;
-    }
-    if (status != CALL_OK) {
-      *key = -1;
-      *error = EIO;
-      return true;
-    }
-    if (raw == TERM_KEY_EOF) {
-      *key = -1;
-      *error = 0;
-      return true;
-    }
-    if (raw != TERM_KEY_UNKNOWN) {
-      *key = translate_key(raw);
-      *error = 0;
-      return true;
-    }
-  }
-}
-
-int pyxis_vi_input_pending(int milliseconds)
-{
-  if (!key_pending) {
-    key_pending = read_one_key(milliseconds, &pending_key, &pending_errno);
-  }
-  return key_pending;
-}
-
-int64_t safe_read_key(int descriptor, char *buffer, int timeout)
-{
-  (void)descriptor;
-  (void)buffer;
-  if (!key_pending && !read_one_key(timeout, &pending_key, &pending_errno)) {
-    errno = EAGAIN;
-    return -1;
-  }
-  key_pending = false;
-  errno = pending_errno;
-  return pending_key;
+	int flags = fcntl(fd, F_GETFL);
+	if (!(flags & O_NONBLOCK))
+		return flags;
+	fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+	return flags;
 }
 
 #ifdef PYXIS_APPLET_LESS

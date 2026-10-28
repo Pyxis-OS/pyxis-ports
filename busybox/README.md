@@ -21,6 +21,11 @@ and `output` console grants that the shell gives foreground commands, plus the
 usual memory and directory grants. Ctrl+C reaches vi as input for the whole
 session, so the shell cannot terminate it and discard unsaved edits.
 
+Keyboard input uses the upstream read_key decoder and libc poll on an adopted
+named input descriptor, separate from stdin. A narrow no-signals branch selects
+ordinary poll; no signal mask or handler is supplied. The descriptor owns the
+Ctrl+C raw hold through libc's existing native terminal API.
+
 ## vi build
 
 The recipe builds selected upstream applet/libbb sources without Kconfig or the
@@ -37,15 +42,15 @@ multicall dispatcher:
 
 ## Patch 0001
 
-The patch replaces termios, poll and Unix permission checks:
+The patch preserves native console ownership and replaces Unix permission checks:
 
-- **Raw mode.** It holds libterm Ctrl+C passthrough instead of switching
-  termios. Console input is already raw and unechoed. Backspace accepts BS and
-  DEL rather than the termios erase character.
-- **Input.** Keys come from libterm's decoder: a standalone Escape after
-  100 ms, arrows, Home/End, Delete and Page Up/Down. The input-pending check is a
-  timed key read that keeps the key for the next read. Unsupported escape
-  sequences are dropped.
+- **Raw mode.** The adopted keyboard descriptor holds Ctrl+C passthrough
+  through libc's native terminal API. Console input is already unechoed.
+  Backspace accepts BS and DEL rather than the termios erase character.
+- **Input.** Upstream read_key decodes bytes and escape sequences, using its
+  50 ms continuation waits and vi's own input buffer. Upstream mysleep polls
+  the keyboard descriptor without consuming or predecoding a key. The narrow
+  signal-free helper uses libc poll; signals and job control stay disabled.
 - **Output.** Screen output is buffered and written to the output console
   before vi waits for input.
 - **Loading.** Upstream `fstat` validates a regular file and sizes its read;
@@ -104,12 +109,15 @@ persists on installed systems and is RAM on live boots.
 `less_config.h` selects BRE search/highlighting, line/page movement, numbered
 positions, multiple files, `-I` ASCII case folding, `-N` line numbers and
 `-m`/`-M` status. Patch `0003-less-native-console.patch` adapts upstream
-`miscutils/less.c`: keys and drawing use the same libterm console adapter as vi,
-while content uses a separate libc descriptor. It normalizes Enter as CR or LF,
+`miscutils/less.c`: keys use upstream's decoder over an adopted named-console
+descriptor, drawing keeps the same named output adapter as vi, and content uses
+a separate libc descriptor. It normalizes Enter as CR or LF,
 retains upstream regex matching and file-change state. The small highlight-loop
 fix checks match status before reading unspecified offsets after a failed match;
 this is a generic correction, separate from native console support.
-Output is buffered before each key read. Ctrl+C passthrough stays
+Upstream poll loops and temporary content O_NONBLOCK handle content separately
+from keyboard input. Native PIPE values remain ordinary file bytes; backing FILE
+I/O may still wait. Output is buffered before each key read. Ctrl+C passthrough stays
 held until exit. Marks, bracket matching, raw escapes,
 shell commands, signals and automatic resizing are disabled. Upstream `s` log
 saving and ignored `-s`/`-X` options are retained. Redirected output and a

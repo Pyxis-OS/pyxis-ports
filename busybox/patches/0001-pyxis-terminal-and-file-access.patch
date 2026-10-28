@@ -1,5 +1,4 @@
 diff --git a/editors/vi.c b/editors/vi.c
-index c1fd914..d343436 100644
 --- a/editors/vi.c
 +++ b/editors/vi.c
 @@ -224,7 +224,8 @@
@@ -12,7 +11,7 @@ index c1fd914..d343436 100644
  
  enum {
  	MAX_TABSTOP = 32, // sanity limit
-@@ -378,6 +379,9 @@ struct globals {
+@@ -378,6 +379,9 @@
  #endif
  #if ENABLE_FEATURE_VI_SEARCH
  	char *last_search_pattern; // last pattern from a '/' or '?' search
@@ -22,7 +21,7 @@ index c1fd914..d343436 100644
  #endif
  #if ENABLE_FEATURE_VI_SETOPTS
  	int char_insert__indentcol;		// column of recent autoindent or 0
-@@ -404,7 +408,6 @@ struct globals {
+@@ -404,7 +408,6 @@
  #if ENABLE_FEATURE_VI_USE_SIGNALS
  	sigjmp_buf restart;     // int_handler() jumps to location remembered here
  #endif
@@ -30,7 +29,7 @@ index c1fd914..d343436 100644
  	int cindex;               // saved character index for up/down motion
  	smallint keep_index;      // retain saved character index
  #if ENABLE_FEATURE_VI_COLON
-@@ -509,6 +512,9 @@ struct globals {
+@@ -509,6 +512,9 @@
  #define ioq_start               (G.ioq_start          )
  #define dotcnt                  (G.dotcnt             )
  #define last_search_pattern     (G.last_search_pattern)
@@ -40,7 +39,7 @@ index c1fd914..d343436 100644
  #define char_insert__indentcol  (G.char_insert__indentcol)
  #define newindent               (G.newindent          )
  #define cmd_error               (G.cmd_error          )
-@@ -522,7 +528,6 @@ struct globals {
+@@ -522,7 +528,6 @@
  #define regtype        (G.regtype       )
  #define mark           (G.mark          )
  #define restart        (G.restart       )
@@ -48,19 +47,14 @@ index c1fd914..d343436 100644
  #define cindex         (G.cindex        )
  #define keep_index     (G.keep_index    )
  #define initial_cmds   (G.initial_cmds  )
-@@ -614,27 +619,24 @@ static ALWAYS_INLINE int query_screen_dimensions(void)
- // sleep for 'h' 1/100 seconds, return 1/0 if stdin is (ready for read)/(not ready)
- static int mysleep(int hund)
- {
--	struct pollfd pfd[1];
--
+@@ -619,22 +624,23 @@
  	if (hund != 0)
  		fflush_all();
  
 -	pfd[0].fd = STDIN_FILENO;
--	pfd[0].events = POLLIN;
--	return safe_poll(pfd, 1, hund*10) > 0;
-+	return pyxis_vi_input_pending(hund*10);
++	pfd[0].fd = pyxis_vi_input_fd();
+ 	pfd[0].events = POLLIN;
+ 	return safe_poll(pfd, 1, hund*10) > 0;
  }
  
  //----- Set terminal attributes --------------------------------
@@ -81,7 +75,7 @@ index c1fd914..d343436 100644
  }
  
  //----- Terminal Drawing ---------------------------------------
-@@ -1069,7 +1071,7 @@ static void refresh(int full_screen)
+@@ -1069,7 +1075,7 @@
  			memcpy(sp+cs, out_buf+cs, ce-cs+1);
  			place_cursor(li, cs);
  			// write line out to terminal
@@ -90,7 +84,16 @@ index c1fd914..d343436 100644
  		}
  	}
  
-@@ -2028,13 +2030,8 @@ static int file_insert(const char *fn, char *p, int initial)
+@@ -1132,7 +1138,7 @@
+ 	// on nonblocking stdin.
+ 	// Note: read_key sets errno to 0 on success.
+  again:
+-	c = safe_read_key(STDIN_FILENO, readbuffer, /*timeout:*/ -1);
++	c = safe_read_key(pyxis_vi_input_fd(), readbuffer, /*timeout:*/ -1);
+ 	if (c == -1) { // EOF/error
+ 		if (errno == EAGAIN) // paranoia
+ 			goto again;
+@@ -2028,13 +2034,8 @@
  	close(fd);
  
  #if ENABLE_FEATURE_VI_READONLY
@@ -106,7 +109,7 @@ index c1fd914..d343436 100644
  		SET_READONLY_FILE(readonly_mode);
  	}
  #endif
-@@ -2389,56 +2386,57 @@ static int file_write(char *fn, char *first, char *last)
+@@ -2389,56 +2390,57 @@
  // search for pattern starting at p
  static char *char_search(char *p, const char *pat, int dir_and_range)
  {
@@ -114,14 +117,15 @@ index c1fd914..d343436 100644
 -	const char *err;
 -	char *q;
 -	int i, size, range, start;
+-
+-	re_syntax_options = RE_SYNTAX_POSIX_BASIC & (~RE_DOT_NEWLINE);
 +	regex_t preg;
 +	regmatch_t match;
 +	char *err, *first, *last, *subject, *found = NULL;
 +	size_t length, search_pos = 0;
 +	int cflags = REG_NEWLINE;
 +	int limited = !(dir_and_range & 1);
- 
--	re_syntax_options = RE_SYNTAX_POSIX_BASIC & (~RE_DOT_NEWLINE);
++
  	if (ignorecase)
 -		re_syntax_options |= RE_ICASE;
 -
@@ -135,10 +139,7 @@ index c1fd914..d343436 100644
  	if (err != NULL) {
  		status_line_bold("bad search pattern '%s': %s", pat, err);
 -		return p;
-+		free(err);
-+		regex_search_failed = 1;
-+		return NULL;
- 	}
+-	}
 -
 -	range = (dir_and_range & 1);
 -	q = end - 1; // if FULL
@@ -148,22 +149,39 @@ index c1fd914..d343436 100644
 -		q = text;
 -		if (range == LIMITED)
 -			q = prev_line(p);
-+	if (p < text || p >= end) {
-+		regfree(&preg);
-+		return NULL;
- 	}
+-	}
 -
 -	// RANGE could be negative if we are searching backwards
 -	range = q - p;
 -	if (range < 0) {
 -		size = -range;
 -		start = size;
++		free(err);
++		regex_search_failed = 1;
++		return NULL;
++	}
++	if (p < text || p >= end) {
++		regfree(&preg);
++		return NULL;
++	}
 +	if (dir_and_range < 0) {
 +		first = limited ? prev_line(p) : text;
 +		last = p;
  	} else {
 -		size = range;
 -		start = 0;
+-	}
+-	q = p - start;
+-	if (q < text)
+-		q = text;
+-	// search for the compiled pattern, preg, in p[]
+-	// range < 0, start == size: search backward
+-	// range > 0, start == 0: search forward
+-	// re_search() < 0: not found or error
+-	// re_search() >= 0: index of found pattern
+-	//           struct pattern   char     int   int    int    struct reg
+-	// re_search(*pattern_buffer, *string, size, start, range, *regs)
+-	i = re_search(&preg, q, size, start, range, /*struct re_registers*:*/ NULL);
 +		first = p;
 +		last = limited ? next_line(p) : end - 1;
 +	}
@@ -186,18 +204,7 @@ index c1fd914..d343436 100644
 +		// Advance one character, rather than past the match, to keep overlaps.
 +		advance = mbtowc(NULL, subject + search_pos, length - search_pos);
 +		search_pos += advance > 0 ? advance : 1;
- 	}
--	q = p - start;
--	if (q < text)
--		q = text;
--	// search for the compiled pattern, preg, in p[]
--	// range < 0, start == size: search backward
--	// range > 0, start == 0: search forward
--	// re_search() < 0: not found or error
--	// re_search() >= 0: index of found pattern
--	//           struct pattern   char     int   int    int    struct reg
--	// re_search(*pattern_buffer, *string, size, start, range, *regs)
--	i = re_search(&preg, q, size, start, range, /*struct re_registers*:*/ NULL);
++	}
 +	free(subject);
  	regfree(&preg);
 -	return i < 0 ? NULL : q + i;
@@ -205,7 +212,7 @@ index c1fd914..d343436 100644
  }
  # else
  #  if ENABLE_FEATURE_VI_SETOPTS
-@@ -2556,10 +2554,18 @@ static char *get_one_address(char *p, int *result, int *valid)
+@@ -2556,10 +2558,18 @@
  				dir = ((unsigned)BACK << 1) | FULL;
  			}
  			q = char_search(q, last_search_pattern + 1, dir);
@@ -224,7 +231,7 @@ index c1fd914..d343436 100644
  				if (q == NULL) {
  					status_line_bold("Pattern not found");
  					return NULL;
-@@ -2752,9 +2758,15 @@ static char *regex_search(char *q, regex_t *preg, const char *Rorig,
+@@ -2752,9 +2762,15 @@
  	const char *t;
  	char *r;
  
@@ -243,7 +250,7 @@ index c1fd914..d343436 100644
  		return found;
  
  	found = q + regmatch[0].rm_so;
-@@ -3263,10 +3275,11 @@ static void colon(char *buf)
+@@ -3263,10 +3279,11 @@
  		cflags = 0;
  		if (ignorecase)
  			cflags = REG_ICASE;
@@ -258,7 +265,7 @@ index c1fd914..d343436 100644
  		}
  #  else
  		len_R = strlen(R);
-@@ -3338,7 +3351,6 @@ static void colon(char *buf)
+@@ -3338,7 +3355,6 @@
  #  endif
  		}
  #  if ENABLE_FEATURE_VI_REGEX_SEARCH
@@ -266,7 +273,7 @@ index c1fd914..d343436 100644
  		regfree(&preg);
  #  endif
  # endif /* FEATURE_VI_SEARCH */
-@@ -4060,6 +4072,10 @@ static void do_cmd(int c)
+@@ -4060,6 +4076,10 @@
  		do {
  			q = char_search(dot + dir, last_search_pattern + 1,
  						(dir << 1) | FULL);
@@ -277,7 +284,7 @@ index c1fd914..d343436 100644
  			if (q != NULL) {
  				dot = q;	// good search, update "dot"
  			} else {
-@@ -4068,6 +4084,10 @@ static void do_cmd(int c)
+@@ -4068,6 +4088,10 @@
  				const char *msg;
  				q = char_search(dir == FORWARD ? text : end - 1,
  						last_search_pattern + 1, (dir << 1) | FULL);
@@ -288,7 +295,16 @@ index c1fd914..d343436 100644
  				if (q != NULL) {	// found something
  					dot = q;	// found new pattern- goto it
  					msg = "search hit %s, continuing at %s";
-@@ -5007,27 +5027,9 @@ int vi_main(int argc, char **argv)
+@@ -4821,7 +4845,7 @@
+ 		uint64_t k;
+ 		write1(ESC"[999;999H" ESC"[6n");
+ 		fflush_all();
+-		k = safe_read_key(STDIN_FILENO, readbuffer, /*timeout_ms:*/ 100);
++		k = safe_read_key(pyxis_vi_input_fd(), readbuffer, /*timeout_ms:*/ 100);
+ 		if ((int32_t)k == KEYCODE_CURSOR_POS) {
+ 			uint32_t rc = (k >> 32);
+ 			columns = (rc & 0x7fff);
+@@ -5007,27 +5031,9 @@
  		const char *exinit = getenv("EXINIT");
  		char *cmds = NULL;
  
@@ -317,3 +333,52 @@ index c1fd914..d343436 100644
  		}
  
  		if (cmds) {
+diff --git a/libbb/poll_with_signals.c b/libbb/poll_with_signals.c
+--- a/libbb/poll_with_signals.c
++++ b/libbb/poll_with_signals.c
+@@ -22,6 +22,10 @@
+  */
+ int FAST_FUNC check_got_signal_and_poll(struct pollfd pfd[1], int timeout)
+ {
++#ifdef __pyxis__
++	/* Signals are unavailable; preserve the upstream decoder's wait. */
++	return poll(pfd, 1, timeout);
++#else
+ 	int n;
+ 	struct timespec tv;
+ 	sigset_t orig_mask;
+@@ -45,4 +49,5 @@
+ 	n = ppoll(pfd, 1, timeout >= 0 ? &tv : NULL, &orig_mask);
+ 	sigprocmask2(SIG_SETMASK, &orig_mask);
+ 	return n;
++#endif
+ }
+diff --git a/libbb/verror_msg.c b/libbb/verror_msg.c
+--- a/libbb/verror_msg.c
++++ b/libbb/verror_msg.c
+@@ -156,6 +156,7 @@
+ #endif
+ 
+ 
++#ifndef PYXIS_CONSOLE_APPLET
+ void FAST_FUNC bb_error_msg_and_die(const char *s, ...)
+ {
+ 	va_list p;
+@@ -165,6 +166,7 @@
+ 	va_end(p);
+ 	xfunc_die();
+ }
++#endif
+ 
+ void FAST_FUNC bb_error_msg(const char *s, ...)
+ {
+@@ -203,7 +205,9 @@
+ 	bb_error_msg("%s", s);
+ }
+ 
++#ifndef PYXIS_CONSOLE_APPLET
+ void FAST_FUNC bb_simple_error_msg_and_die(const char *s)
+ {
+ 	bb_error_msg_and_die("%s", s);
+ }
++#endif
