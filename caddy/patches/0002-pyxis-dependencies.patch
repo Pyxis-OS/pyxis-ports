@@ -108,7 +108,7 @@ diff --git a/vendor/github.com/chzyer/readline/term_pyxis.go b/vendor/github.com
 new file mode 100644
 --- /dev/null
 +++ b/vendor/github.com/chzyer/readline/term_pyxis.go
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,47 @@
 +// Copyright 2026 PyxisOS contributors. All rights reserved.
 +// Use of this source code is governed by the MIT license
 +// that can be found in the LICENSE file.
@@ -122,18 +122,17 @@ new file mode 100644
 +	"syscall"
 +)
 +
-+// Editor state operations remain unsupported by this dependency adapter.
-+type State struct{}
++type State = syscall.TerminalState
 +
 +func IsTerminal(fd int) bool { return syscall.TerminalIsTerminal(fd) }
 +func DefaultIsTerminal() bool {
 +	return IsTerminal(int(os.Stdin.Fd())) && (IsTerminal(int(os.Stdout.Fd())) || IsTerminal(int(os.Stderr.Fd())))
 +}
-+func MakeRaw(int) (*State, error)      { return nil, syscall.ENOSYS }
-+func GetState(int) (*State, error)     { return nil, syscall.ENOSYS }
-+func restoreTerm(int, *State) error    { return syscall.ENOSYS }
-+func ReadPassword(int) ([]byte, error) { return nil, syscall.ENOSYS }
-+func GetStdin() int                    { return int(os.Stdin.Fd()) }
++func MakeRaw(fd int) (*State, error)         { return syscall.TerminalMakeRaw(fd) }
++func GetState(fd int) (*State, error)        { return syscall.TerminalGetState(fd) }
++func restoreTerm(fd int, state *State) error { return syscall.TerminalRestore(fd, state) }
++func ReadPassword(int) ([]byte, error)       { return nil, syscall.ENOSYS }
++func GetStdin() int                          { return int(os.Stdin.Fd()) }
 +func GetScreenWidth() int {
 +	columns, _, _, err := syscall.TerminalSize(int(os.Stdout.Fd()))
 +	if err != nil {

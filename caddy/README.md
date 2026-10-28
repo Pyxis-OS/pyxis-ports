@@ -38,8 +38,9 @@ Smallstep database and SSH-agent backends. The latter also needs its pure signer
 wrapper separated from the disabled backend so upstream's type assertions
 compile. Generic QUIC sources remain linked: Caddy has no HTTP/3 compile-out tag.
 Logrus and readline use native console detection; readline also queries native
-terminal width. Its raw/password/suspend operations remain unsupported, and it
-does not receive resize callbacks. Tailscale state and the
+terminal width. Raw mode saves and restores the Go runtime's private native
+terminal state. Password input and suspension remain unsupported, and it does
+not receive resize callbacks. Tailscale state and the
 certificate-transparency fork's platform root lookup are unsupported; explicit
 roots still use that fork's pure-Go verifier. Normal Go HTTPS uses the held boot
 CA bundle. No Unix signal numbers or successful fake operations are added.
