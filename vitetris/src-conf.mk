@@ -1,0 +1,7 @@
+CCFLAGS = $(CFLAGS) $(CPPFLAGS)
+DTWOPLAYER = -DTWOPLAYER=1
+tetris2p_obj = tetris2p.o
+DCURSES = -DCURSES=1
+BACKEND = curses
+DTERM_RESIZING = -DTERM_RESIZING=1
+menuext_lib = menuext.a

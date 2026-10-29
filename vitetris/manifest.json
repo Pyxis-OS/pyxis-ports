@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "org.pyxis.vitetris",
+  "entry": "bin/vitetris.pxe",
+  "commands": {
+    "vitetris": "bin/vitetris.pxe"
+  },
+  "resource_dirs": {},
+  "grants": [
+    {
+      "name": "memory",
+      "resource": "memory",
+      "rights": [
+        "manage"
+      ],
+      "required": true
+    },
+    {
+      "name": "clock",
+      "resource": "clock",
+      "rights": [
+        "read",
+        "precise",
+        "sleep"
+      ],
+      "required": true
+    }
+  ]
+}

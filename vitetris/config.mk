@@ -1,0 +1,7 @@
+UNIX = y
+TWOPLAYER = y
+TERM_RESIZING = y
+MENU = y
+BLOCKSTYLES = y
+INPUT_SYS = curses
+CURSES = y

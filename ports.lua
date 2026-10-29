@@ -55,6 +55,7 @@ return {
   ["tree-sitter"] = "tree-sitter",
   tzdata = "tzdata",
   usbids = "usbids",
+  vitetris = "vitetris",
   utf8proc = "utf8proc",
   ["wpa-supplicant"] = "wpa-supplicant",
   zlib = "zlib",

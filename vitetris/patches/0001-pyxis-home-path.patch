@@ -1,0 +1,27 @@
+--- a/src/cfgfile.c
++++ b/src/cfgfile.c
+@@ -6,7 +6,9 @@
+ #include <stdlib.h>
+ #include <unistd.h>
+ #include <sys/types.h>
++#ifndef __pyxis__
+ #include <pwd.h>
++#endif
+ #endif
+ #include "cfgfile.h"
+ #include "options.h"
+@@ -29,10 +31,14 @@
+ void setcfgfilename(const char *argv0)
+ {
+ #ifdef UNIX
++#ifndef __pyxis__
+ 	struct passwd *pwd;
++#endif
+ 	const char *s = getenv("HOME");
++#ifndef __pyxis__
+ 	if (!s && (pwd = getpwuid(getuid())))
+ 		s = pwd->pw_dir;
++#endif
+ 	if (s && strlen(s)+strlen(CONFIG_FILENAME) < 79) {
+ 		strcpy(cfgfilename, s); 
+ 		strcat(cfgfilename, "/"CONFIG_FILENAME);
