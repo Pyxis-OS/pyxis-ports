@@ -7,6 +7,7 @@ return {
   ["chocolate-quake"] = "chocolate-quake",
   cmatrix = "cmatrix",
   devilutionx = "devilutionx",
+  dfrotz = "dfrotz",
   doom = "doom",
   dr_libs = "dr_libs",
   eduke32 = "eduke32",

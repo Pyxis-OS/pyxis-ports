@@ -1,0 +1,8 @@
+Frotz 2.55 uses its unchanged upstream dumb frontend and build files. Pyxis
+selects the compiler, SDK and linker, overrides host/Git detection with the
+pinned release identity, and packages a native executable bundle. Story files
+are supplied separately by the user; this port contains none.
+
+Frotz is GPL-2.0-or-later. Original permissive notices in the dumb frontend
+and bundled Blorb source remain in the supplied corresponding source archive.
+Pyxis recipe and packaging code: MPL-2.0, see pyxis-ports/LICENSE.
