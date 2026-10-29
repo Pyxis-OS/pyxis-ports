@@ -1,0 +1,7 @@
+nudoku 8.0.1 is GPL-3.0-or-later. The package retains upstream licensing
+and its unmodified upstream source tree. The recipe, build files,
+configuration, manifest and documentation are original Pyxis MPL-2.0 material.
+
+The program statically links the Pyxis ncursesw profile, with the upstream
+ncurses COPYING and the native adapter's MPL-2.0 notice retained separately.
+The matching SDK and ncursesw development package identify their sources.

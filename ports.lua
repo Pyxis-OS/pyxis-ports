@@ -35,6 +35,7 @@ return {
   monocypher = "monocypher",
   ncursesw = "ncursesw",
   neovim = "neovim",
+  nudoku = "nudoku",
   openarena = "openarena",
   opus = "opus",
   opusfile = "opusfile",

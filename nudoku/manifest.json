@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "org.pyxis.nudoku",
+  "entry": "bin/nudoku.pxe",
+  "commands": {
+    "nudoku": "bin/nudoku.pxe"
+  },
+  "resource_dirs": {},
+  "grants": [
+    {
+      "name": "memory",
+      "resource": "memory",
+      "rights": [
+        "manage"
+      ],
+      "required": true
+    },
+    {
+      "name": "clock",
+      "resource": "clock",
+      "rights": [
+        "read",
+        "precise",
+        "sleep"
+      ],
+      "required": true
+    }
+  ]
+}
