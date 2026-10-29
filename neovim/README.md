@@ -45,8 +45,8 @@ stdin requiring fd 3 rejects before launch.
 Pyxis 16-colour scheme, `notermguicolors` and
 disabled swap/backup/writebackup. Startup sets `NVIM_NOTTYFAST`, clears
 `COLORTERM` and selects the explicit runtime. Terminal input owns a native RAW
-passthrough reference; resize uses native geometry generations. Capability
-traversal supplies scheme paths and `:cd`.
+passthrough reference; queued SIGWINCH watchers re-query terminal geometry.
+Capability traversal supplies scheme paths and `:cd`.
 
 File selection proves the existing parent, then anchors the final component to
 an absolute native scheme path; missing/unproved parents refuse selection.
@@ -70,9 +70,15 @@ External jobs and shell commands run as native children over pipes:
 and stderr. Executable checks use shared program lookup over the exported
 `path` capability list. `jobstop` and Ctrl+C terminate at once, and temporary
 files live in `tmp://`. A child startup failure keeps its native completion
-reason and maps to job status 1. `:terminal`, PTY and detached jobs, socket listeners, Unix signals,
+reason and maps to job status 1. `:terminal`, PTY and detached jobs, socket listeners,
 numeric PID operations, workers, asynchronous filesystem calls and watches are
-outside this profile. Swap/backup recovery and patchmode are unavailable.
+outside this profile. SIGINT and SIGWINCH use persistent watchers on the
+initial-thread main loop; headless startup omits the WINCH watch when no standard
+descriptor is a terminal. Actual SIGINT follows upstream deadly-signal cleanup
+and preserve-exit behavior. Raw Ctrl+C stays input-byte edit interruption.
+Upstream Unix signal watchers retain their normal lifecycle; signals without a
+native source remain dormant. Only INT and WINCH have native event delivery.
+Swap/backup recovery and patchmode are unavailable.
 `vim.uri` maps a native path to a file URI with its root name as the first
 segment, `home://test/a.c` to `file:///home/test/a.c` and back; a buffer name
 is a native path only when the editor holds that root.

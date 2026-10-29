@@ -161,46 +161,30 @@ index 77b65bc..86a8bea 100644
  # include <unistd.h>  // IWYU pragma: keep
  #else
 diff --git a/src/nvim/tui/tui.c b/src/nvim/tui/tui.c
-index ed23034..5d84f2f 100644
+index ed23034..273c406 100644
 --- a/src/nvim/tui/tui.c
 +++ b/src/nvim/tui/tui.c
-@@ -2,7 +2,12 @@
- 
+@@ -3,6 +3,9 @@
  #include <assert.h>
  #include <inttypes.h>
--#include <signal.h>
-+#ifndef __pyxis__
-+# include <signal.h>
-+#else
-+# include <uv/pyxis-native.h>
+ #include <signal.h>
++#ifdef __pyxis__
 +# include "nvim/event/proc.h"
 +#endif
  #include <stdbool.h>
  #include <stdio.h>
  #include <stdlib.h>
-@@ -145,6 +150,10 @@ struct TUIData {
+@@ -145,6 +148,9 @@ struct TUIData {
  
  static bool cursor_style_enabled = false;
  #include "tui/tui.c.generated.h"
 +#ifdef __pyxis__
-+static void tui_native_resize_cb(uv_tty_t *handle, int status, int width, int height);
 +static void tui_native_write(TUIData *tui, uv_buf_t *bufs, unsigned count);
 +#endif
  
  #define TERMINFO_SEQ_LIMIT 128
  
-@@ -166,8 +175,10 @@ void tui_start(TUIData **tui_p, int *width, int *height, char **term, bool *rgb)
- 
-   kv_init(tui->invalid_regions);
-   kv_init(tui->urlbuf);
-+#ifndef __pyxis__
-   signal_watcher_init(tui->loop, &tui->winch_handle, tui);
-   signal_watcher_start(&tui->winch_handle, sigwinch_cb, SIGWINCH);
-+#endif
- 
-   // TODO(bfredl): zero hl is empty, send this explicitly?
-   kv_push(tui->attrs, HLATTRS_INIT);
-@@ -194,6 +205,9 @@ void tui_start(TUIData **tui_p, int *width, int *height, char **term, bool *rgb)
+@@ -194,6 +200,9 @@ void tui_start(TUIData **tui_p, int *width, int *height, char **term, bool *rgb)
  static void tui_request_term_mode(TUIData *tui, TermMode mode)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -210,7 +194,7 @@ index ed23034..5d84f2f 100644
    // 5 bytes for \x1b[?$p, 1 byte for null terminator, 6 bytes for mode digits (more than enough)
    char buf[12];
    int len = snprintf(buf, sizeof(buf), "\x1b[?%d$p", (int)mode);
-@@ -205,6 +219,9 @@ static void tui_request_term_mode(TUIData *tui, TermMode mode)
+@@ -205,6 +214,9 @@ static void tui_request_term_mode(TUIData *tui, TermMode mode)
  static void tui_set_term_mode(TUIData *tui, TermMode mode, bool set)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -220,7 +204,7 @@ index ed23034..5d84f2f 100644
    char buf[12];
    int len = snprintf(buf, sizeof(buf), "\x1b[?%d%c", (int)mode, set ? 'h' : 'l');
    assert((len > 0) && (len < (int)sizeof(buf)));
-@@ -215,6 +232,9 @@ static void tui_set_term_mode(TUIData *tui, TermMode mode, bool set)
+@@ -215,6 +227,9 @@ static void tui_set_term_mode(TUIData *tui, TermMode mode, bool set)
  void tui_handle_term_mode(TUIData *tui, TermMode mode, TermModeState state)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -230,7 +214,7 @@ index ed23034..5d84f2f 100644
    bool is_set = false;
    switch (state) {
    case kTermModeNotRecognized:
-@@ -276,6 +296,9 @@ void tui_handle_term_mode(TUIData *tui, TermMode mode, TermModeState state)
+@@ -276,6 +291,9 @@ void tui_handle_term_mode(TUIData *tui, TermMode mode, TermModeState state)
  /// Query the terminal emulator to see if it supports extended underline.
  static void tui_query_extended_underline(TUIData *tui)
  {
@@ -240,7 +224,7 @@ index ed23034..5d84f2f 100644
    // Try to set an undercurl using an SGR sequence, followed by a DECRQSS SGR query.
    // Reset attributes first, as other code may have set attributes.
    out(tui, S_LEN("\x1b[0m\x1b[4:3m\x1bP$qm\x1b\\"));
-@@ -284,6 +307,9 @@ static void tui_query_extended_underline(TUIData *tui)
+@@ -284,6 +302,9 @@ static void tui_query_extended_underline(TUIData *tui)
  
  void tui_enable_extended_underline(TUIData *tui)
  {
@@ -250,7 +234,7 @@ index ed23034..5d84f2f 100644
    terminfo_set_if_empty(tui, kTerm_set_underline_style, "\x1b[4:%p1%dm");
    tui->can_set_underline_color = true;
  }
-@@ -299,6 +325,9 @@ void tui_enable_extended_underline(TUIData *tui)
+@@ -299,6 +320,9 @@ void tui_enable_extended_underline(TUIData *tui)
  static void tui_query_kitty_keyboard(TUIData *tui)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -260,7 +244,7 @@ index ed23034..5d84f2f 100644
    // Set the key encoding whenever the Device Attributes (DA1) response is received.
    tui->input.callbacks.primary_device_attr = tui_set_key_encoding;
    out(tui, S_LEN("\x1b[?u\x1b[c"));
-@@ -307,6 +336,9 @@ static void tui_query_kitty_keyboard(TUIData *tui)
+@@ -307,6 +331,9 @@ static void tui_query_kitty_keyboard(TUIData *tui)
  void tui_set_key_encoding(TUIData *tui)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -270,7 +254,7 @@ index ed23034..5d84f2f 100644
    switch (tui->input.key_encoding) {
    case kKeyEncodingKitty:
      // Progressive enhancement flags:
-@@ -325,6 +357,9 @@ void tui_set_key_encoding(TUIData *tui)
+@@ -325,6 +352,9 @@ void tui_set_key_encoding(TUIData *tui)
  static void tui_reset_key_encoding(TUIData *tui)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -280,7 +264,7 @@ index ed23034..5d84f2f 100644
    switch (tui->input.key_encoding) {
    case kKeyEncodingKitty:
      out(tui, S_LEN("\x1b[<u"));
-@@ -340,6 +375,9 @@ static void tui_reset_key_encoding(TUIData *tui)
+@@ -340,6 +370,9 @@ static void tui_reset_key_encoding(TUIData *tui)
  static void tui_query_bg_color_noflush(TUIData *tui)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -290,7 +274,7 @@ index ed23034..5d84f2f 100644
    out(tui, S_LEN("\x1b]11;?\x07\x1b[5n"));
  }
  
-@@ -350,10 +388,37 @@ static void tui_query_bg_color_noflush(TUIData *tui)
+@@ -350,10 +383,37 @@ static void tui_query_bg_color_noflush(TUIData *tui)
  void tui_query_bg_color(TUIData *tui)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -328,7 +312,7 @@ index ed23034..5d84f2f 100644
  /// Enable the alternate screen and emit other control sequences to start the TUI.
  ///
  /// This is also called when the TUI is resumed after being suspended. We reinitialize all state
-@@ -383,6 +448,14 @@ static void terminfo_start(TUIData *tui)
+@@ -383,6 +443,14 @@ static void terminfo_start(TUIData *tui)
    tui->ti_arena = (Arena)ARENA_EMPTY;
    assert(tui->term == NULL);
  
@@ -343,7 +327,7 @@ index ed23034..5d84f2f 100644
    char *term = os_getenv("TERM");
  #ifdef MSWIN
    const char *guessed_term = NULL;
-@@ -437,6 +510,8 @@ static void terminfo_start(TUIData *tui)
+@@ -437,6 +505,8 @@ static void terminfo_start(TUIData *tui)
    patch_terminfo_bugs(tui, term, colorterm, vtev, konsolev, iterm_env, nsterm);
    augment_terminfo(tui, term, vtev, konsolev, weztermv, iterm_env, nsterm);
  
@@ -352,7 +336,7 @@ index ed23034..5d84f2f 100644
  #define TI_HAS(name) (tui->ti.defs[name] != NULL)
    tui->can_change_scroll_region = TI_HAS(kTerm_change_scroll_region);
    // note: also gated by tui->has_left_and_right_margin_mode
-@@ -469,6 +544,7 @@ static void terminfo_start(TUIData *tui)
+@@ -469,6 +539,7 @@ static void terminfo_start(TUIData *tui)
    tui->has_left_and_right_margin_mode = false;
    tui->has_sync_mode = false;
  
@@ -360,7 +344,7 @@ index ed23034..5d84f2f 100644
    // Query support for private DEC modes that Nvim can take advantage of.
    // Some terminals (such as Terminal.app) do not support DECRQM, so skip the query.
    if (!nsterm) {
-@@ -494,6 +570,8 @@ static void terminfo_start(TUIData *tui)
+@@ -494,6 +565,8 @@ static void terminfo_start(TUIData *tui)
    // we won't have received the report, so we also query it on resume.
    tui_query_bg_color_noflush(tui);
  
@@ -369,7 +353,7 @@ index ed23034..5d84f2f 100644
    int ret;
    uv_loop_init(&tui->write_loop);
    if (tui->out_isatty) {
-@@ -501,7 +579,7 @@ static void terminfo_start(TUIData *tui)
+@@ -501,7 +574,7 @@ static void terminfo_start(TUIData *tui)
      if (ret) {
        ELOG("uv_tty_init failed: %s", uv_strerror(ret));
      }
@@ -378,7 +362,7 @@ index ed23034..5d84f2f 100644
      int retry_count = 10;
      // A signal may cause uv_tty_set_mode() to fail (e.g., SIGCONT). Retry a
      // few times. #12322
-@@ -523,14 +601,18 @@ static void terminfo_start(TUIData *tui)
+@@ -523,14 +596,18 @@ static void terminfo_start(TUIData *tui)
        ELOG("uv_pipe_open failed: %s", uv_strerror(ret));
      }
    }
@@ -397,7 +381,7 @@ index ed23034..5d84f2f 100644
  #undef TI_HAS
  }
  
-@@ -576,7 +658,9 @@ static void terminfo_disable(TUIData *tui)
+@@ -576,7 +653,9 @@ static void terminfo_disable(TUIData *tui)
  
    // Send a DA1 request. When the terminal responds we know that it has
    // processed all of our requests and won't be emitting anymore sequences.
@@ -407,7 +391,7 @@ index ed23034..5d84f2f 100644
  
    // Immediately flush the buffer and wait for the DA1 response.
    flush_buf(tui);
-@@ -600,7 +684,9 @@ static void terminfo_stop(TUIData *tui)
+@@ -600,7 +679,9 @@ static void terminfo_stop(TUIData *tui)
    }
  
    flush_buf(tui);
@@ -417,7 +401,7 @@ index ed23034..5d84f2f 100644
    uv_close((uv_handle_t *)&tui->output_handle, NULL);
    uv_run(&tui->write_loop, UV_RUN_DEFAULT);
    if (uv_loop_close(&tui->write_loop)) {
-@@ -619,8 +705,22 @@ static void tui_terminal_start(TUIData *tui)
+@@ -619,8 +700,15 @@ static void tui_terminal_start(TUIData *tui)
    if (tui->input.loop == NULL) {
      tinput_init(&tui->input, &main_loop, &tui->ti);
    }
@@ -426,13 +410,6 @@ index ed23034..5d84f2f 100644
 +#endif
    tinput_start(&tui->input);
 +#ifdef __pyxis__
-+  int error = uv_pyxis_tty_resize_start(&tui->input.read_stream.s.uv.tty,
-+                                      tui_native_resize_cb);
-+  if (error) {
-+    ELOG("Cannot watch native terminal resize: %s", uv_strerror(error));
-+    abort();
-+  }
-+  // Register before querying, so a resize cannot hide behind the initial snapshot.
 +  tui_guess_size(tui);
 +  // Publish alternate-screen output only after input and geometry are usable.
 +  flush_buf(tui);
@@ -440,18 +417,17 @@ index ed23034..5d84f2f 100644
  }
  
  static void after_startup_cb(uv_timer_t *handle)
-@@ -648,6 +748,10 @@ void tui_stop(TUIData *tui)
+@@ -648,6 +736,9 @@ void tui_stop(TUIData *tui)
      return;
    }
  
 +#ifdef __pyxis__
-+  uv_pyxis_tty_resize_stop(&tui->input.read_stream.s.uv.tty);
 +  terminfo_disable(tui);
 +#else
    tui->input.callbacks.primary_device_attr = tui_stop_cb;
    terminfo_disable(tui);
  
-@@ -657,13 +761,18 @@ void tui_stop(TUIData *tui)
+@@ -657,10 +748,13 @@ void tui_stop(TUIData *tui)
    if (!tui->stopped && !tui->input.read_stream.did_eof) {
      WLOG("TUI: timed out waiting for DA1 response");
    }
@@ -463,46 +439,9 @@ index ed23034..5d84f2f 100644
    stream_set_blocking(tui->input.in_fd, true);   // normalize stream (#2598)
 +#endif
    tinput_destroy(&tui->input);
-+#ifndef __pyxis__
    signal_watcher_stop(&tui->winch_handle);
    signal_watcher_close(&tui->winch_handle, NULL);
-+#endif
-   uv_close((uv_handle_t *)&tui->startup_delay_timer, NULL);
- }
- 
-@@ -710,6 +819,23 @@ void tui_free_all_mem(TUIData *tui)
- }
- #endif
- 
-+#ifdef __pyxis__
-+static void tui_native_resize_cb(uv_tty_t *handle, int status, int width, int height)
-+{
-+  Stream *stream = handle->data;
-+  TermInput *input = stream->cb_data;
-+  TUIData *tui = input->tui_data;
-+  if (tui_is_stopped(tui)) {
-+    return;
-+  }
-+  if (status) {
-+    ELOG("Native terminal resize failed: %s", uv_strerror(status));
-+    exit_on_closed_chan(1);
-+    return;
-+  }
-+  tui_set_size(tui, width, height);
-+}
-+#else
- static void sigwinch_cb(SignalWatcher *watcher, int signum, void *cbdata)
- {
-   TUIData *tui = cbdata;
-@@ -719,6 +845,7 @@ static void sigwinch_cb(SignalWatcher *watcher, int signum, void *cbdata)
- 
-   tui_guess_size(tui);
- }
-+#endif
- 
- static bool attrs_differ(TUIData *tui, int id1, int id2, bool rgb)
- {
-@@ -843,9 +970,11 @@ static void update_attrs(TUIData *tui, int attr_id)
+@@ -843,9 +937,11 @@ static void update_attrs(TUIData *tui, int attr_id)
    if (conceal) {
      terminfo_out(tui, kTerm_enter_secure_mode);
    }
@@ -514,7 +453,7 @@ index ed23034..5d84f2f 100644
    if (tui->ti.defs[kTerm_set_underline_style]) {
      if (undercurl) {
        terminfo_print_num1(tui, kTerm_set_underline_style, 3);
-@@ -885,6 +1014,11 @@ static void update_attrs(TUIData *tui, int attr_id)
+@@ -885,6 +981,11 @@ static void update_attrs(TUIData *tui, int attr_id)
    } else {
      fg = (attrs.cterm_fg_color
            ? attrs.cterm_fg_color - 1 : (tui->clear_attrs.cterm_fg_color - 1));
@@ -526,7 +465,7 @@ index ed23034..5d84f2f 100644
      if (fg != -1) {
        terminfo_print_num1(tui, kTerm_set_a_foreground, fg);
      }
-@@ -902,11 +1036,17 @@ static void update_attrs(TUIData *tui, int attr_id)
+@@ -902,11 +1003,17 @@ static void update_attrs(TUIData *tui, int attr_id)
    } else {
      bg = (attrs.cterm_bg_color
            ? attrs.cterm_bg_color - 1 : (tui->clear_attrs.cterm_bg_color - 1));
@@ -544,7 +483,7 @@ index ed23034..5d84f2f 100644
    if (tui->url != attrs.url) {
      if (attrs.url >= 0) {
        const char *url = urls.keys[attrs.url];
-@@ -925,6 +1065,8 @@ static void update_attrs(TUIData *tui, int attr_id)
+@@ -925,6 +1032,8 @@ static void update_attrs(TUIData *tui, int attr_id)
      tui->url = attrs.url;
    }
  
@@ -553,7 +492,7 @@ index ed23034..5d84f2f 100644
    tui->default_attr = fg == -1 && bg == -1
                        && !bold && !dim && !blink && !conceal && !overline && !italic
                        && !has_any_underline && !reverse && !standout && !strikethrough;
-@@ -1353,6 +1495,9 @@ void tui_busy_stop(TUIData *tui)
+@@ -1353,6 +1462,9 @@ void tui_busy_stop(TUIData *tui)
  
  void tui_mouse_on(TUIData *tui)
  {
@@ -563,7 +502,7 @@ index ed23034..5d84f2f 100644
    if (!tui->mouse_enabled) {
      tui_set_term_mode(tui, kTermModeMouseButtonEvent, true);
      tui_set_term_mode(tui, kTermModeMouseSGRExt, true);
-@@ -1365,6 +1510,9 @@ void tui_mouse_on(TUIData *tui)
+@@ -1365,6 +1477,9 @@ void tui_mouse_on(TUIData *tui)
  
  void tui_mouse_off(TUIData *tui)
  {
@@ -573,7 +512,7 @@ index ed23034..5d84f2f 100644
    if (tui->mouse_enabled) {
      if (tui->mouse_move_enabled) {
        tui_set_term_mode(tui, kTermModeMouseAnyEvent, false);
-@@ -1426,7 +1574,7 @@ static void tui_set_mode(TUIData *tui, ModeShape mode)
+@@ -1426,7 +1541,7 @@ static void tui_set_mode(TUIData *tui, ModeShape mode)
  /// @param mode editor mode
  void tui_mode_change(TUIData *tui, String mode, Integer mode_idx)
  {
@@ -582,7 +521,7 @@ index ed23034..5d84f2f 100644
    // If stdin is not a TTY, the LHS of pipe may change the state of the TTY
    // after calling uv_tty_set_mode. So, set the mode of the TTY again here.
    // #13073
-@@ -1545,6 +1693,9 @@ void tui_bell(TUIData *tui)
+@@ -1545,6 +1660,9 @@ void tui_bell(TUIData *tui)
  
  void tui_visual_bell(TUIData *tui)
  {
@@ -592,7 +531,7 @@ index ed23034..5d84f2f 100644
    if (tui->screen_or_tmux) {
      out(tui, S_LEN("\x1bg"));
    } else {
-@@ -1576,13 +1727,17 @@ void tui_default_colors_set(TUIData *tui, Integer rgb_fg, Integer rgb_bg, Intege
+@@ -1576,13 +1694,17 @@ void tui_default_colors_set(TUIData *tui, Integer rgb_fg, Integer rgb_bg, Intege
  void tui_ui_send(TUIData *tui, String content)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -611,7 +550,7 @@ index ed23034..5d84f2f 100644
  }
  
  /// Flushes TUI grid state to a buffer (which is later flushed to the TTY by `flush_buf`).
-@@ -1663,8 +1818,20 @@ static void show_verbose_terminfo(TUIData *tui)
+@@ -1663,8 +1785,20 @@ static void show_verbose_terminfo(TUIData *tui)
  
  void tui_suspend(TUIData *tui)
  {
@@ -633,7 +572,7 @@ index ed23034..5d84f2f 100644
    ui_client_detach();
    tui->mouse_enabled_save = tui->mouse_enabled;
    tui->input.callbacks.primary_device_attr = tui_suspend_cb;
-@@ -1672,7 +1839,7 @@ void tui_suspend(TUIData *tui)
+@@ -1672,7 +1806,7 @@ void tui_suspend(TUIData *tui)
  #endif
  }
  
@@ -642,7 +581,7 @@ index ed23034..5d84f2f 100644
  static void tui_suspend_cb(TUIData *tui)
    FUNC_ATTR_NONNULL_ALL
  {
-@@ -1771,6 +1938,9 @@ void tui_option_set(TUIData *tui, String name, Object value)
+@@ -1771,6 +1905,9 @@ void tui_option_set(TUIData *tui, String name, Object value)
        }
      }
    } else if (strequal(name.data, "termguicolors")) {
@@ -652,7 +591,7 @@ index ed23034..5d84f2f 100644
      tui->rgb = value.data.boolean;
      tui->print_attr_id = -1;
      invalidate(tui, 0, tui->grid.height, 0, tui->grid.width);
-@@ -1880,6 +2050,18 @@ void tui_set_size(TUIData *tui, int width, int height)
+@@ -1880,6 +2017,18 @@ void tui_set_size(TUIData *tui, int width, int height)
  /// application (i.e., the host terminal).
  void tui_guess_size(TUIData *tui)
  {
@@ -671,7 +610,7 @@ index ed23034..5d84f2f 100644
    int width = 0;
    int height = 0;
    char *lines = NULL;
-@@ -2511,7 +2693,9 @@ static size_t flush_buf_end(TUIData *tui, char *buf, size_t len)
+@@ -2511,7 +2660,9 @@ static size_t flush_buf_end(TUIData *tui, char *buf, size_t len)
  /// @see tui_flush
  static void flush_buf(TUIData *tui)
  {
@@ -681,7 +620,7 @@ index ed23034..5d84f2f 100644
    uv_buf_t bufs[3];
    char pre[32];
    char post[32];
-@@ -2534,12 +2718,16 @@ static void flush_buf(TUIData *tui)
+@@ -2534,12 +2685,16 @@ static void flush_buf(TUIData *tui)
        fwrite(bufs[i].base, bufs[i].len, 1, tui->screenshot);
      }
    } else {

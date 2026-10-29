@@ -148,30 +148,6 @@ index 50ab55e..525b96a 100644
    proc->internal_exit_cb(proc);
  }
  
-diff --git a/src/nvim/event/loop.c b/src/nvim/event/loop.c
-index 319f370..d526e12 100644
---- a/src/nvim/event/loop.c
-+++ b/src/nvim/event/loop.c
-@@ -24,7 +24,9 @@ void loop_init(Loop *loop, void *data)
-   loop->thread_events = multiqueue_new(NULL, NULL);
-   uv_mutex_init(&loop->mutex);
-   uv_async_init(&loop->uv, &loop->async, async_cb);
-+#ifndef __pyxis__
-   uv_signal_init(&loop->uv, &loop->children_watcher);
-+#endif
-   uv_timer_init(&loop->uv, &loop->children_kill_timer);
-   uv_timer_init(&loop->uv, &loop->poll_timer);
-   uv_timer_init(&loop->uv, &loop->exit_delay_timer);
-@@ -151,7 +153,9 @@ bool loop_close(Loop *loop, bool wait)
-   bool rv = true;
-   loop->closing = true;
-   uv_mutex_destroy(&loop->mutex);
-+#ifndef __pyxis__
-   uv_close((uv_handle_t *)&loop->children_watcher, NULL);
-+#endif
-   uv_close((uv_handle_t *)&loop->children_kill_timer, NULL);
-   uv_close((uv_handle_t *)&loop->poll_timer, timer_close_cb);
-   uv_close((uv_handle_t *)&loop->exit_delay_timer, NULL);
 diff --git a/src/nvim/event/proc.c b/src/nvim/event/proc.c
 index 7d258f1..e4fe68c 100644
 --- a/src/nvim/event/proc.c
@@ -696,40 +672,34 @@ index 0000000..2fe0671
 +#define ENV_SEPCHAR ';'
 +#define ENV_SEPSTR ";"
 diff --git a/src/nvim/os/signal.c b/src/nvim/os/signal.c
-index 712309f..df00587 100644
+index 712309f..0c20c44 100644
 --- a/src/nvim/os/signal.c
 +++ b/src/nvim/os/signal.c
-@@ -1,3 +1,27 @@
+@@ -19,6 +19,11 @@
+ #include "nvim/option_vars.h"
+ #include "nvim/os/signal.h"
+ 
 +#ifdef __pyxis__
-+#include "nvim/os/signal.h"
-+
-+// Lifecycle hooks select no watchers on the native profile. Console input
-+// handles Ctrl+C; native process observers handle completion and termination.
-+void signal_init(void)
-+{
-+}
-+void signal_teardown(void)
-+{
-+}
-+void signal_start(void)
-+{
-+}
-+void signal_stop(void)
-+{
-+}
-+void signal_reject_deadly(void)
-+{
-+}
-+void signal_accept_deadly(void)
-+{
-+}
-+#else
- #include <assert.h>
- #include <stdbool.h>
- #include <stdio.h>
-@@ -255,3 +279,5 @@ static void on_signal(SignalWatcher *handle, int signum, void *data)
-     break;
-   }
- }
-+
++# include <unistd.h>
++# include "nvim/os/input.h"
 +#endif
++
+ #ifdef SIGPWR
+ # include "nvim/memline.h"
+ #endif
+@@ -107,7 +112,14 @@
+   signal_watcher_start(&susr1, on_signal, SIGUSR1);
+ #endif
+ #ifdef SIGWINCH
+-  signal_watcher_start(&swinch, on_signal, SIGWINCH);
++# ifdef __pyxis__
++  // A headless process has no native terminal source for SIGWINCH.
++  if (os_isatty(STDOUT_FILENO) || os_isatty(STDERR_FILENO) || os_isatty(STDIN_FILENO)) {
++# endif
++    signal_watcher_start(&swinch, on_signal, SIGWINCH);
++# ifdef __pyxis__
++  }
++# endif
+ #endif
+ }
+ 

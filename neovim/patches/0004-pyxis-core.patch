@@ -14,7 +14,7 @@ index bc0a9f4..7f7241e 100644
  #include <termios.h>
  int
 diff --git a/src/nvim/CMakeLists.txt b/src/nvim/CMakeLists.txt
-index c87ceb2..a3ab89f 100644
+index c87ceb2..0684dcd 100644
 --- a/src/nvim/CMakeLists.txt
 +++ b/src/nvim/CMakeLists.txt
 @@ -10,6 +10,25 @@ set_target_properties(nvim_bin
@@ -53,14 +53,13 @@ index c87ceb2..a3ab89f 100644
    check_c_compiler_flag(-fstack-protector-strong HAS_FSTACK_PROTECTOR_STRONG_FLAG)
    if(HAS_FSTACK_PROTECTOR_STRONG_FLAG)
      target_compile_options(main_lib INTERFACE -fstack-protector-strong)
-@@ -444,6 +464,12 @@ list(APPEND UNCRUSTIFY_NVIM_SOURCES
+@@ -444,6 +464,11 @@ list(APPEND UNCRUSTIFY_NVIM_SOURCES
    ${PROJECT_SOURCE_DIR}/src/xxd/xxd.c
  )
  
 +if(CMAKE_SYSTEM_NAME STREQUAL "Pyxis")
 +  list(REMOVE_ITEM NVIM_SOURCES
-+    ${CMAKE_CURRENT_LIST_DIR}/os/mem.c
-+    ${CMAKE_CURRENT_LIST_DIR}/event/signal.c)
++    ${CMAKE_CURRENT_LIST_DIR}/os/mem.c)
 +endif()
 +
  foreach(sfile ${NVIM_SOURCES})
@@ -193,17 +192,6 @@ index 66d2284..3312fd2 100644
      if (written < (ptrdiff_t)len) {
        error = (int)written;
        goto write_blob_error;
-diff --git a/src/nvim/event/signal.h b/src/nvim/event/signal.h
-index aa3b0c0..91afa9d 100644
---- a/src/nvim/event/signal.h
-+++ b/src/nvim/event/signal.h
-@@ -3,4 +3,6 @@
- #include "nvim/event/defs.h"  // IWYU pragma: keep
- #include "nvim/types_defs.h"  // IWYU pragma: keep
- 
-+#ifndef __pyxis__
- #include "event/signal.h.generated.h"
-+#endif
 diff --git a/src/nvim/ex_docmd.c b/src/nvim/ex_docmd.c
 index 9f42d9f..f9fc9c8 100644
 --- a/src/nvim/ex_docmd.c

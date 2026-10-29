@@ -39,14 +39,16 @@ the licences of the files they modify:
 
 1. `0001-pyxis-platform.patch`: native process observation and termination,
    explicit internal child grants (including optional SYSTEM_INFO READ), attached
-   external jobs, one-thread event loops and rejected Unix process/signal paths.
+   external jobs, one-thread event loops, a headless WINCH watcher guard
+   and rejected unsupported Unix process paths. Upstream signal watcher lifecycle
+   and initial-thread signal unblocking remain intact.
 2. `0002-pyxis-files.patch`: native scheme paths and proved realpath,
    validity-aware metadata, retained file references, checked overwrite,
    proved-parent selection and executable probes over the held `path` list.
    Unavailable swap/backup operations reject explicitly.
 3. `0003-pyxis-tui.patch`: native console streams, RAW passthrough lifetime,
-   generation-based resize, the 16-colour terminal profile, underline and
-   suppressed unsupported terminal probes. Native writes retain borrowed request
+   upstream queued SIGWINCH resize with geometry re-query, the 16-colour terminal
+   profile, underline and suppressed unsupported terminal probes. Native writes retain borrowed request
    and buffer storage through completion.
 4. `0004-pyxis-core.patch`: Pyxis build/runtime selection, static Lua module
    loading, native home/runtime paths, attached pipe jobs and omitted automatic
