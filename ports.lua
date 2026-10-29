@@ -5,6 +5,7 @@ return {
   caddy = "caddy",
   ["chocolate-doom"] = "chocolate-doom",
   ["chocolate-quake"] = "chocolate-quake",
+  cmatrix = "cmatrix",
   devilutionx = "devilutionx",
   doom = "doom",
   dr_libs = "dr_libs",

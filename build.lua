@@ -110,7 +110,7 @@ local function main()
     ["--raylib"] = name == "minesweeper" or name == "raylib-games",
     ["--libuv"] = name == "lua51" or name == "neovim",
     ["--lua51"] = name == "neovim", ["--utf8proc"] = name == "neovim",
-    ["--tree-sitter"] = name == "neovim", ["--ncursesw"] = name == "hexcurse" }
+    ["--tree-sitter"] = name == "neovim", ["--ncursesw"] = name == "hexcurse" or name == "cmatrix" }
   for i = 2, #arg, 2 do
     local option = arg[i]
     assert(allowed[option] and arg[i + 1] and not options[option],
@@ -287,8 +287,8 @@ local function main()
     require_file(libuv .. "/lib/libuv.a")
   end
   local ncursesw
-  if name == "hexcurse" then
-    assert(options["--ncursesw"], "Hexcurse needs --ncursesw PATH to its development prefix")
+  if name == "hexcurse" or name == "cmatrix" then
+    assert(options["--ncursesw"], name .. " needs --ncursesw PATH to its development prefix")
     ncursesw = make_path(capture({ "realpath", "-e", "--", options["--ncursesw"] }))
     require_file(ncursesw .. "/include/curses.h")
     require_file(ncursesw .. "/lib/libncursesw.a")
