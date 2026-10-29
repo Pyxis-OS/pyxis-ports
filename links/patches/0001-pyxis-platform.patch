@@ -434,20 +434,7 @@ index 9a16728..8a4d191 100644
 diff --git a/links.h b/links.h
 --- a/links.h
 +++ b/links.h
-@@ -384,10 +384,12 @@
- int raise(int);
- #endif
- #ifndef HAVE_GETTIMEOFDAY
-+#ifndef PYXIS
- struct timeval {
- 	long tv_sec;
- 	long tv_usec;
- };
-+#endif
- struct timezone {
- 	int tz_minuteswest;
- 	int tz_dsttime;
-@@ -480,6 +482,7 @@
+@@ -480,6 +480,7 @@
  	(ret_) = (call_);				\
  } while (!(ret_) && errno == EINTR)
  
@@ -455,7 +442,7 @@ diff --git a/links.h b/links.h
  #if defined(HAVE_PTHREAD_SIGMASK) && !defined(__BIONIC__)
  static inline int do_sigprocmask(int how, const sigset_t *set, sigset_t *oset)
  {
-@@ -542,6 +545,7 @@
+@@ -542,6 +543,7 @@
  	memset(set, -1, sizeof(sigset_t));
  }
  #endif
