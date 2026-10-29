@@ -1,0 +1,12 @@
+SDL2_mixer 2.8.2 for Pyxis
+Upstream: https://github.com/libsdl-org/SDL_mixer.git
+Revision: b208916aed9250fe434360e6c6a95f0697bb7b01 (tag release-2.8.2)
+
+SDL2_mixer is built unchanged, under the zlib license in LICENSE.txt.
+Original Pyxis recipe and development metadata are covered by MPL-2.0;
+see MPL-2.0 and LICENSING.md.
+
+The static profile uses the separate Pyxis SDL2 port and enables WAV music,
+WAV/AIFF/VOC samples and the mixer API. MIDI, FLAC, GME, MOD, MP3, Opus,
+Vorbis, WavPack, external music commands, shared libraries and samples are
+disabled. No vendored codec libraries or game data are built or shipped.

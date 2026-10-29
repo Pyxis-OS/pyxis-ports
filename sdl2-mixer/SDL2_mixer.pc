@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: SDL2_mixer
+Description: SDL2 audio mixer with WAV, AIFF and VOC, without MIDI
+Version: 2.8.2
+Requires: sdl2
+Libs: -L${libdir} -lSDL2_mixer
+Cflags: -I${includedir}/SDL2

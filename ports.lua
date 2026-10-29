@@ -48,6 +48,7 @@ return {
   ["raylib-games"] = "raylib-games",
   sbase = "sbase",
   sdl2 = "sdl2",
+  ["sdl2-mixer"] = "sdl2-mixer",
   spdlog = "spdlog",
   stb = "stb",
   ["thread-pool"] = "thread-pool",

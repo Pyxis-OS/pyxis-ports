@@ -104,7 +104,7 @@ local function main()
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
       name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or
-      name == "raylib-games" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
+      name == "raylib-games" or name == "sdl2-mixer" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--spdlog"] = name == "prism", ["--ogg"] = name == "libvorbis" or name == "opusfile",
     ["--opus"] = name == "opusfile",
     ["--raylib"] = name == "minesweeper" or name == "raylib-games",
@@ -236,9 +236,7 @@ local function main()
     fmt = make_path(capture({ "realpath", "-e", "--", options["--fmt"] }))
     require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
   end
-  if name == "devilutionx" or name == "chocolate-doom" or name == "chocolate-quake" or
-      name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "raylib-games" or
-      name == "ioquake3" or name == "blurgtext" or name == "imgui" then
+  if allowed["--sdl2"] then
     assert(options["--sdl2"], name .. " needs --sdl2 PATH to its development prefix")
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
