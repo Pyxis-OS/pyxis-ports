@@ -18,7 +18,6 @@ return {
   ioquake3 = "ioquake3",
   jq = "jq",
   json = "json",
-  kilo = "kilo",
   libogg = "libogg",
   libpng = "libpng",
   libuv = "libuv",

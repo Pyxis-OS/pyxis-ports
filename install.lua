@@ -10,8 +10,6 @@ return function(inputs)
     { tree = root .. "/fastfetch/stage/share", at = "share" },
     { tree = root .. "/busybox/stage/bin", at = "" },
     { tree = root .. "/busybox/stage/share", at = "share" },
-    { tree = root .. "/kilo/stage/bin", at = "" },
-    { tree = root .. "/kilo/stage/share", at = "share" },
     { tree = root .. "/links/stage/bin", at = "" },
     { tree = root .. "/links/stage/share", at = "share" },
     { tree = root .. "/jq/stage/bin", at = "" },

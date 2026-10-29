@@ -10,11 +10,11 @@ internal mirrors, so building needs access to `git.internal` and
 `repo.internal`. Export the SDK with `make sdk` in Pyxis first.
 
 ```sh
-lua build.lua kilo --sdk /path/to/pyxis/build/sdk
+lua build.lua jq --sdk /path/to/pyxis/build/sdk
 ```
 
 The runner fetches the exact commit, applies patches in order, builds with the
-SDK and stages the executable and upstream license under `build/kilo/stage`.
+SDK and stages the executable and upstream license under `build/jq/stage`.
 It leaves source and intermediate files available for inspection. The work
 directory must not already exist: remove it deliberately or select another
 with `--work PATH`. `--cross-prefix PREFIX` overrides `CROSS_COMPILE`.

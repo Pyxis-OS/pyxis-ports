@@ -31,7 +31,7 @@ those recipes fetch, adapt or package.
   license. Its other native platform files, recipe and documentation are original
   MPL-2.0 material; see `libuv/PORT-NOTICE`.
 - Upstream-derived files and patches, including `busybox/patches/`, `doom/patches/`, `jq/patches/`,
-  `kilo/patches/`, `links/patches/`, `lua/patches/`, `mbedtls/patches/`,
+  `links/patches/`, `lua/patches/`, `mbedtls/patches/`,
   `sbase/patches/`, `fastfetch/patches/`,
   `quake/patches/`, `mesa/patches/` and `sdl2/patches/`, retain the licenses of the upstream files they modify. This
   includes applicable runtime exceptions.
