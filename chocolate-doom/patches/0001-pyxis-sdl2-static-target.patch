@@ -9,7 +9,8 @@ index 289ca27..90ccd59 100644
 -    target_link_libraries(opl SDL2::SDL2)
 +    target_link_libraries(opl SDL2::SDL2-static)
      if(ENABLE_SDL2_MIXER)
-         target_link_libraries(opl SDL2_mixer::SDL2_mixer)
+-        target_link_libraries(opl SDL2_mixer::SDL2_mixer)
++        target_link_libraries(opl SDL2_mixer::SDL2_mixer-static)
      endif()
 diff --git a/pcsound/CMakeLists.txt b/pcsound/CMakeLists.txt
 index 6f19901..a338986 100644
@@ -22,7 +23,8 @@ index 6f19901..a338986 100644
 -    target_link_libraries(pcsound SDL2::SDL2)
 +    target_link_libraries(pcsound SDL2::SDL2-static)
      if(ENABLE_SDL2_MIXER)
-         target_link_libraries(pcsound SDL2_mixer::SDL2_mixer)
+-        target_link_libraries(pcsound SDL2_mixer::SDL2_mixer)
++        target_link_libraries(pcsound SDL2_mixer::SDL2_mixer-static)
      endif()
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
 index aa9d0a4..3db4b0d 100644
@@ -35,7 +37,8 @@ index aa9d0a4..3db4b0d 100644
 -    set(SDL_LINK_LIBS SDL2::SDL2main SDL2::SDL2)
 +    set(SDL_LINK_LIBS SDL2::SDL2-static)
      if(ENABLE_SDL2_MIXER)
-         list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
+-        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
++        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer-static)
      endif()
 @@ -272,7 +272,7 @@ if (DEFINED EMSCRIPTEN)
      set_target_properties(midiread PROPERTIES COMPILE_FLAGS "-s USE_SDL=2")
@@ -64,7 +67,8 @@ index 6e878a0..95c79a9 100644
 -    set(SDL_LINK_LIBS SDL2::SDL2)
 +    set(SDL_LINK_LIBS SDL2::SDL2-static)
      if(ENABLE_SDL2_MIXER)
-         list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
+-        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
++        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer-static)
      endif()
 diff --git a/src/heretic/CMakeLists.txt b/src/heretic/CMakeLists.txt
 index ac6d2fb..2d25771 100644
@@ -77,7 +81,8 @@ index ac6d2fb..2d25771 100644
 -    set(SDL_LINK_LIBS SDL2::SDL2)
 +    set(SDL_LINK_LIBS SDL2::SDL2-static)
      if(ENABLE_SDL2_MIXER)
-         list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
+-        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
++        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer-static)
      endif()
 diff --git a/src/hexen/CMakeLists.txt b/src/hexen/CMakeLists.txt
 index 3eba5d0..8a6f84a 100644
@@ -90,7 +95,8 @@ index 3eba5d0..8a6f84a 100644
 -    set(SDL_LINK_LIBS SDL2::SDL2)
 +    set(SDL_LINK_LIBS SDL2::SDL2-static)
      if(ENABLE_SDL2_MIXER)
-         list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
+-        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
++        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer-static)
      endif()
 diff --git a/src/setup/CMakeLists.txt b/src/setup/CMakeLists.txt
 index c25af65..0876a19 100644
@@ -103,7 +109,8 @@ index c25af65..0876a19 100644
 -    set(SDL_LINK_LIBS, "SDL2::SDL2")
 +    set(SDL_LINK_LIBS, "SDL2::SDL2-static")
      if(ENABLE_SDL2_MIXER)
-         list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
+-        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
++        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer-static)
      endif()
 diff --git a/src/strife/CMakeLists.txt b/src/strife/CMakeLists.txt
 index 20d336c..da3d5a5 100644
@@ -116,7 +123,8 @@ index 20d336c..da3d5a5 100644
 -    set(SDL_LINK_LIBS, "SDL2::SDL2")
 +    set(SDL_LINK_LIBS, "SDL2::SDL2-static")
      if(ENABLE_SDL2_MIXER)
-         list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
+-        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
++        list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer-static)
      endif()
 diff --git a/textscreen/CMakeLists.txt b/textscreen/CMakeLists.txt
 index 7e33826..fff4a22 100644
@@ -129,3 +137,16 @@ index 7e33826..fff4a22 100644
 -    target_link_libraries(textscreen m SDL2::SDL2)
 +    target_link_libraries(textscreen m SDL2::SDL2-static)
  endif()
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -42,6 +42,9 @@
+ if(ENABLE_SDL2_MIXER)
+     if (NOT DEFINED EMSCRIPTEN)
+         find_package(SDL2_mixer 2.0.2)
++        if(DEFINED SDL2MIXER_MIDI AND NOT SDL2MIXER_MIDI)
++            add_compile_definitions(DISABLE_SDL2MIXER_MIDI=1)
++        endif()
+     endif()
+ else()
+     add_compile_definitions(DISABLE_SDL2MIXER=1)

@@ -1,7 +1,8 @@
 return function(ctx)
   ctx.run({ "make", "-f", ctx.recipe .. "/Makefile",
     "SDK=" .. ctx.sdk, "SOURCE=" .. ctx.source, "BUILD=" .. ctx.build,
-    "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile, "SDL2=" .. ctx.sdl2 })
+    "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile, "SDL2=" .. ctx.sdl2,
+    "SDL2_MIXER=" .. assert(ctx.sdl2_mixer, "Chocolate Doom needs --sdl2-mixer PATH") })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/src/chocolate-doom.pxe",
     ctx.stage .. "/" .. ctx.metadata.outputs.executable })
   ctx.run({ "install", "-D", "-m", "644", ctx.recipe .. "/manifest.json",
@@ -20,5 +21,8 @@ return function(ctx)
     ctx.run({ "install", "-D", "-m", "644", ctx.sdl2 .. "/share/licenses/sdl2/" .. entry.source,
       ctx.stage .. "/" .. ctx.metadata.outputs[entry.output] })
   end
-
+  ctx.run({ "install", "-D", "-m", "644", ctx.sdl2_mixer .. "/share/licenses/sdl2-mixer/LICENSE.txt",
+    ctx.stage .. "/" .. ctx.metadata.outputs.sdl2_mixer_license })
+  ctx.run({ "install", "-D", "-m", "644", ctx.sdl2_mixer .. "/share/licenses/sdl2-mixer/PORT-NOTICE",
+    ctx.stage .. "/" .. ctx.metadata.outputs.sdl2_mixer_notice })
 end

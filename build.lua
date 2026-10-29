@@ -102,6 +102,7 @@ local function main()
     ["--sdl2-osmesa"] = name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
+    ["--sdl2-mixer"] = name == "chocolate-doom",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
       name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or
       name == "raylib-games" or name == "sdl2-mixer" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
@@ -241,6 +242,14 @@ local function main()
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
   end
+  local sdl2_mixer
+  if name == "chocolate-doom" then
+    assert(options["--sdl2-mixer"], "Chocolate Doom needs --sdl2-mixer PATH to its development prefix")
+    sdl2_mixer = make_path(capture({ "realpath", "-e", "--", options["--sdl2-mixer"] }))
+    require_file(sdl2_mixer .. "/include/SDL2/SDL_mixer.h")
+    require_file(sdl2_mixer .. "/lib/libSDL2_mixer.a")
+    require_file(sdl2_mixer .. "/lib/cmake/SDL2_mixer/SDL2_mixerConfig.cmake")
+  end
   local sdl2_osmesa
   if name == "ioquake3" or name == "blurgtext" or name == "imgui" then
     assert(options["--sdl2-osmesa"], name .. " needs --sdl2-osmesa PATH to its GL development prefix")
@@ -378,7 +387,7 @@ local function main()
   build_port({ sdk = sdk, sysroot = sdk .. "/sysroot", cross_compile = cross,
     recipe = recipe, source = source, build = build, stage = stage,
     metadata = metadata, run = run, prefixes = prefixes, llvm_development = llvm_development, ogg = ogg, opus = opus, spdlog = spdlog, go = go, rust = rust, mesa = mesa, zlib = zlib,
-    libpng = libpng, fmt = fmt, sdl2 = sdl2, sdl2_osmesa = sdl2_osmesa, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
+    libpng = libpng, fmt = fmt, sdl2 = sdl2, sdl2_mixer = sdl2_mixer, sdl2_osmesa = sdl2_osmesa, raylib = raylib, libuv = libuv, lua51 = lua51, utf8proc = utf8proc,
     tree_sitter = tree_sitter, ncursesw = ncursesw, extra = extra_sources })
   for _, output in pairs(metadata.outputs) do
     require_file(stage .. "/" .. relative(output))

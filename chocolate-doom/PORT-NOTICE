@@ -6,10 +6,14 @@ Patches: 0001-pyxis-sdl2-static-target.patch, 0002-pyxis-platform.patch,
 
 Chocolate Doom and the patched files remain under the GNU General Public
 License, version 2 or later, in COPYING.md. The program links the Pyxis SDL2
-port statically; SDL2's zlib licence is SDL2-LICENSE.txt.
+port statically; SDL2's zlib licence is SDL2-LICENSE.txt. SDL2_mixer is also
+linked statically, under SDL2_mixer-LICENSE.txt, with its selected profile
+recorded in SDL2_mixer-PORT-NOTICE.
 
-The build leaves out SDL2_mixer and SDL2_net through upstream's options, so
-this program has no sound, music or network play.
+The build enables digital effects and Chocolate Doom's OPL music synthesizer
+through SDL2_mixer. SDL2_mixer MIDI decoders and SDL2_net remain disabled:
+General MIDI/GUS music and network play are unavailable. No game data,
+instrument patches or sound fonts are included in this recipe.
 
 The linked SDL2 software-video and fdlibm code also retain the BSD-3-Clause
 notice in SDL2-yuv2rgb-LICENSE and Sun's permission grant in SDL2-fdlibm-NOTICE.

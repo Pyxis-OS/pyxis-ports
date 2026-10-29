@@ -31,56 +31,61 @@ index 5b6db20..62066af 100644
      AddXdgDirs();
  #ifndef __MACOSX__
 diff --git a/src/i_sdlmusic.c b/src/i_sdlmusic.c
-index 70502d0..75f37ce 100644
 --- a/src/i_sdlmusic.c
 +++ b/src/i_sdlmusic.c
 @@ -44,6 +44,9 @@
  
  char *timidity_cfg_path = "";
  
-+// The Timidity configuration only feeds SDL_mixer's MIDI playback.
-+#ifndef DISABLE_SDL2MIXER
++// This module plays MIDI through SDL_mixer, separately from Doom's OPL.
++#if !defined(DISABLE_SDL2MIXER) && !defined(DISABLE_SDL2MIXER_MIDI)
 +
  static char *temp_timidity_cfg = NULL;
  
  // If the temp_timidity_cfg config variable is set, generate a "wrapper"
-@@ -122,8 +125,6 @@ void I_InitTimidityConfig(void)
+@@ -122,7 +125,6 @@
  }
  
  
 -#ifndef DISABLE_SDL2MIXER
--
+ 
  #include "SDL_mixer.h"
  
- 
 diff --git a/src/i_sound.c b/src/i_sound.c
-index 7a7bdb3..3f59366 100644
 --- a/src/i_sound.c
 +++ b/src/i_sound.c
-@@ -246,12 +246,14 @@ void I_InitSound(GameMission_t mission)
+@@ -102,7 +102,7 @@
+ #ifdef HAVE_FLUIDSYNTH
+     &music_fl_module,
+ #endif // HAVE_FLUIDSYNTH
+-#ifndef DISABLE_SDL2MIXER
++#if !defined(DISABLE_SDL2MIXER) && !defined(DISABLE_SDL2MIXER_MIDI)
+     &music_sdl_module,
+ #endif // DISABLE_SDL2MIXER
+     &music_opl_module,
+@@ -246,12 +246,14 @@
          // the TIMIDITY_CFG environment variable here before SDL_mixer
          // is opened.
  
-+#ifndef DISABLE_SDL2MIXER
++#if !defined(DISABLE_SDL2MIXER) && !defined(DISABLE_SDL2MIXER_MIDI)
          if (!nomusic
           && (snd_musicdevice == SNDDEVICE_GENMIDI
            || snd_musicdevice == SNDDEVICE_GUS))
          {
              I_InitTimidityConfig();
          }
-+#endif // DISABLE_SDL2MIXER
++#endif
  
          if (!nosfx)
          {
 diff --git a/src/i_sound.h b/src/i_sound.h
-index 376e1bb..8ef0225 100644
 --- a/src/i_sound.h
 +++ b/src/i_sound.h
-@@ -254,7 +254,9 @@ void I_OPL_DevMessages(char *, size_t);
+@@ -254,7 +254,9 @@
  
  // Sound modules
  
-+#ifndef DISABLE_SDL2MIXER
++#if !defined(DISABLE_SDL2MIXER) && !defined(DISABLE_SDL2MIXER_MIDI)
  void I_InitTimidityConfig(void);
 +#endif
  extern const sound_module_t sound_sdl_module;
@@ -130,6 +135,21 @@ index 6ff3b80..01b5cd5 100644
 +#endif
  
      SetSDLVideoDriver();
+ 
+diff --git a/src/m_misc.c b/src/m_misc.c
+--- a/src/m_misc.c
++++ b/src/m_misc.c
+@@ -515,7 +515,11 @@ char *M_TempFile(const char *s)
+ 
+     if (tempdir == NULL)
+     {
++#ifdef __pyxis__
++        tempdir = "tmp:/";
++#else
+         tempdir = "/tmp";
++#endif
+     }
+ #endif
  
 diff --git a/textscreen/txt_fileselect.c b/textscreen/txt_fileselect.c
 index 08c0c8f..ca349f9 100644

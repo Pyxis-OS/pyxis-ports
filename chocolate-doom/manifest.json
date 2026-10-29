@@ -10,6 +10,8 @@
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
     {"name": "display", "resource": "display", "rights": ["draw"], "required": true},
     {"name": "keyboard", "resource": "keyboard", "rights": ["input"], "required": true},
-    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false}
+    {"name": "pointer", "resource": "pointer", "rights": ["input"], "required": false},
+    {"name": "audio", "resource": "audio", "rights": ["create"], "required": false},
+    {"name": "threads", "resource": "threads", "rights": ["manage"], "required": false}
   ]
 }

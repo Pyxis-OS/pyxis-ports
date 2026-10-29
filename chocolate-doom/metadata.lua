@@ -20,6 +20,8 @@ return {
     "patches/0003-pyxis-software-scaling.patch",
   },
   outputs = {
+    sdl2_mixer_license = "share/licenses/chocolate-doom/SDL2_mixer-LICENSE.txt",
+    sdl2_mixer_notice = "share/licenses/chocolate-doom/SDL2_mixer-PORT-NOTICE",
     sdl2_yuv_license = "share/licenses/chocolate-doom/SDL2-yuv2rgb-LICENSE",
     sdl2_libm_notice = "share/licenses/chocolate-doom/SDL2-fdlibm-NOTICE",
     executable = "bin/chocolate-doom.pxb/app/bin/chocolate-doom.pxe",
