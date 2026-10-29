@@ -1,0 +1,18 @@
+raylib-games classics, upstream raysan5/raylib-games commit
+318688c759eaf391b36b9f893355c038fcf56419, under the zlib license.
+
+The repository LICENSE and classics/LICENSE are installed unchanged as LICENSE
+and CLASSICS-LICENSE. The game sources retain their original copyright notices:
+Ramon Santamaria (@raysan5), and, for platformer, Agnis "NeZvers" (@nezvers)
+and Ramon Santamaria. The upstream platformer source contains the coauthor's
+full name in its original encoding.
+
+This is a Pyxis build of the twelve classics source files. No upstream source
+is modified. The recipe supplies only static SDK build rules and native bundle
+manifests. Games retain their upstream rules, input, drawing and frame pacing.
+All visuals are generated; no external game assets or audio are distributed.
+Other raylib-games collections, upstream binaries and screenshots are omitted.
+
+The executables statically link the separately built raylib/rlsw and SDL2.
+Public packages must retain their complete notices and provenance, together
+with those of the SDK runtime closure.

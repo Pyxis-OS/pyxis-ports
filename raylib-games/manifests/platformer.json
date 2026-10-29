@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "id": "org.pyxis.platformer",
+  "entry": "bin/platformer.pxe",
+  "commands": {
+    "platformer": "bin/platformer.pxe"
+  },
+  "resource_dirs": {},
+  "grants": [
+    {
+      "name": "memory",
+      "resource": "memory",
+      "rights": [
+        "manage"
+      ],
+      "required": true
+    },
+    {
+      "name": "clock",
+      "resource": "clock",
+      "rights": [
+        "read",
+        "precise",
+        "sleep"
+      ],
+      "required": true
+    },
+    {
+      "name": "display",
+      "resource": "display",
+      "rights": [
+        "draw"
+      ],
+      "required": true
+    },
+    {
+      "name": "keyboard",
+      "resource": "keyboard",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    },
+    {
+      "name": "gamepad",
+      "resource": "gamepad",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    }
+  ]
+}

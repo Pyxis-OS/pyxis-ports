@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "id": "org.pyxis.asteroids-survival",
+  "entry": "bin/asteroids_survival.pxe",
+  "commands": {
+    "asteroids_survival": "bin/asteroids_survival.pxe"
+  },
+  "resource_dirs": {},
+  "grants": [
+    {
+      "name": "memory",
+      "resource": "memory",
+      "rights": [
+        "manage"
+      ],
+      "required": true
+    },
+    {
+      "name": "clock",
+      "resource": "clock",
+      "rights": [
+        "read",
+        "precise",
+        "sleep"
+      ],
+      "required": true
+    },
+    {
+      "name": "display",
+      "resource": "display",
+      "rights": [
+        "draw"
+      ],
+      "required": true
+    },
+    {
+      "name": "keyboard",
+      "resource": "keyboard",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    },
+    {
+      "name": "gamepad",
+      "resource": "gamepad",
+      "rights": [
+        "input"
+      ],
+      "required": true
+    }
+  ]
+}

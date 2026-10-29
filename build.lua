@@ -103,10 +103,12 @@ local function main()
     ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
     ["--sdl2"] = name == "devilutionx" or name == "chocolate-doom" or
-      name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
+      name == "chocolate-quake" or name == "eduke32" or name == "raylib" or name == "minesweeper" or
+      name == "raylib-games" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--spdlog"] = name == "prism", ["--ogg"] = name == "libvorbis" or name == "opusfile",
     ["--opus"] = name == "opusfile",
-    ["--raylib"] = name == "minesweeper", ["--libuv"] = name == "lua51" or name == "neovim",
+    ["--raylib"] = name == "minesweeper" or name == "raylib-games",
+    ["--libuv"] = name == "lua51" or name == "neovim",
     ["--lua51"] = name == "neovim", ["--utf8proc"] = name == "neovim",
     ["--tree-sitter"] = name == "neovim", ["--ncursesw"] = name == "hexcurse" }
   for i = 2, #arg, 2 do
@@ -235,7 +237,8 @@ local function main()
     require_file(fmt .. "/lib/cmake/fmt/fmt-config.cmake")
   end
   if name == "devilutionx" or name == "chocolate-doom" or name == "chocolate-quake" or
-      name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "ioquake3" or name == "blurgtext" or name == "imgui" then
+      name == "eduke32" or name == "raylib" or name == "minesweeper" or name == "raylib-games" or
+      name == "ioquake3" or name == "blurgtext" or name == "imgui" then
     assert(options["--sdl2"], name .. " needs --sdl2 PATH to its development prefix")
     sdl2 = make_path(capture({ "realpath", "-e", "--", options["--sdl2"] }))
     require_file(sdl2 .. "/lib/cmake/SDL2/SDL2Config.cmake")
@@ -269,8 +272,8 @@ local function main()
     require_file(spdlog .. "/include/spdlog/spdlog.h")
   end
   local raylib
-  if name == "minesweeper" then
-    assert(options["--raylib"], "Minesweeper needs --raylib PATH to its development prefix")
+  if name == "minesweeper" or name == "raylib-games" then
+    assert(options["--raylib"], name .. " needs --raylib PATH to its development prefix")
     raylib = make_path(capture({ "realpath", "-e", "--", options["--raylib"] }))
     require_file(raylib .. "/include/raylib.h")
     require_file(raylib .. "/include/raymath.h")

@@ -43,6 +43,7 @@ return {
   prism = "prism",
   quake = "quake",
   raylib = "raylib",
+  ["raylib-games"] = "raylib-games",
   sbase = "sbase",
   sdl2 = "sdl2",
   spdlog = "spdlog",
