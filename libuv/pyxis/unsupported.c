@@ -546,35 +546,6 @@ int uv_metrics_info(uv_loop_t* loop, uv_metrics_t* metrics)
   return UV_ENOSYS;
 }
 
-int uv_signal_init(uv_loop_t* loop, uv_signal_t* handle)
-{
-  (void)loop;
-  (void)handle;
-  return UV_ENOSYS;
-}
-
-int uv_signal_start(uv_signal_t* handle, uv_signal_cb signal_cb, int signum)
-{
-  (void)handle;
-  (void)signal_cb;
-  (void)signum;
-  return UV_ENOSYS;
-}
-
-int uv_signal_start_oneshot(uv_signal_t* handle, uv_signal_cb signal_cb, int signum)
-{
-  (void)handle;
-  (void)signal_cb;
-  (void)signum;
-  return UV_ENOSYS;
-}
-
-int uv_signal_stop(uv_signal_t* handle)
-{
-  (void)handle;
-  return UV_ENOSYS;
-}
-
 int uv_ip4_addr(const char* ip, int port, struct sockaddr_in* addr)
 {
   (void)ip;

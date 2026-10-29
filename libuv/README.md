@@ -50,7 +50,8 @@ requires clock READ and pipe CREATE. Sleep requires clock SLEEP. No wall time
 is substituted for monotonic time, and clock failures in value-only clock APIs
 abort rather than returning invented timestamps.
 
-Each loop reserves one of the native 32 wait interests for its wake pipe. An
+Each loop reserves one of the native 32 wait interests for its wake pipe and
+cooperative signal sources, aggregated through one private readiness set. An
 opened stream or observed child reserves one of the remaining 31 interests,
 including inactive streams; timers consume none. Capacity failure is UV_ENOSPC
 before stream ownership transfer or child publication. A wait beyond 30 seconds
@@ -80,13 +81,40 @@ discard the snapshot and let ordinary descriptor close retire the owner. EBADF
 for an already closed or replaced descriptor also leaves a replacement open.
 Libc latches failed native releases without replaying them.
 
-`uv/pyxis-native.h` exposes native TTY resize callbacks through
-`uv_pyxis_tty_resize_start` and `uv_pyxis_tty_resize_stop`. Start records current
-geometry generation and makes the handle active; subsequent generation changes
-invoke the callback with new dimensions. Resize shares the TTY's existing wait
-interest with byte I/O and consumes no extra slot. Notifications coalesce;
-query failures stop observation and report their negative UV error with zero
-dimensions. Close withdraws observation. There is no SIGWINCH emulation.
+Persistent `uv_signal_start` accepts catchable signal numbers declared by libc
+on the genuine initial libc thread. SIGWINCH and SIGINT have real native sources.
+Other accepted numbers remain active and keep the loop alive while referenced,
+but never fire; they install no libc disposition and claim no native source.
+Numbers outside `1..NSIG-1`, SIGKILL and SIGSTOP return UV_EINVAL. Oneshot returns UV_ENOSYS;
+workers return UV_ENOTSUP. One loop per process owns active signal watchers,
+including dormant watchers; a second loop's start returns UV_EBUSY. Multiple
+watchers share each native source. First native start replaces that number's
+disposition; last native stop resets SIG_DFL. Independent disposition replacement
+while watched violates this ownership contract. WINCH requires an available
+terminal; headless consumers omit it.
+SIGINT retains libc's native receiver admission and raw Ctrl+C remains input.
+This requires the SDK's public `pyxis/signal.h` wait/checkpoint bridge, without a
+compiler container rebuild.
+
+The libc handler only marks coalesced watcher state. The owning uv_run invokes
+a bounded snapshot after withdrawing temporary signal registrations, before its
+check callbacks. Other loops may collect sources and mark owner-loop state but
+never invoke its signal callbacks. Same-signum start updates the callback while
+preserving pending state; changing signum, stop and close cancel old delivery.
+Callbacks may stop or close other watchers. New receipt during dispatch waits
+for the next signal phase. Pending unreferenced watchers do not keep a loop
+alive. Signal-handle close requires the initial thread and aborts if stop fails.
+The old native TTY resize callback API is retired; consumers use SIGWINCH and
+query geometry through uv_tty_get_winsize.
+
+The private set retains only its wake registration between native waits. Each
+wait temporarily registers at most two borrowed libc sources, collects one
+snapshot of at most three readiness records, validates their identities and
+removes signal registrations before checkpoint or application callbacks. It
+preserves the original deadline across signal-only wakes and retains all 31
+other native wait slots. Setup failure rolls back before publishing a watcher;
+source and set errors return through uv_run. The set survives stopped watchers
+until loop close, without retaining their logical source ownership.
 
 Child launch supports up to three explicit stdin/stdout/stderr slots, directional
 CREATE_PIPE, inherited native PIPE/CONSOLE or native/callable-exported FILE
@@ -217,7 +245,7 @@ queries have no native meaning (Pyxis has no users, groups or process
 priorities) and return `UV_ENOSYS`.
 
 Workers/pool submissions, thread creation/join, asynchronous filesystem calls,
-sockets/address conversion, signals and dynamic module loading return
+sockets/address conversion and dynamic module loading return
 UV_ENOSYS. File watches (`uv_fs_event_*`, `uv_fs_poll_*`) are omitted. Unsupported fs flags remain distinct so open can reject them before
 effects. `UV_FS_O_NOFOLLOW` is libc's `O_NOFOLLOW`, accepted because lookup
 follows no links. Single-thread mutexes, recursive depth, once, keys and thread identity

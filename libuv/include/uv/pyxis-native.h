@@ -45,16 +45,6 @@ UV_EXTERN int uv_pyxis_spawn_job(uv_loop_t *loop, uv_process_t *process,
  * Completion remains the exit callback and native process->exit_reason. */
 UV_EXTERN int uv_pyxis_process_terminate(uv_process_t *process);
 
-typedef void (*uv_pyxis_tty_resize_cb)(uv_tty_t *handle, int status,
-    int width, int height);
-
-/* Start snapshots current geometry; callbacks report later generation changes.
- * Errors stop watching and supply zero dimensions. The existing TTY wait slot
- * observes resize alongside stream I/O; close withdraws the callback. */
-UV_EXTERN int uv_pyxis_tty_resize_start(uv_tty_t *handle,
-    uv_pyxis_tty_resize_cb callback);
-UV_EXTERN int uv_pyxis_tty_resize_stop(uv_tty_t *handle);
-
 #ifdef __cplusplus
 }
 #endif

@@ -19,3 +19,7 @@ hostname returns UV_EACCES. Missing directory roots return UV_ENOENT. Passwd,
 group and priority queries remain unsupported rather than inventing values.
 uv_available_parallelism uses libc sysconf and the upstream generic minimum-one
 result; it does not enable worker threads or supply CPU inventory.
+
+The original native signal.c bridges persistent WINCH/INT through the public
+libc cooperative signal wait/checkpoint interface. The native TTY resize
+callback API is retired in favor of ordinary libuv signal watchers.

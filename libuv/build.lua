@@ -39,8 +39,8 @@ return function(ctx)
     "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
     "version=" .. ctx.metadata.version .. "\nlicense=" .. ctx.metadata.license .. "\n",
     "patches=0001-pyxis-platform.patch\n",
-    "profile=native one-thread loop, pipes, console, child observation, timers, synchronous filesystem\n",
-    "omitted=Unix/Windows backends, workers, async filesystem, sockets, watches, signals, module loading\n"))
+    "profile=native one-thread loop, pipes, console, child observation, timers, synchronous filesystem, persistent signal watchers with cooperative WINCH/INT delivery\n",
+    "omitted=Unix/Windows backends, workers, async filesystem, sockets, watches, other signal delivery, oneshot signals, module loading\n"))
   assert(provenance:close())
   for _, name in ipairs({ "license", "extra_license", "notice", "provenance" }) do
     ctx.run({ "install", "-D", "-m", "644", ctx.stage .. "/" .. ctx.metadata.outputs[name],
@@ -67,6 +67,7 @@ return function(ctx)
     "pyxis/os.c",
     "pyxis/process.c",
     "pyxis/stream.c",
+    "pyxis/signal.c",
     "pyxis/thread.c",
     "pyxis/unsupported.c",
     "pyxis/watchers.c",

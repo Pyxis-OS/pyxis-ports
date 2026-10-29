@@ -20,6 +20,10 @@ void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events);
 int uv__pyxis_stream_events(uv_stream_t *stream, struct wait_interest *interest);
 void uv__pyxis_process_close(uv_process_t *process);
 void uv__pyxis_process_dispatch(uv_process_t *process);
+int uv__pyxis_signal_pending(const uv_loop_t *loop);
+void uv__pyxis_signal_dispatch(uv_loop_t *loop);
+int uv__pyxis_signal_wait(uv_loop_t *loop, struct wait_interest *interests,
+    size_t count, uint64_t deadline, uint64_t *events);
 void uv__run_prepare(uv_loop_t *loop);
 void uv__run_check(uv_loop_t *loop);
 void uv__run_idle(uv_loop_t *loop);

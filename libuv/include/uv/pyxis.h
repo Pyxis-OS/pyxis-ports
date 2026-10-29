@@ -2,8 +2,10 @@
 #define UV_PYXIS_H
 
 #include <abi/handle.h>
+#include <abi/readiness_set.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include "uv/threadpool.h"
 
@@ -53,7 +55,10 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
   handle_t clock; \
   handle_t wake_reader; \
   handle_t wake_writer; \
-  unsigned interest_count;
+  unsigned interest_count; \
+  handle_t signal_set; \
+  struct readiness_set_registration wake_registration; \
+  struct uv__queue signal_handles;
 
 #define UV_HANDLE_PRIVATE_FIELDS \
   uv_handle_t *next_closing; \
@@ -131,10 +136,11 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
 #define UV_TTY_PRIVATE_FIELDS \
   int mode; \
   struct pyxis_terminal_state *normal_state; \
-  uv_tty_t *raw_next; \
-  uint64_t resize_generation; \
-  void (*resize_cb)(uv_tty_t *, int, int, int);
-#define UV_SIGNAL_PRIVATE_FIELDS
+  uv_tty_t *raw_next;
+#define UV_SIGNAL_PRIVATE_FIELDS \
+  struct uv__queue queue; \
+  unsigned pending; \
+  unsigned dispatch_pending;
 #define UV_FS_EVENT_PRIVATE_FIELDS
 
 #define UV_FS_O_RDONLY O_RDONLY
