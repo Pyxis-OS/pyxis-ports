@@ -42,6 +42,12 @@ Joystick/GameController initialization requires a bundle declaring `gamepad/inpu
 Missing authority or competing acquisition fails initialization; an empty catalog
 with authority succeeds and observes later attachment.
 
+The OSMesa presentation path copies a matching-size canvas row by row into the
+held native slot, zeroing the unused pixel bits. It clears the slot only when
+the viewport leaves borders. Different-size canvases retain the same nearest-
+neighbour aspect-fit scaling and RGB conversion; submission and slot ownership
+are unchanged.
+
 ## The backend
 
 The files in `pyxis/` are the platform layer:

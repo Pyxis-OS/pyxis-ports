@@ -141,18 +141,44 @@ bool PYXIS_PresentPixels(const void *pixels, int width, int height)
   const struct display_buffer *buffer = &pyxis_video.buffer;
   const SDL_Rect *v = &pyxis_video.viewport;
   uint8_t *slot = (uint8_t *)display_slot_address(buffer, pyxis_video.slot);
-  for (uint64_t y = 0; y < buffer->height; ++y) {
-    SDL_memset(slot + y * buffer->pitch, 0, (size_t)buffer->width * PIXEL_BYTES);
+  if (v->x != 0 || v->y != 0 || v->w != (int)buffer->width ||
+      v->h != (int)buffer->height) {
+    for (uint64_t y = 0; y < buffer->height; ++y) {
+      SDL_memset(slot + y * buffer->pitch, 0, (size_t)buffer->width * PIXEL_BYTES);
+    }
   }
-  for (int y = 0; y < v->h; ++y) {
-    uint32_t *destination = (uint32_t *)(slot + (size_t)(v->y + y) * buffer->pitch) + v->x;
-    const uint32_t *source = (const uint32_t *)pixels +
-        (size_t)((int64_t)y * height / v->h) * (size_t)width;
-    for (int x = 0; x < v->w; ++x) {
-      uint32_t pixel = source[(int64_t)x * width / v->w];
-      destination[x] = ((pixel >> 16) & 255) << buffer->red_shift |
-          ((pixel >> 8) & 255) << buffer->green_shift |
-          (pixel & 255) << buffer->blue_shift;
+  const unsigned red_shift = buffer->red_shift;
+  const unsigned green_shift = buffer->green_shift;
+  const unsigned blue_shift = buffer->blue_shift;
+  if (width == v->w && height == v->h) {
+    for (int y = 0; y < height; ++y) {
+      uint32_t *destination = (uint32_t *)(slot + (size_t)(v->y + y) * buffer->pitch) + v->x;
+      const uint32_t *source = (const uint32_t *)pixels + (size_t)y * (size_t)width;
+      if (red_shift == 16 && green_shift == 8 && blue_shift == 0) {
+        /* DISPLAY requires the spare byte to be zero, even for a BGRA canvas. */
+        for (int x = 0; x < width; ++x) {
+          destination[x] = source[x] & UINT32_C(0x00ffffff);
+        }
+      } else {
+        for (int x = 0; x < width; ++x) {
+          uint32_t pixel = source[x];
+          destination[x] = ((pixel >> 16) & 255) << red_shift |
+              ((pixel >> 8) & 255) << green_shift |
+              (pixel & 255) << blue_shift;
+        }
+      }
+    }
+  } else {
+    for (int y = 0; y < v->h; ++y) {
+      uint32_t *destination = (uint32_t *)(slot + (size_t)(v->y + y) * buffer->pitch) + v->x;
+      const uint32_t *source = (const uint32_t *)pixels +
+          (size_t)((int64_t)y * height / v->h) * (size_t)width;
+      for (int x = 0; x < v->w; ++x) {
+        uint32_t pixel = source[(int64_t)x * width / v->w];
+        destination[x] = ((pixel >> 16) & 255) << red_shift |
+            ((pixel >> 8) & 255) << green_shift |
+            (pixel & 255) << blue_shift;
+      }
     }
   }
   return submit_slot();

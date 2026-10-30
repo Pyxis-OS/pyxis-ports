@@ -40,6 +40,12 @@ return at once. A threaded program that blocks in `SDL_WaitEvent` also needs
 `pipe/create` so other threads can end the wait; without the pipe it falls
 back to SDL's polling wait.
 
+The OSMesa presentation path copies a matching-size canvas row by row into the
+held native slot, zeroing the unused pixel bits. It clears the slot only when
+the viewport leaves borders. Different-size canvases retain the same nearest-
+neighbour aspect-fit scaling and RGB conversion; submission and slot ownership
+are unchanged.
+
 ## The backend
 
 The files in `pyxis/` are the platform layer, adapted from the SDL2 port's:
