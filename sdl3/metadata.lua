@@ -17,6 +17,7 @@ return {
     "patches/0004-pyxis-environment-from-the-native-table.patch",
     "patches/0005-register-the-pyxis-video-driver.patch",
     "patches/0006-native-pyxis-pointer-authority.patch",
+    "patches/0007-register-the-pyxis-audio-driver.patch",
   },
   outputs = {
     library = "dev/lib/libSDL3.a",
@@ -33,6 +34,7 @@ return {
     provenance = "dev/share/sdl3/source.txt",
     dev_source_makefile = "dev/share/sources/sdl3/Makefile",
     dev_source_sdl_build_config_h = "dev/share/sources/sdl3/SDL_build_config.h",
+    dev_source_pyxis_sdl_pyxisaudio_c = "dev/share/sources/sdl3/pyxis/SDL_pyxisaudio.c",
     dev_source_pyxis_sdl_pyxisevents_c = "dev/share/sources/sdl3/pyxis/SDL_pyxisevents.c",
     dev_source_pyxis_sdl_pyxismouse_c = "dev/share/sources/sdl3/pyxis/SDL_pyxismouse.c",
     dev_source_pyxis_sdl_pyxisopengl_c = "dev/share/sources/sdl3/pyxis/SDL_pyxisopengl.c",

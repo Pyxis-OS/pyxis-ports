@@ -13,10 +13,10 @@ LicenseRef-Sun-fdlibm refers to that complete notice.
 Pyxis builds upstream sources as a static library with ordered patches:
 pthread condition timeouts use the monotonic clock, file times come only from
 valid Pyxis stat fields, the environment is read from the native table, the
-Pyxis video driver is registered, and Pyxis pointer positions are
+Pyxis video and audio drivers are registered, and Pyxis pointer positions are
 authoritative in SDL mouse core. The patches retain SDL's zlib license.
 
-The Pyxis backend in pyxis/ (video, OpenGL, input, threads and paths) and
+The Pyxis backend in pyxis/ (video, OpenGL, input, audio, threads and paths) and
 SDL_build_config.h are original Pyxis material under the Mozilla Public
 License, version 2.0; see the ports repository's LICENSE and LICENSING.md.
 The backend uses the shared US key layout exported by the Pyxis SDK.
@@ -29,6 +29,6 @@ configuration are retained in sdl3-dev at share/sources/sdl3; the OSMesa
 development package depends on sdl3-dev, mesa-dev and libcxx-dev. Static
 consumers must retain Mesa and C++ runtime notices as well.
 
-Audio, clipboard, joysticks, haptics, sensors, HIDAPI, camera, GPU, shared
-objects and Vulkan are not built. No host libc or compatibility stubs are
+Audio recording, clipboard, joysticks, haptics, sensors, HIDAPI, camera, GPU,
+shared objects and Vulkan are not built. No host libc or compatibility stubs are
 included.

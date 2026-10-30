@@ -38,7 +38,8 @@ optional. `SDL_CreateThread` and callback timers need a bundle declaring
 `threads/manage`; without it thread creation fails and timed condition waits
 return at once. A threaded program that blocks in `SDL_WaitEvent` also needs
 `pipe/create` so other threads can end the wait; without the pipe it falls
-back to SDL's polling wait.
+back to SDL's polling wait. Audio needs the `audio` grant and, for SDL's
+device thread, `threads/manage`.
 
 The OSMesa presentation path copies a matching-size canvas row by row into the
 held native slot, zeroing the unused pixel bits. It clears the slot only when
@@ -71,6 +72,14 @@ The files in `pyxis/` are the platform layer, adapted from the SDL2 port's:
   changes. Swapping scales the canvas into the largest centred
   aspect-preserving viewport of the output; pointer coordinates map back to
   the canvas. Only swap interval 0 is supported.
+- **Audio** (`SDL_pyxisaudio.c`). One default playback device. Opening it
+  acquires the space's native PCM session, held until the last logical
+  device closes. The device runs at the native 48 kHz S16LE stereo with
+  1,024-frame buffers, one maximum native write; SDL's streams convert
+  everything else. SDL's device thread waits until the session is writable
+  and writes one buffer, keeping the 80 ms native queue near full. A late
+  buffer becomes native silence; engine failure disconnects the device.
+  There is no recording.
 - **Threads** (`SDL_systhread.c`). Pthreads with at least a 1 MiB stack;
   only normal priority, and real detach.
 - **Paths** (`SDL_sysfilesystem.c`). `SDL_GetPrefPath` creates `home://APP/`;
@@ -91,9 +100,11 @@ in `SDL_Quit`, so the SDL2 port's timer patch has no counterpart.
 6. `0006` makes native Pyxis pointer positions authoritative in SDL mouse core:
    no focus decision from the position and no clamping, so drags past the
    window edge keep native coordinates.
+7. `0007` registers the Pyxis audio driver.
 
 ## Not built
 
-Audio, clipboard, joysticks, haptics, sensors, HIDAPI, camera, GPU, process
-creation, dialogs, trays, shared objects and Vulkan use SDL's dummy drivers or
-are disabled, and report themselves unsupported. `SDL_test` is not built.
+Audio recording is unsupported. Clipboard, joysticks, haptics, sensors,
+HIDAPI, camera, GPU, process creation, dialogs, trays, shared objects and
+Vulkan use SDL's dummy drivers or are disabled, and report themselves
+unsupported. `SDL_test` is not built.

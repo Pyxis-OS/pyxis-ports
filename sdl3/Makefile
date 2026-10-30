@@ -6,7 +6,7 @@ S := $(SOURCE)
 # files. Renderer and driver sources compile only under their configuration.
 UPSTREAM_SOURCES := $(wildcard $(S)/src/*.c) \
   $(wildcard $(S)/src/atomic/*.c) \
-  $(wildcard $(S)/src/audio/*.c) $(S)/src/audio/dummy/SDL_dummyaudio.c \
+  $(wildcard $(S)/src/audio/*.c) \
   $(wildcard $(S)/src/camera/*.c) $(S)/src/camera/dummy/SDL_camera_dummy.c \
   $(wildcard $(S)/src/core/*.c) \
   $(wildcard $(S)/src/cpuinfo/*.c) \

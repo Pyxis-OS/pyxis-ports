@@ -132,7 +132,7 @@
 #define SDL_VIDEO_RENDER_SW 1
 /* OpenGL needs the OSMesa archive; the plain library reports it unsupported. */
 #define SDL_VIDEO_OPENGL 1
-#define SDL_AUDIO_DRIVER_DUMMY 1
+#define SDL_AUDIO_DRIVER_PYXIS 1
 
 #define SDL_TIMER_UNIX 1
 #define SDL_TIME_UNIX 1

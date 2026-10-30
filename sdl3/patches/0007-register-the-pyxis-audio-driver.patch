@@ -1,0 +1,22 @@
+--- a/src/audio/SDL_audio.c
++++ b/src/audio/SDL_audio.c
+@@ -89,6 +89,9 @@
+ #ifdef SDL_AUDIO_DRIVER_QNX
+     &QSAAUDIO_bootstrap,
+ #endif
++#ifdef SDL_AUDIO_DRIVER_PYXIS
++    &PYXISAUDIO_bootstrap,
++#endif
+ #ifdef SDL_AUDIO_DRIVER_DISK
+     &DISKAUDIO_bootstrap,
+ #endif
+--- a/src/audio/SDL_sysaudio.h
++++ b/src/audio/SDL_sysaudio.h
+@@ -378,6 +378,7 @@
+ extern AudioBootStrap WINMM_bootstrap;
+ extern AudioBootStrap HAIKUAUDIO_bootstrap;
+ extern AudioBootStrap COREAUDIO_bootstrap;
++extern AudioBootStrap PYXISAUDIO_bootstrap;
+ extern AudioBootStrap DISKAUDIO_bootstrap;
+ extern AudioBootStrap DUMMYAUDIO_bootstrap;
+ extern AudioBootStrap AAUDIO_bootstrap;
