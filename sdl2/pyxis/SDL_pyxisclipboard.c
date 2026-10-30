@@ -98,11 +98,12 @@ static bool ready(uint64_t expected, bool consume_refusal)
   return true;
 }
 
-/* Validate Unicode scalar UTF-8 without reading beyond the bounded C string. */
+/* Validate Unicode scalar UTF-8 up to the string's terminator. The text has no
+ * length limit here: the kernel's store refuses what does not fit. */
 static bool text_length(const char *text, size_t *length)
 {
   size_t i = 0;
-  while (i <= CLIPBOARD_TEXT_MAX && text[i]) {
+  while (text[i]) {
     unsigned char first = (unsigned char)text[i++];
     if (first < 0x80) {
       continue;
@@ -125,9 +126,6 @@ static bool text_length(const char *text, size_t *length)
     } else {
       return false;
     }
-    if (i + continuation > CLIPBOARD_TEXT_MAX) {
-      return false;
-    }
     for (size_t j = 0; j < continuation; ++j) {
       unsigned char next = (unsigned char)text[i++];
       if ((next & 0xc0) != 0x80) {
@@ -139,9 +137,6 @@ static bool text_length(const char *text, size_t *length)
         (value >= 0xd800 && value <= 0xdfff)) {
       return false;
     }
-  }
-  if (i > CLIPBOARD_TEXT_MAX) {
-    return false;
   }
   *length = i;
   return true;
@@ -156,7 +151,7 @@ int PYXIS_SetClipboardText(SDL_VideoDevice *device, const char *text)
   size_t length;
   if (!text_length(text, &length)) {
     PYXIS_CancelClipboard();
-    return SDL_SetError("Pyxis clipboard text is invalid UTF-8 or exceeds 64 KiB");
+    return SDL_SetError("Pyxis clipboard text is invalid UTF-8");
   }
   enum call_status status = clipboard_graphics_publish(clipboard, action_id, text, length);
   forget_action();
@@ -176,15 +171,22 @@ char *PYXIS_GetClipboardText(SDL_VideoDevice *device)
     }
     return empty;
   }
-  char *text = SDL_malloc(CLIPBOARD_TEXT_MAX + 1);
+  /* HAS reports the item's length without spending the paste; the buffer is
+   * then exactly that long, since a READ into a smaller one is refused. */
+  bool has_text;
+  size_t item_length = 0;
+  enum call_status status = clipboard_graphics_has(clipboard, action_id, &has_text,
+      &item_length);
+  char *text = status == CALL_OK ? SDL_malloc(item_length + 1) : SDL_strdup("");
   if (!text) {
     PYXIS_CancelClipboard();
     SDL_OutOfMemory();
     return NULL;
   }
-  size_t length;
-  enum call_status status = clipboard_graphics_read(clipboard, action_id, text,
-      CLIPBOARD_TEXT_MAX, &length);
+  size_t length = 0;
+  if (status == CALL_OK) {
+    status = clipboard_graphics_read(clipboard, action_id, text, item_length, &length);
+  }
   forget_action();
   if (status != CALL_OK) {
     text[0] = '\0';
@@ -202,7 +204,8 @@ SDL_bool PYXIS_HasClipboardText(SDL_VideoDevice *device)
     return SDL_FALSE;
   }
   bool has_text;
-  enum call_status status = clipboard_graphics_has(clipboard, action_id, &has_text);
+  size_t length;
+  enum call_status status = clipboard_graphics_has(clipboard, action_id, &has_text, &length);
   if (status != CALL_OK) {
     SDL_SetError("Pyxis clipboard probe refused (status %u)", (unsigned)status);
     return SDL_FALSE;

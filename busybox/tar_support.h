@@ -85,7 +85,9 @@
 #define init_unicode() ((void)0)
 #define LONE_DASH(s) ((s)[0] == '-' && !(s)[1])
 #define ENABLE_FEATURE_TAR_FROM 0
-#define ENABLE_FEATURE_TAR_GNU_EXTENSIONS 0
+/* GNU long-name records: the writer emits ././@LongLink for names and link
+ * targets over 99 bytes and the reader consumes them. */
+#define ENABLE_FEATURE_TAR_GNU_EXTENSIONS 1
 #define ENABLE_FEATURE_TAR_SELINUX 0
 #define ENABLE_FEATURE_TAR_OLDSUN_COMPATIBILITY 0
 #define ENABLE_FEATURE_TAR_OLDGNU_COMPATIBILITY 0
@@ -156,6 +158,9 @@ typedef struct archive_handle_t {
   void (*seek)(int fd, off_t amount);
   off_t offset;
   smallint tar__end;
+  /* GNU long-name records: the name or link target of the next member. */
+  char *tar__longname;
+  char *tar__linkname;
 } archive_handle_t;
 #define ARCHIVE_RESTORE_DATE (1 << 0)
 #define ARCHIVE_CREATE_LEADING_DIRS (1 << 1)

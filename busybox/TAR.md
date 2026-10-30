@@ -30,11 +30,13 @@ The selected reader accepts upstream `ustar` magic and numeric-field parsing,
 including its base-256 representation. It accepts the ustar prefix field.
 Upstream empty-header termination and trailing-data behavior apply; there is no
 extra all-zero-block or exact-magic/version validation. Bad checksums and short member reads follow upstream error handling. The writer retains upstream GNU-compatible ustar magic
-and its 99-byte member-name limit: overlong names are diagnosed and skipped.
+and GNU long-name records: a member name or link target over 99 bytes is written as
+a `././@LongLink` record and read back the same way, so no name length limits what
+`tar` archives (GNU tar, bsdtar and Python read the records).
 
 Regular files (including the archive's contiguous-file type), directories and
 hardlinks are supported. Symlinks, devices and FIFOs cannot be created on native
-filesystems. GNU extensions remain disabled; the upstream reader skips PAX
+filesystems. GNU long-name records are the only GNU extension enabled; the upstream reader skips PAX
 metadata under this profile rather than applying extended fields. Directory size and otherwise unused metadata follow
 upstream handling. Extraction ignores owner, group, mode and timestamps; native
 mutation authority comes from grants. Created headers use uid/gid zero, mode
