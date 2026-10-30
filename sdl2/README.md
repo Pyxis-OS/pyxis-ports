@@ -329,3 +329,8 @@ Static application packages using this profile must carry SDL's licenses,
 notices and covered backend source from `sdl2-dev`, the profile notice and
 provenance from `sdl2-osmesa-dev`, Mesa's notices and provenance from `mesa-dev`,
 and the SDK's C++ runtime notices.
+
+Explicit thread stack sizes are minimums: the backend rounds them to the native
+page-sized pthread minimum and page alignment, with checked arithmetic. A zero
+request keeps libc's default. Actual guarded backing admission determines whether
+creation succeeds; SDL adds no independent minimum in MiB or maximum.

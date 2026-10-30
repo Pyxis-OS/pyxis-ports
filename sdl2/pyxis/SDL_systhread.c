@@ -15,10 +15,6 @@
 #include "thread/SDL_systhread.h"
 #include "thread/SDL_thread_c.h"
 
-/* libc's current smallest accepted stack. SDL sizes are minimums, so smaller
- * requests receive this; libc refuses sizes above its maximum (8 MiB). */
-#define PYXIS_THREAD_STACK_MIN ((size_t)1 << 20)
-
 static void *run_thread(void *data)
 {
   SDL_RunThread((SDL_Thread *)data);
@@ -27,8 +23,8 @@ static void *run_thread(void *data)
 
 static size_t stack_size(size_t requested)
 {
-  if (requested < PYXIS_THREAD_STACK_MIN) {
-    return PYXIS_THREAD_STACK_MIN;
+  if (requested < PTHREAD_STACK_MIN) {
+    return PTHREAD_STACK_MIN;
   }
   size_t page_offset = requested % MEMORY_PAGE_SIZE;
   if (page_offset == 0) {
@@ -50,7 +46,7 @@ int SDL_SYS_CreateThread(SDL_Thread *thread)
     error = pthread_attr_setstacksize(&attributes, size);
     if (error != 0) {
       pthread_attr_destroy(&attributes);
-      return SDL_SetError("Thread stack size %zu is outside libc's limits", size);
+      return SDL_SetError("Thread stack size %zu is invalid: %s", size, strerror(error));
     }
   }
   error = pthread_create(&thread->handle, &attributes, run_thread, thread);
