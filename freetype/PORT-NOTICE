@@ -1,0 +1,11 @@
+FreeType 2.15.0 is unchanged upstream source. It is used under the FreeType
+License (docs/FTL.TXT), one of the two licences LICENSE.TXT offers; GPLv2.TXT is
+installed alongside for completeness. Its internal zlib copy (src/gzip) is under
+the zlib licence stated in its headers.
+
+Portions of this software are copyright (C) 2026 The FreeType Project
+(https://freetype.org). All rights reserved.
+
+Original Pyxis recipe, build files and documentation use MPL-2.0. Their complete
+source is installed under share/freetype/pyxis, with the license alongside this
+notice. Upstream code and notices retain their own terms.

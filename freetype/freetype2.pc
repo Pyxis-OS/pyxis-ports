@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: FreeType 2
+URL: https://freetype.org
+Description: A free, high-quality, and portable font engine.
+Version: 26.7.20
+Libs: -L${libdir} -lfreetype
+Cflags: -I${includedir}/freetype2

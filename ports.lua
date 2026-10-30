@@ -14,6 +14,7 @@ return {
   fastfetch = "fastfetch",
   fmt = "fmt",
   fonts = "fonts",
+  freetype = "freetype",
   hexcurse = "hexcurse",
   hexyl = "hexyl",
   imgui = "imgui",
