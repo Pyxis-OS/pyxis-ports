@@ -79,7 +79,7 @@ local function main()
     print("Usage: lua build.lua PORT --sdk PATH [--work PATH] [--cross-prefix PREFIX]")
     print("The work directory must not exist; default: build/PORT.")
     print("Mesa uses the target LLVM libraries shipped with the matching compiler container.")
-    print("SDL2 requires --mesa PATH to its staged development prefix; it builds both static profiles.")
+    print("SDL2 and SDL3 require --mesa PATH to its staged development prefix; each builds both static profiles.")
     print("Libpng also requires --zlib PATH to its development prefix.")
     print("DevilutionX also requires --zlib, --libpng, --fmt and --sdl2 development prefixes.")
     print("Minesweeper requires --raylib and --sdl2 development prefixes.")
@@ -98,7 +98,7 @@ local function main()
   assert(name:match("^[a-z0-9][a-z0-9_-]*$"), "invalid port name")
   local allowed = { ["--sdk"] = true, ["--work"] = true, ["--cross-prefix"] = true,
     ["--dependencies"] = name == "libultraship",
-    ["--rust"] = name == "hexyl", ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
+    ["--rust"] = name == "hexyl", ["--go"] = name == "caddy", ["--mesa"] = name == "sdl2" or name == "sdl3" or name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--sdl2-osmesa"] = name == "ioquake3" or name == "blurgtext" or name == "imgui",
     ["--zlib"] = name == "libpng" or name == "devilutionx" or name == "libzip",
     ["--libpng"] = name == "devilutionx", ["--fmt"] = name == "devilutionx",
@@ -211,7 +211,7 @@ local function main()
       "work must be outside the consumed LLVM prefix")
   end
   local mesa
-  if name == "sdl2" or name == "ioquake3" or name == "blurgtext" or name == "imgui" then
+  if name == "sdl2" or name == "sdl3" or name == "ioquake3" or name == "blurgtext" or name == "imgui" then
     assert(options["--mesa"], name .. " needs --mesa PATH to its OSMesa development prefix")
     mesa = make_path(capture({ "realpath", "-e", "--", options["--mesa"] }))
     require_file(mesa .. "/include/GL/osmesa.h")

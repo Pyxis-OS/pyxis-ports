@@ -1,0 +1,9 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: SDL3
+Description: Simple DirectMedia Layer
+Version: 3.2.28
+Libs: -L${libdir} -lSDL3
+Cflags: -I${includedir}

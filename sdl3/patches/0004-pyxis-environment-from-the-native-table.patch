@@ -1,0 +1,36 @@
+--- a/src/stdlib/SDL_getenv.c
++++ b/src/stdlib/SDL_getenv.c
+@@ -29,6 +29,9 @@
+ #ifdef SDL_PLATFORM_ANDROID
+ #include "../core/android/SDL_android.h"
+ #endif
++#ifdef __pyxis__
++#include <pyxis/environment.h>
++#endif
+ 
+ #if defined(SDL_PLATFORM_WINDOWS)
+ #define HAVE_WIN32_ENVIRONMENT
+@@ -123,6 +126,23 @@
+             }
+             FreeEnvironmentStringsW(strings);
+         }
++#elif defined(__pyxis__)
++        // Pyxis keeps the environment in a native table and has no environ;
++        // copy the text values getenv() sees. Capability entries have no text.
++        struct pyxis_environment_snapshot snapshot;
++        if (pyxis_environment_text_snapshot_init(&snapshot) == CALL_OK) {
++            for (size_t i = 0; i < snapshot.capture.count; ++i) {
++                const struct environment_value *entry = &snapshot.capture.values[i];
++                char *variable = NULL;
++                if (!entry->text || SDL_asprintf(&variable, "%s=%s", entry->name, entry->text) < 0) {
++                    continue;
++                }
++                char *value = SDL_strchr(variable, '=');
++                *value++ = '\0';
++                SDL_InsertIntoHashTable(env->strings, variable, value, true);
++            }
++            pyxis_environment_snapshot_close(&snapshot);
++        }
+ #else
+ #ifdef SDL_PLATFORM_ANDROID
+         // Make sure variables from the application manifest are available

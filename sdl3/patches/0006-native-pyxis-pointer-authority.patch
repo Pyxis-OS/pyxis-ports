@@ -1,0 +1,36 @@
+--- a/src/events/SDL_mouse.c
++++ b/src/events/SDL_mouse.c
+@@ -606,6 +606,11 @@
+         return false;
+     }
+ 
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    // Native ENTER/LEAVE and drag routing decide mouse focus.
++    return true;
++#endif
++
+     if (window && !(window->flags & SDL_WINDOW_MOUSE_CAPTURE)) {
+         if (x < 0.0f || y < 0.0f || x >= (float)window->w || y >= (float)window->h) {
+             return false;
+@@ -661,6 +666,13 @@
+ {
+     /* make sure that the pointers find themselves inside the windows,
+        unless we have the mouse captured. */
++#ifdef SDL_VIDEO_DRIVER_PYXIS
++    // The native pointer supplies surface positions, including during drags.
++    (void)mouse;
++    (void)window;
++    (void)x;
++    (void)y;
++#else
+     if (window && !(window->flags & SDL_WINDOW_MOUSE_CAPTURE)) {
+         int x_min = 0, x_max = window->w - 1;
+         int y_min = 0, y_max = window->h - 1;
+@@ -696,6 +708,7 @@
+             *y = (float)y_min;
+         }
+     }
++#endif
+ }
+ 
+ static void SDL_PrivateSendMouseMotion(Uint64 timestamp, SDL_Window *window, SDL_MouseID mouseID, bool relative, float x, float y)

@@ -1,0 +1,10 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: SDL3-OSMesa
+Description: Simple DirectMedia Layer with static Mesa OpenGL
+Version: 3.2.28
+Libs: -L${libdir} -lSDL3-osmesa
+Requires.private: osmesa
+Cflags: -I${includedir}

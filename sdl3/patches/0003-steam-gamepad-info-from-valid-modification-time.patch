@@ -1,0 +1,17 @@
+--- a/src/joystick/SDL_steam_virtual_gamepad.c
++++ b/src/joystick/SDL_steam_virtual_gamepad.c
+@@ -65,7 +65,14 @@
+     struct stat sb;
+ 
+     if (stat(file, &sb) == 0) {
++#ifdef __pyxis__
++        // Without a recorded modification time the file is never loaded.
++        if (sb.st_valid & STAT_MTIME_VALID) {
++            modification_time = (Uint64)sb.st_mtim.tv_sec;
++        }
++#else
+         modification_time = (Uint64)sb.st_mtime;
++#endif
+     }
+ #endif
+     return modification_time;

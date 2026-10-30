@@ -51,6 +51,7 @@ return {
   sbase = "sbase",
   sdl2 = "sdl2",
   ["sdl2-mixer"] = "sdl2-mixer",
+  sdl3 = "sdl3",
   spdlog = "spdlog",
   stb = "stb",
   ["thread-pool"] = "thread-pool",

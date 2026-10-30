@@ -1,0 +1,36 @@
+--- a/src/thread/pthread/SDL_syscond.c
++++ b/src/thread/pthread/SDL_syscond.c
+@@ -40,7 +40,21 @@
+ 
+     cond = (SDL_Condition *)SDL_malloc(sizeof(SDL_Condition));
+     if (cond) {
++#ifdef __pyxis__
++        // Time out on the monotonic clock, unaffected by wall-clock changes.
++        pthread_condattr_t attributes;
++        int error = pthread_condattr_init(&attributes);
++        if (error == 0) {
++            error = pthread_condattr_setclock(&attributes, CLOCK_MONOTONIC);
++            if (error == 0) {
++                error = pthread_cond_init(&cond->cond, &attributes);
++            }
++            pthread_condattr_destroy(&attributes);
++        }
++        if (error != 0) {
++#else
+         if (pthread_cond_init(&cond->cond, NULL) != 0) {
++#endif
+             SDL_SetError("pthread_cond_init() failed");
+             SDL_free(cond);
+             cond = NULL;
+@@ -94,7 +108,11 @@
+     }
+ 
+ #ifdef HAVE_CLOCK_GETTIME
++#ifdef __pyxis__
++    clock_gettime(CLOCK_MONOTONIC, &abstime);
++#else
+     clock_gettime(CLOCK_REALTIME, &abstime);
++#endif
+ 
+     abstime.tv_sec += (timeoutNS / SDL_NS_PER_SECOND);
+     abstime.tv_nsec += (timeoutNS % SDL_NS_PER_SECOND);

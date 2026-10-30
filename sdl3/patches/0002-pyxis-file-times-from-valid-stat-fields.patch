@@ -1,0 +1,18 @@
+--- a/src/filesystem/posix/SDL_sysfsops.c
++++ b/src/filesystem/posix/SDL_sysfsops.c
+@@ -185,7 +185,14 @@
+         info->size = (Uint64) statbuf.st_size;
+     }
+ 
+-#if defined(HAVE_ST_MTIM)
++#if defined(__pyxis__)
++    // Pyxis records no creation or access time, and a modification time only
++    // when the backing provides one; unknown times are reported as zero.
++    info->create_time = 0;
++    info->access_time = 0;
++    info->modify_time = (statbuf.st_valid & STAT_MTIME_VALID) ?
++        (SDL_Time)SDL_SECONDS_TO_NS(statbuf.st_mtim.tv_sec) + statbuf.st_mtim.tv_nsec : 0;
++#elif defined(HAVE_ST_MTIM)
+     // POSIX.1-2008 standard
+     info->create_time = (SDL_Time)SDL_SECONDS_TO_NS(statbuf.st_ctim.tv_sec) + statbuf.st_ctim.tv_nsec;
+     info->modify_time = (SDL_Time)SDL_SECONDS_TO_NS(statbuf.st_mtim.tv_sec) + statbuf.st_mtim.tv_nsec;
