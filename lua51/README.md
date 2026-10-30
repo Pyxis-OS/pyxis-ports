@@ -35,6 +35,13 @@ applying patches. It stages:
 - independent library notices under `share/licenses/lua51/` and copies with
   provenance under `dev/share/`, for consumers of the development libraries.
 
+The standalone bundle also explicitly requests an optional private
+`memory_create_shared` launch source, separately from its required ordinary
+`memory/manage`. Only a child declaring `memory/create_shared` selects it;
+normal native children keep MANAGE only. It is absent when the launcher has
+no creation source. This uses the SDK's declared shared-memory source support;
+linking the Lua library into another program does not supply that authority.
+
 ## Running scripts
 
 libuv's loop needs pipe creation, and spawning needs the launcher, so the

@@ -6,6 +6,7 @@
   "resource_dirs": {},
   "grants": [
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
+    {"name": "memory_create_shared", "resource": "memory", "rights": ["manage", "create_shared"], "required": false},
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": true},
     {"name": "launcher", "resource": "launcher", "rights": ["launch"], "required": true},
     {"name": "pipe", "resource": "pipe", "rights": ["create"], "required": true},

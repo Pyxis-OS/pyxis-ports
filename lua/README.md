@@ -58,6 +58,15 @@ routing and cleanup as the corresponding shell mode. Enclosing owners can still
 stop children outside a handed script's foreground subgroup. Captured jobs below
 remain leaf jobs, without new script expansion or implicit provisioners.
 
+The standalone bundle also explicitly requests an optional private
+`memory_create_shared` launch source, separately from its required ordinary
+`memory/manage`. Only a child declaring `memory/create_shared` selects it;
+normal native children keep MANAGE only. It is absent when the launcher has
+no creation source. This uses the SDK's declared shared-memory source support;
+linking the Lua library into another program does not supply that authority.
+For `pyxis.job`, an explicit `resources` list must include `memory` to offer
+this source to a declaring bundle; excluding memory excludes the source too.
+
 From the guest shell:
 
 ```text

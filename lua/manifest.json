@@ -6,6 +6,7 @@
   "resource_dirs": {},
   "grants": [
     {"name": "memory", "resource": "memory", "rights": ["manage"], "required": true},
+    {"name": "memory_create_shared", "resource": "memory", "rights": ["manage", "create_shared"], "required": false},
     {"name": "clock", "resource": "clock", "rights": ["read", "precise", "sleep"], "required": false},
     {"name": "random", "resource": "random", "rights": ["read"], "required": false},
     {"name": "threads", "resource": "threads", "rights": ["manage"], "required": false},

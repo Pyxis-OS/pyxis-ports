@@ -51,7 +51,7 @@ struct preparation {
   struct launch_environment_entry *entries;
   struct launch_grant *grants;
   size_t grant_count, entry_count;
-  bool explicit_resources, tcp_selected;
+  bool explicit_resources, tcp_selected, memory_selected;
   struct environment_capture parent;
   struct pyxis_working_snapshot working;
   struct pyxis_environment_snapshot environment;
@@ -271,6 +271,7 @@ static enum call_status select_resources(lua_State *state, int options,
       }
       selected[role] = true;
       owned->tcp_selected |= roles[role].protocol == PROTOCOL_TCP_SERVICE;
+      owned->memory_selected |= roles[role].protocol == PROTOCOL_MEMORY;
       if (status == CALL_OK) {
         status = add_role(owned, &roles[role], true);
       }
@@ -527,7 +528,7 @@ static enum call_status native_program(const struct path_context *context,
 
 static enum call_status bundle_authority(struct preparation *owned)
 {
-  size_t capacity = owned->entry_count + 3 + BUNDLE_SOURCE_LIMIT;
+  size_t capacity = owned->entry_count + 4 + BUNDLE_SOURCE_LIMIT;
   owned->authority = calloc(capacity, sizeof(*owned->authority));
   if (!owned->authority) {
     return CALL_NO_MEMORY;
@@ -570,6 +571,19 @@ static enum call_status bundle_authority(struct preparation *owned)
     if (service && service->kind == ENVIRONMENT_CAP) {
       owned->authority[owned->authority_count++] = (struct bundle_authority){
         "service", service->handle, PROTOCOL_ENDPOINT_SERVICE};
+    }
+  }
+  if (!owned->explicit_resources || owned->memory_selected) {
+    const struct environment_value *creator = environment_capture_find(&owned->parent,
+        BUNDLE_MEMORY_CREATE_SOURCE);
+    /* Native interpreter continuation can hold the canonical source instead. */
+    if (!creator || creator->kind != ENVIRONMENT_CAP) {
+      creator = environment_capture_find(&owned->parent, "memory");
+    }
+    if (creator && creator->kind == ENVIRONMENT_CAP &&
+        (creator->rights & MEMORY_RIGHT_CREATE_SHARED)) {
+      owned->authority[owned->authority_count++] = (struct bundle_authority){
+        BUNDLE_MEMORY_CREATE_SOURCE, creator->handle, PROTOCOL_MEMORY};
     }
   }
   const struct environment_value *jit = environment_capture_find(&owned->parent, "jit");
