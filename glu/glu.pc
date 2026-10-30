@@ -1,0 +1,11 @@
+prefix=sdk://
+includedir=sdk://include
+libdir=sdk://lib
+
+Name: glu
+Description: Mesa OpenGL Utility Library
+Version: 9.0.3
+Requires: osmesa
+Requires.private: libcxx
+Libs: -L${libdir} -lGLU
+Cflags: -I${includedir}

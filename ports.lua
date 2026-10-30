@@ -15,6 +15,7 @@ return {
   fmt = "fmt",
   fonts = "fonts",
   freetype = "freetype",
+  glu = "glu",
   hexcurse = "hexcurse",
   hexyl = "hexyl",
   imgui = "imgui",

@@ -1,0 +1,17 @@
+GLU 9.0.3, the Mesa OpenGL Utility Library, is copyright Silicon Graphics,
+Inc. and its contributors. Most sources carry the SGI Free Software License B,
+Version 2.0, retained verbatim from include/GL/glu.h in SGI-B-2.0. The NURBS
+sources carry the SGI Free Software License B, Version 1.1 applicability
+notice, retained verbatim from src/libnurbs/interface/bezierEval.cc in
+SGI-B-1.1-NOTICE. The release archive and its checksum are recorded in
+share/glu/source.txt.
+
+Pyxis builds the upstream sources unmodified as a static library, with the
+source list of upstream's meson.build and its compile definitions. The
+recipe's Makefile, build script, pkg-config and CMake metadata are original
+Pyxis material under the Mozilla Public License, version 2.0; see the ports
+repository's LICENSE and LICENSING.md.
+
+The library calls OpenGL through Mesa's static OSMesa and its NURBS code uses
+the C++ runtime. Static consumers must retain Mesa and C++ runtime notices as
+well.
