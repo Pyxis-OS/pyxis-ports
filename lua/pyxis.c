@@ -48,6 +48,7 @@
 enum { RESOURCE_LIMIT = 16 };
 
 struct resources {
+  struct call_limit limit;
   handle_t object, child;
   struct program_image *input;
   struct execution_group_create_reply group;
@@ -146,13 +147,16 @@ static const char *status_name(enum call_status status)
 static int native_error(lua_State *state, struct resources *owned,
     const char *operation, enum call_status status)
 {
+  char detail[256];
+  const char *message = status == CALL_LIMIT &&
+      call_limit_format(&owned->limit, detail, sizeof(detail)) ? detail : status_name(status);
   enum call_status closed = release_resources(owned);
   if (closed != CALL_OK) {
     return luaL_error(state, "pyxis.%s: %s (status %d); cleanup failed (status %d)",
-        operation, status_name(status), (int)status, (int)closed);
+        operation, message, (int)status, (int)closed);
   }
   return luaL_error(state, "pyxis.%s: %s (status %d)",
-      operation, status_name(status), (int)status);
+      operation, message, (int)status);
 }
 
 static const char *check_text(lua_State *state, int index)
@@ -319,8 +323,9 @@ static enum call_status prepare_grants(struct resources *owned, struct launch_re
   const struct program_sources *sources = program_runtime_sources();
   size_t capacity = owned->parent.count + owned->environment.capture.count + RESOURCE_LIMIT + 10 +
       (sources ? sources->count : 0);
-  if (capacity > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->entries) ||
-      depth > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->grants) - capacity) {
+  if (capacity > SIZE_MAX / sizeof(*owned->entries) ||
+      capacity > SIZE_MAX / sizeof(*owned->grants) ||
+      depth > SIZE_MAX / sizeof(*owned->grants) - capacity) {
     return CALL_LIMIT;
   }
   owned->grant_capacity = capacity + depth;
@@ -523,7 +528,7 @@ static enum call_status prepare_bundle_launch(struct resources *owned,
 static enum call_status prepare_interpreter(struct resources *owned,
     struct launch_request *request, handle_t child_launcher)
 {
-  enum call_status status = program_image_prepare(owned->selection->image, &owned->input);
+  enum call_status status = program_image_prepare(owned->selection->image, &owned->input, &owned->limit);
   if (status != CALL_OK) return status;
   const struct program_interpreters *interpreters = program_runtime_interpreters();
   const char *path = program_image_interpreter(owned->input);
@@ -536,7 +541,7 @@ static enum call_status prepare_interpreter(struct resources *owned,
       status = open_path(path, DIRECTORY_KIND_FILE, FILE_RIGHT_READ, &opened);
       selected = opened;
     }
-    if (status == CALL_OK) status = program_image_select_interpreter(owned->input, selected);
+    if (status == CALL_OK) status = program_image_select_interpreter(owned->input, selected, &owned->limit);
   }
   bool continuation = status == CALL_OK && interpreters &&
       program_interpreters_match(interpreters, selected) != PROGRAM_INTERPRETER_NONE;
@@ -545,7 +550,7 @@ static enum call_status prepare_interpreter(struct resources *owned,
   if (program_runtime_active() && (continuation || program_runtime_interactive())) {
     handle_t admission;
     status = program_runtime_route(true, HANDLE_INVALID, &admission, &child_launcher);
-    if (status == CALL_OK) status = launcher_create_group(admission, &owned->group);
+    if (status == CALL_OK) status = launcher_create_group(admission, &owned->group, &owned->limit);
     if (status == CALL_OK) status = program_runtime_route(true, owned->group.launcher,
         &admission, &child_launcher);
     if (status != CALL_OK) return status;
@@ -583,7 +588,7 @@ static int run_program(lua_State *state)
 {
   luaL_checktype(state, 1, LUA_TTABLE);
   size_t count = lua_rawlen(state, 1);
-  if (!count || count > LAUNCH_CAPTURE_MAX_SIZE / sizeof(char *)) {
+  if (!count || count > SIZE_MAX / sizeof(char *)) {
     return luaL_error(state, "pyxis.run: expected a nonempty argument list within launch limits");
   }
   struct resources *owned = new_resources(state);
@@ -592,7 +597,7 @@ static int run_program(lua_State *state)
     lua_rawgeti(state, 1, (lua_Integer)i + 1);
     const char *argument = check_text(state, -1);
     size_t length = strlen(argument);
-    if (length >= LAUNCH_CAPTURE_MAX_SIZE || bytes > LAUNCH_CAPTURE_MAX_SIZE - length - 1) {
+    if (length == SIZE_MAX || bytes > SIZE_MAX - length - 1) {
       return luaL_error(state, "pyxis.run: argument strings exceed launch limits");
     }
     bytes += length + 1;
@@ -679,7 +684,7 @@ static int run_program(lua_State *state)
     const struct launch_request *prepared = owned->launch ?
         bundle_launch_request(owned->launch) : &request;
     status = program_launch_prepared(launcher, prepared, owned->input,
-        &owned->working.context, &owned->child);
+        &owned->working.context, &owned->child, &owned->limit);
   }
   if (status != CALL_OK) {
     return native_error(state, owned, "run", status);

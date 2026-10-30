@@ -13,6 +13,9 @@
 #include <abi/udp.h>
 #include <clock.h>
 #include <program.h>
+#include <process.h>
+#include <limits.h>
+#include <stdio.h>
 #include <bundle_launch.h>
 #include <directory.h>
 #include <file.h>
@@ -39,13 +42,15 @@ struct selected_root {
 };
 
 struct preparation {
-  struct pyxis_job_options stages[LAUNCH_BATCH_MAX];
-  struct command_selection *selections[LAUNCH_BATCH_MAX];
-  struct bundle_launch *launches[LAUNCH_BATCH_MAX];
+  struct pyxis_job_options *stages;
+  size_t stage_count;
+  struct command_selection **selections;
+  struct bundle_launch **launches;
   struct command_search_capture search;
   struct bundle_authority *authority;
   size_t authority_count, authority_owned_count;
-  const char **argv[LAUNCH_BATCH_MAX];
+  const char ***argv;
+  struct call_limit limit;
   struct selected_root *roots;
   size_t root_count;
   struct launch_environment_entry *entries;
@@ -130,14 +135,20 @@ static size_t dense_array(lua_State *state, int index, size_t limit, bool nonemp
 static int discard_preparation(lua_State *state)
 {
   struct preparation *owned = lua_touserdata(state, 1);
-  for (size_t i = 0; i < LAUNCH_BATCH_MAX; ++i) {
-    free(owned->argv[i]);
-    owned->argv[i] = NULL;
-    bundle_launch_close(owned->launches[i]);
-    owned->launches[i] = NULL;
-    command_selection_close(owned->selections[i]);
-    owned->selections[i] = NULL;
+  for (size_t i = 0; i < owned->stage_count; ++i) {
+    free(owned->argv ? owned->argv[i] : NULL);
+    bundle_launch_close(owned->launches ? owned->launches[i] : NULL);
+    command_selection_close(owned->selections ? owned->selections[i] : NULL);
   }
+  free(owned->argv);
+  free(owned->launches);
+  free(owned->selections);
+  free(owned->stages);
+  owned->argv = NULL;
+  owned->launches = NULL;
+  owned->selections = NULL;
+  owned->stages = NULL;
+  owned->stage_count = 0;
   command_search_capture_close(&owned->search);
   for (size_t i = 0; i < owned->authority_owned_count; ++i) {
     handle_close(owned->authority[i].source);
@@ -190,8 +201,12 @@ static enum call_status stage_capability(struct preparation *owned,
       return CALL_BAD_REQUEST;
     }
   }
-  if (owned->entry_count >= LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->entries) ||
-      owned->grant_count >= LAUNCH_CAPTURE_MAX_SIZE / sizeof(*owned->grants)) {
+  if (owned->entry_count >= SIZE_MAX / sizeof(*owned->entries) ||
+      owned->grant_count >= SIZE_MAX / sizeof(*owned->grants)) {
+    owned->limit = (struct call_limit){.reason = CALL_LIMIT_REQUEST_ENCODING,
+      .requested = UINT64_MAX, .limit = SIZE_MAX,
+      .flags = CALL_LIMIT_HAS_REQUESTED | CALL_LIMIT_HAS_LIMIT |
+          CALL_LIMIT_REQUESTED_SATURATED};
     return CALL_LIMIT;
   }
   struct launch_grant *grants = realloc(owned->grants,
@@ -325,7 +340,7 @@ static enum call_status select_roots(lua_State *state, int options,
   field(state, options, "roots");
   *explicit = !lua_isnil(state, -1);
   size_t count = *explicit ? dense_array(state, -1,
-      LAUNCH_CAPTURE_MAX_SIZE / sizeof(struct launch_environment_entry), false) : owned->parent.count;
+      SIZE_MAX / sizeof(struct launch_environment_entry), false) : owned->parent.count;
   owned->roots = calloc(count + 1, sizeof(*owned->roots));
   if (!owned->roots) {
     lua_pop(state, 1);
@@ -468,7 +483,7 @@ static enum call_status select_environment(lua_State *state, int options,
   while (lua_next(state, table)) {
     text(state, -2);
     text(state, -1);
-    if (++count > LAUNCH_CAPTURE_MAX_SIZE / sizeof(struct launch_environment_entry)) {
+    if (++count > SIZE_MAX / sizeof(struct environment_value)) {
       luaL_error(state, "pyxis.job: environment exceeds native limits");
     }
     lua_pop(state, 1);
@@ -636,7 +651,7 @@ static enum call_status prepare_bundle(struct preparation *owned, size_t index)
 
 static void arguments(lua_State *state, int index, struct preparation *owned, size_t stage)
 {
-  size_t count = dense_array(state, index, LAUNCH_CAPTURE_MAX_SIZE / sizeof(char *), true);
+  size_t count = dense_array(state, index, SIZE_MAX / sizeof(char *), true);
   index = lua_absindex(state, index);
   owned->argv[stage] = calloc(count, sizeof(char *));
   if (!owned->argv[stage]) {
@@ -647,7 +662,7 @@ static void arguments(lua_State *state, int index, struct preparation *owned, si
     lua_rawgeti(state, index, (lua_Integer)i + 1);
     const char *argument = text(state, -1);
     size_t length = strlen(argument);
-    if (length >= LAUNCH_CAPTURE_MAX_SIZE || bytes > LAUNCH_CAPTURE_MAX_SIZE - length - 1) {
+    if (length == SIZE_MAX || bytes > SIZE_MAX - length - 1) {
       luaL_error(state, "pyxis.job: arguments exceed native limits");
     }
     bytes += length + 1;
@@ -656,6 +671,40 @@ static void arguments(lua_State *state, int index, struct preparation *owned, si
   }
   owned->stages[stage].argv = owned->argv[stage];
   owned->stages[stage].argc = count;
+}
+
+static void limit_number(lua_State *state, uint64_t value)
+{
+  if (value <= LUA_MAXINTEGER) {
+    lua_pushinteger(state, (lua_Integer)value);
+  } else {
+    char text[32];
+    snprintf(text, sizeof(text), "%ju", (uintmax_t)value);
+    lua_pushstring(state, text);
+  }
+}
+
+static int push_limit(lua_State *state, const struct call_limit *limit)
+{
+  lua_createtable(state, 0, 5);
+  lua_pushinteger(state, limit->reason);
+  lua_setfield(state, -2, "reason");
+  if (limit->flags & CALL_LIMIT_HAS_REQUESTED) {
+    limit_number(state, limit->requested);
+    lua_setfield(state, -2, "requested");
+  }
+  if (limit->flags & CALL_LIMIT_HAS_LIMIT) {
+    limit_number(state, limit->limit);
+    lua_setfield(state, -2, "limit");
+  }
+  lua_pushinteger(state, limit->flags);
+  lua_setfield(state, -2, "flags");
+  char detail[256];
+  if (call_limit_format(limit, detail, sizeof(detail))) {
+    lua_pushstring(state, detail);
+    lua_setfield(state, -2, "message");
+  }
+  return 3;
 }
 
 static int start(lua_State *state, bool pipeline)
@@ -685,13 +734,26 @@ static int start(lua_State *state, bool pipeline)
   if (status == CALL_OK) {
     status = clock_now(clock, &now);
     if (status == CALL_OK && now > UINT64_MAX - timeout * NS_PER_MS) {
+      owned->limit = (struct call_limit){.reason = CALL_LIMIT_REQUEST_ENCODING,
+        .requested = UINT64_MAX, .limit = UINT64_MAX,
+        .flags = CALL_LIMIT_HAS_REQUESTED | CALL_LIMIT_HAS_LIMIT |
+            CALL_LIMIT_REQUESTED_SATURATED};
       status = CALL_LIMIT;
     }
     if (status == CALL_OK) {
       deadline = now + timeout * NS_PER_MS;
     }
   }
-  size_t count = pipeline ? dense_array(state, 1, LAUNCH_BATCH_MAX, true) : 1;
+  size_t count = pipeline ? dense_array(state, 1,
+      SIZE_MAX / sizeof(*owned->stages), true) : 1;
+  owned->stage_count = count;
+  owned->stages = calloc(count, sizeof(*owned->stages));
+  owned->selections = calloc(count, sizeof(*owned->selections));
+  owned->launches = calloc(count, sizeof(*owned->launches));
+  owned->argv = calloc(count, sizeof(*owned->argv));
+  if (!owned->stages || !owned->selections || !owned->launches || !owned->argv) {
+    return luaL_error(state, "pyxis.job: out of memory");
+  }
   for (size_t i = 0; i < count; ++i) {
     if (pipeline) {
       lua_rawgeti(state, 1, (lua_Integer)i + 1);
@@ -826,7 +888,7 @@ static int start(lua_State *state, bool pipeline)
   if (status != CALL_OK) {
     lua_pushnil(state);
     lua_pushinteger(state, status);
-    return 2;
+    return status == CALL_LIMIT ? push_limit(state, &owned->limit) : 2;
   }
   owned->options.stages = owned->stages;
   owned->options.stage_count = count;
@@ -836,13 +898,16 @@ static int start(lua_State *state, bool pipeline)
   int job_index = lua_gettop(state);
   /* Registration precedes every possible admission and survives Lua longjmp. */
   register_job(state, job_index, true);
-  status = pyxis_pipeline_start(launcher, &owned->options, &job->pipeline);
+  status = pyxis_pipeline_start(launcher, &owned->options, &job->pipeline, &owned->limit);
   if (!job->pipeline) {
     register_job(state, job_index, false);
     lua_pop(state, 1);
     lua_pushnil(state);
   }
   lua_pushinteger(state, status);
+  if (status == CALL_LIMIT) {
+    return push_limit(state, &owned->limit);
+  }
   return 2;
 }
 
@@ -892,13 +957,13 @@ static void push_result(lua_State *state, const struct pyxis_pipeline_result *re
   integer_field(state, "failed_stage", result->failed_stage);
   integer_field(state, "stop", result->stop);
   integer_field(state, "stage_count", result->stage_count);
-  lua_createtable(state, (int)result->stage_count, 0);
+  lua_createtable(state, result->stage_count <= INT_MAX ? (int)result->stage_count : 0, 0);
   for (size_t i = 0; i < result->stage_count; ++i) {
     lua_pushboolean(state, result->stage_valid[i]);
     lua_rawseti(state, -2, (lua_Integer)i + 1);
   }
   lua_setfield(state, -2, "stage_valid");
-  lua_createtable(state, (int)result->stage_count, 0);
+  lua_createtable(state, result->stage_count <= INT_MAX ? (int)result->stage_count : 0, 0);
   for (size_t i = 0; i < result->stage_count; ++i) {
     lua_createtable(state, 0, 2);
     integer_field(state, "kind", result->stages[i].kind);

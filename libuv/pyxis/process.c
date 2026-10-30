@@ -270,16 +270,13 @@ static int validate_resources(const uv_pyxis_resource_t *resources, size_t count
   if (count && !resources) {
     return UV_EINVAL;
   }
-  if (count > LAUNCH_CAPTURE_MAX_SIZE / sizeof(struct launch_environment_entry) - 3) {
+  if (count > SIZE_MAX / sizeof(struct launch_environment_entry) - 3) {
     return UV_ENOSPC;
   }
   for (size_t i = 0; i < count; ++i) {
     const char *name = resources[i].name;
     if (!name || !*name) {
       return UV_EINVAL;
-    }
-    if (strnlen(name, LAUNCH_CAPTURE_MAX_SIZE) == LAUNCH_CAPTURE_MAX_SIZE) {
-      return UV_ENOSPC;
     }
     if (!strcmp(name, "memory") || !strcmp(name, "clock") ||
         !strcmp(name, "launcher") || !strcmp(name, "script")) {
@@ -462,8 +459,9 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   size_t source_capacity = runtime_sources ? runtime_sources->capture.count : 0;
   size_t capacity = selected.count + extra_count + environment_count + source_capacity + 9;
   size_t depth = working.context.count;
-  if (capacity > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*entries) ||
-      depth > LAUNCH_CAPTURE_MAX_SIZE / sizeof(*grants) - capacity) {
+  if (capacity > SIZE_MAX / sizeof(*entries) ||
+      capacity > SIZE_MAX / sizeof(*grants) ||
+      depth > SIZE_MAX / sizeof(*grants) - capacity) {
     error = UV_ENOSPC;
     goto done;
   }
@@ -478,7 +476,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   if (error) {
     goto done;
   }
-  snapshot_status = program_image_prepare(selection->image, &input);
+  snapshot_status = program_image_prepare(selection->image, &input, NULL);
   if (snapshot_status != CALL_OK) {
     error = uv__pyxis_status(snapshot_status);
     goto done;
@@ -502,7 +500,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
         }
       }
       if (!error) {
-        error = uv__pyxis_status(program_image_select_interpreter(input, image));
+        error = uv__pyxis_status(program_image_select_interpreter(input, image, NULL));
       }
     }
     if (!error) {
@@ -796,7 +794,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   handle_t observer = HANDLE_INVALID;
   enum call_status status = program_launch_prepared(admission_launcher,
       bundle_launch ? bundle_launch_request(bundle_launch) : &request,
-      input, &working.context, &observer);
+      input, &working.context, &observer, NULL);
   bundle_launch_admitted(bundle_launch, status, observer);
   if (status != CALL_OK) {
     error = uv__pyxis_status(status);
@@ -882,7 +880,7 @@ int uv_pyxis_spawn_job(uv_loop_t *loop, uv_process_t *process,
     return error;
   }
   handle_t observer = HANDLE_INVALID;
-  enum call_status status = pyxis_job_launch_observer(launcher, command, &observer);
+  enum call_status status = pyxis_job_launch_observer(launcher, command, &observer, NULL);
   if (status != CALL_OK) {
     uv__pyxis_release(loop, 1);
     return uv__pyxis_status(status);
