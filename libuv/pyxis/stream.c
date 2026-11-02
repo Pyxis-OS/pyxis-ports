@@ -33,7 +33,7 @@ void uv__pyxis_stream_init(uv_loop_t *loop, uv_stream_t *stream, uv_handle_type 
   stream->shutdown_req = NULL;
   stream->fd = -1;
   stream->access = 0;
-  stream->admitted = 0;
+  stream->watch = NULL;
   uv__queue_init(&stream->write_queue);
   uv__queue_init(&stream->write_completed_queue);
 }
@@ -61,13 +61,16 @@ int uv_pipe_open(uv_pipe_t *handle, uv_file fd)
       binding.access == (PYXIS_DESCRIPTOR_READ | PYXIS_DESCRIPTOR_WRITE)) {
     return UV_ENOSYS;
   }
-  int error = uv__pyxis_reserve(handle->loop, 1);
+  struct uv__pyxis_watch *watch;
+  uint64_t allowed = binding.access & PYXIS_DESCRIPTOR_READ ? WAIT_READABLE : WAIT_WRITABLE;
+  int error = uv__pyxis_watch_new(handle->loop, (uv_handle_t *)handle, binding.handle,
+      allowed, 0, NULL, &watch);
   if (error) {
     return error;
   }
   handle->fd = fd;
   handle->access = binding.access;
-  handle->admitted = 1;
+  handle->watch = watch;
   if (binding.access & PYXIS_DESCRIPTOR_READ) {
     handle->flags |= UV_HANDLE_READABLE;
   }
@@ -88,14 +91,16 @@ int uv_tty_init(uv_loop_t *loop, uv_tty_t *handle, uv_file fd, int readable)
       !(binding.access & access)) {
     return UV_EINVAL;
   }
-  int error = uv__pyxis_reserve(loop, 1);
+  struct uv__pyxis_watch *watch;
+  int error = uv__pyxis_watch_new(loop, (uv_handle_t *)handle, binding.handle,
+      readable ? WAIT_READABLE : WAIT_WRITABLE, 0, NULL, &watch);
   if (error) {
     return error;
   }
   uv__pyxis_stream_init(loop, (uv_stream_t *)handle, UV_TTY);
   handle->fd = fd;
   handle->access = access;
-  handle->admitted = 1;
+  handle->watch = watch;
   handle->flags |= readable ? UV_HANDLE_READABLE : UV_HANDLE_WRITABLE;
   handle->mode = UV_TTY_MODE_NORMAL;
   handle->normal_state = NULL;
@@ -156,18 +161,27 @@ int uv_read_start(uv_stream_t *stream, uv_alloc_cb allocate, uv_read_cb callback
   if (stream->flags & UV_HANDLE_READING) {
     return UV_EALREADY;
   }
+  if (!stream->watch) {
+    return UV_EBADF;
+  }
+  int error = uv__pyxis_watch_update(stream->watch, stream->watch->active | WAIT_READABLE);
+  if (error) {
+    return error;
+  }
+  uv__pyxis_watch_unready(stream->watch);
   stream->alloc_cb = allocate;
   stream->read_cb = callback;
   stream->flags |= UV_HANDLE_READING;
   update_activity(stream);
-  return 0;
+  return uv__pyxis_stream_refresh(stream);
 }
 
 int uv_read_stop(uv_stream_t *stream)
 {
   stream->flags &= ~UV_HANDLE_READING;
+  uv__pyxis_watch_unready(stream->watch);
   update_activity(stream);
-  return 0;
+  return uv__pyxis_stream_refresh(stream);
 }
 
 static void finish_write(uv_stream_t *stream, uv_write_t *request, int error)
@@ -260,6 +274,10 @@ int uv_write(uv_write_t *request, uv_stream_t *stream, const uv_buf_t buffers[],
   if (stream->write_queue_size > SIZE_MAX - total) {
     return UV_EOVERFLOW;
   }
+  int error = uv__pyxis_backend_ensure(stream->loop, NULL);
+  if (error || !stream->watch || stream->watch->error) {
+    return error ? error : stream->watch ? stream->watch->error : UV_EBADF;
+  }
   uv_buf_t *copy = request->bufsml;
   if (count > ARRAY_SIZE(request->bufsml)) {
     copy = uv__malloc(count * sizeof(*copy));
@@ -281,6 +299,11 @@ int uv_write(uv_write_t *request, uv_stream_t *stream, const uv_buf_t buffers[],
   uv__queue_insert_tail(&stream->write_queue, &request->queue);
   update_activity(stream);
   write_progress(stream);
+  error = uv__pyxis_stream_refresh(stream);
+  if (error) {
+    stream->watch->error = error;
+    uv__pyxis_watch_ready(stream->watch);
+  }
   return 0;
 }
 
@@ -297,6 +320,9 @@ int uv_try_write(uv_stream_t *stream, const uv_buf_t buffers[], unsigned count)
 {
   if (!buffers || !count || !uv_is_writable(stream)) {
     return UV_EINVAL;
+  }
+  if (stream->watch && stream->watch->error) {
+    return stream->watch->error;
   }
   if (!uv__queue_empty(&stream->write_queue)) {
     return UV_EAGAIN;
@@ -326,41 +352,52 @@ int uv_shutdown(uv_shutdown_t *request, uv_stream_t *stream, uv_shutdown_cb call
   if (!request || !uv_is_writable(stream) || stream->type != UV_NAMED_PIPE) {
     return UV_EINVAL;
   }
+  int error = uv__pyxis_backend_ensure(stream->loop, NULL);
+  if (error || !stream->watch || stream->watch->error) {
+    return error ? error : stream->watch ? stream->watch->error : UV_EBADF;
+  }
   uv__req_init(stream->loop, request, UV_SHUTDOWN);
   request->handle = stream;
   request->cb = callback;
   stream->shutdown_req = request;
   update_activity(stream);
+  error = uv__pyxis_stream_refresh(stream);
+  if (error) {
+    stream->watch->error = error;
+    uv__pyxis_watch_ready(stream->watch);
+  }
   return 0;
 }
 
-int uv__pyxis_stream_events(uv_stream_t *stream, struct wait_interest *interest)
+int uv__pyxis_stream_refresh(uv_stream_t *stream)
 {
-  if (stream->fd < 0) {
+  if (!stream->watch) {
     return 0;
   }
-  uint64_t events = 0;
+  uint64_t active = stream->flags & UV_HANDLE_READING ? WAIT_READABLE : 0;
+  if (!uv__queue_empty(&stream->write_queue)) {
+    active |= WAIT_WRITABLE;
+  }
+  int error = uv__pyxis_watch_update(stream->watch, active);
+  if (error) {
+    return error;
+  }
+  int ready = !uv__queue_empty(&stream->write_completed_queue) ||
+      (stream->shutdown_req && uv__queue_empty(&stream->write_queue));
   if (stream->flags & UV_HANDLE_READING) {
-    events |= WAIT_READABLE;
+    struct pyxis_descriptor_binding binding;
+    if (pyxis_descriptor_borrow(stream->fd, &binding)) {
+      return uv_translate_sys_error(errno);
+    }
+    ready |= binding.buffered_read != 0;
   }
-  if (!uv__queue_empty(&stream->write_queue) ||
-      !uv__queue_empty(&stream->write_completed_queue) || stream->shutdown_req) {
-    events |= WAIT_WRITABLE;
+  if (ready) {
+    uv__pyxis_watch_ready(stream->watch);
   }
-  if (!events) {
-    return 0;
-  }
-  struct pyxis_descriptor_binding binding;
-  if (pyxis_descriptor_borrow(stream->fd, &binding)) {
-    return uv_translate_sys_error(errno);
-  }
-  *interest = (struct wait_interest){binding.handle, events, 0};
-  return ((stream->flags & UV_HANDLE_READING) && binding.buffered_read) ||
-      !uv__queue_empty(&stream->write_completed_queue) ||
-      (stream->shutdown_req && uv__queue_empty(&stream->write_queue)) ? 2 : 1;
+  return 0;
 }
 
-void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
+int uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
 {
   if (stream->flags & UV_HANDLE_READING) {
     struct pyxis_descriptor_binding binding;
@@ -395,11 +432,10 @@ void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
       !uv__is_closing(stream)) {
     uv_shutdown_t *request = stream->shutdown_req;
     stream->shutdown_req = NULL;
+    uv__pyxis_watch_close(&stream->watch);
     int status = close(stream->fd) ? uv_translate_sys_error(errno) : 0;
     stream->fd = -1;
     stream->flags &= ~UV_HANDLE_WRITABLE;
-    uv__pyxis_release(stream->loop, stream->admitted);
-    stream->admitted = 0;
     uv__req_unregister(stream->loop);
     if (request->cb) {
       request->cb(request, status);
@@ -407,7 +443,9 @@ void uv__pyxis_stream_dispatch(uv_stream_t *stream, uint64_t events)
   }
   if (!uv__is_closing(stream)) {
     update_activity(stream);
+    return uv__pyxis_stream_refresh(stream);
   }
+  return 0;
 }
 
 static void tty_state_free(uv_tty_t *tty)
@@ -437,6 +475,7 @@ static int tty_normal(uv_tty_t *tty)
 
 void uv__pyxis_stream_close(uv_stream_t *stream)
 {
+  uv__pyxis_watch_close(&stream->watch);
   if (stream->type == UV_TTY) {
     uv_tty_t *tty = (uv_tty_t *)stream;
     int error = tty_normal(tty);
@@ -469,8 +508,6 @@ void uv__pyxis_stream_close(uv_stream_t *stream)
     close(stream->fd);
     stream->fd = -1;
   }
-  uv__pyxis_release(stream->loop, stream->admitted);
-  stream->admitted = 0;
 }
 
 int uv_stream_set_blocking(uv_stream_t *stream, int blocking)

@@ -56,74 +56,13 @@ static int other_watcher(uv_loop_t *loop, const uv_signal_t *excluded, int signu
   return 0;
 }
 
-static enum call_status reply_status(struct syscall_result result, size_t size)
+static void remove_sources(uv_loop_t *loop,
+    struct readiness_set_registration registrations[2], size_t count,
+    uint64_t epoch)
 {
-  if (result.status >= CALL_STATUS_COUNT ||
-      result.reply_size != (result.status == CALL_OK ? size : 0)) {
-    return CALL_IO;
+  for (size_t index = 0; index < count && epoch == loop->backend->epoch; ++index) {
+    uv__pyxis_set_remove(loop, registrations[index]);
   }
-  return result.status;
-}
-
-static enum call_status set_register(handle_t set, const struct wait_interest *interest,
-    uint64_t tag, struct readiness_set_registration *registration)
-{
-  struct readiness_set_register_request request = {
-    .header = {PROTOCOL_READINESS_SET, READINESS_SET_REGISTER},
-    .target = interest->handle,
-    .allowed_events = interest->events,
-    .active_events = interest->events,
-    .observed_generation = interest->observed_generation,
-    .tag = tag,
-  };
-  return reply_status(syscall_call(set, &request, sizeof(request), registration,
-      sizeof(*registration)), sizeof(*registration));
-}
-
-static int set_init(uv_loop_t *loop)
-{
-  if (loop->signal_set != HANDLE_INVALID) {
-    return 0;
-  }
-  struct readiness_set_create_reply reply;
-  enum call_status status = reply_status(syscall_readiness_set_create(&reply,
-      sizeof(reply)), sizeof(reply));
-  if (status != CALL_OK) {
-    return uv__pyxis_status(status);
-  }
-  struct wait_interest wake = {loop->wake_reader, WAIT_READABLE, 0};
-  status = set_register(reply.handle, &wake, 0, &loop->wake_registration);
-  if (status != CALL_OK) {
-    handle_close(reply.handle);
-    return uv__pyxis_status(status);
-  }
-  loop->signal_set = reply.handle;
-  return 0;
-}
-
-static int remove_sources(uv_loop_t *loop,
-    struct readiness_set_registration registrations[2], size_t count)
-{
-  int error = 0;
-  for (size_t index = 0; index < count; ++index) {
-    struct readiness_set_remove_request request = {
-      .header = {PROTOCOL_READINESS_SET, READINESS_SET_REMOVE},
-      .registration = registrations[index],
-    };
-    enum call_status status = reply_status(syscall_call(loop->signal_set,
-        &request, sizeof(request), NULL, 0), 0);
-    if (status != CALL_OK && !error) {
-      error = uv__pyxis_status(status);
-    }
-  }
-  if (error) {
-    /* Retire every borrowed reference even if explicit removal failed. */
-    if (handle_close(loop->signal_set)) {
-      abort();
-    }
-    loop->signal_set = HANDLE_INVALID;
-  }
-  return error;
 }
 
 static int prepare_sources(uv_loop_t *loop, struct pyxis_signal_wait *wait,
@@ -136,14 +75,15 @@ static int prepare_sources(uv_loop_t *loop, struct pyxis_signal_wait *wait,
   if (wait->count > 2) {
     return UV_EIO;
   }
+  uint64_t epoch = loop->backend->epoch;
   for (size_t index = 0; index < wait->count; ++index) {
-    enum call_status status = set_register(loop->signal_set, &wait->interests[index],
-        index + 1, &registrations[index]);
-    if (status != CALL_OK) {
-      int error = uv__pyxis_status(status);
-      int cleanup = remove_sources(loop, registrations, *count);
+    int error = uv__pyxis_set_register(loop, &wait->interests[index],
+        wait->interests[index].events, UV__PYXIS_SIGNAL_TAG(index),
+        &registrations[index], NULL);
+    if (error) {
+      remove_sources(loop, registrations, *count, epoch);
       *count = 0;
-      return cleanup ? cleanup : error;
+      return error;
     }
     ++*count;
   }
@@ -210,7 +150,7 @@ int uv_signal_start(uv_signal_t *handle, uv_signal_cb callback, int signum)
     goto done;
   }
   if (native_signal(signum)) {
-    error = set_init(handle->loop);
+    error = uv__pyxis_backend_ensure(handle->loop, NULL);
     if (error) {
       goto done;
     }
@@ -232,9 +172,10 @@ int uv_signal_start(uv_signal_t *handle, uv_signal_cb callback, int signum)
     struct pyxis_signal_wait wait;
     struct readiness_set_registration registrations[2];
     size_t count;
+    uint64_t epoch = handle->loop->backend->epoch;
     error = prepare_sources(handle->loop, &wait, registrations, &count);
     if (!error) {
-      error = remove_sources(handle->loop, registrations, count);
+      remove_sources(handle->loop, registrations, count, epoch);
     }
     if (error) {
       if (installed) {
@@ -326,66 +267,48 @@ void uv__pyxis_signal_dispatch(uv_loop_t *loop)
   }
 }
 
-int uv__pyxis_signal_wait(uv_loop_t *loop, struct wait_interest *interests,
-    size_t count, uint64_t deadline, uint64_t *events)
+int uv__pyxis_signal_wait(uv_loop_t *loop, uint64_t deadline,
+    struct readiness_set_event *events, size_t *count, uint64_t *epoch)
 {
-  int error = set_init(loop);
-  if (error) {
-    return error;
-  }
+  *epoch = loop->backend->epoch;
+  *count = 0;
   struct pyxis_signal_wait wait;
   struct readiness_set_registration registrations[2];
   size_t registered;
-  error = prepare_sources(loop, &wait, registrations, &registered);
+  int error = prepare_sources(loop, &wait, registrations, &registered);
   if (error) {
     return error;
   }
-  interests[0] = (struct wait_interest){loop->signal_set, WAIT_READABLE | WAIT_CLOSED, 0};
   if (wait.pending || uv__pyxis_signal_pending(loop)) {
     deadline = 0;
   }
-  enum call_status status = wait_many(interests, count, deadline, events);
-  if (status != CALL_OK && status != CALL_TIMED_OUT) {
-    error = uv__pyxis_status(status);
-  } else if (events[0] & (WAIT_CLOSED | WAIT_ERROR)) {
-    error = UV_EIO;
-  } else if (events[0] & WAIT_READABLE) {
-    struct readiness_set_event ready[3];
-    struct readiness_set_wait_request request = {
-      .header = {PROTOCOL_READINESS_SET, READINESS_SET_WAIT},
-      .events_address = (uintptr_t)ready, .capacity = 3,
-    };
-    struct readiness_set_wait_reply reply;
-    status = reply_status(syscall_call(loop->signal_set, &request, sizeof(request),
-        &reply, sizeof(reply)), sizeof(reply));
-    events[0] = 0;
-    if (status != CALL_OK || reply.count > 3 || reply.flags) {
-      error = status != CALL_OK ? uv__pyxis_status(status) : UV_EIO;
-    } else {
-      for (size_t index = 0; index < reply.count; ++index) {
-        struct readiness_set_event *event = &ready[index];
-        const struct readiness_set_registration *expected = event->tag == 0 ?
-            &loop->wake_registration : event->tag <= registered ?
-            &registrations[event->tag - 1] : NULL;
-        if (!expected || event->registration.identity != expected->identity ||
-            event->registration.generation != expected->generation ||
-            event->status != CALL_OK ||
-            (event->events & (WAIT_ERROR | WAIT_CLOSED | WAIT_PEER_FIN))) {
+  error = uv__pyxis_set_wait(loop, deadline, events, count);
+  if (!error) {
+    size_t retained = 0;
+    for (size_t index = 0; index < *count; ++index) {
+      struct readiness_set_event event = events[index];
+      if (event.tag >= UV__PYXIS_SIGNAL_TAG(1)) {
+        size_t source = UINT64_MAX - event.tag;
+        if (source >= registered ||
+            event.registration.identity != registrations[source].identity ||
+            event.registration.generation != registrations[source].generation ||
+            event.status != CALL_OK ||
+            (event.events & (WAIT_ERROR | WAIT_CLOSED | WAIT_PEER_FIN))) {
           error = UV_EIO;
           break;
         }
-        if (event->tag == 0) {
-          events[0] = event->events;
-        }
+      } else {
+        events[retained++] = event;
       }
     }
+    *count = retained;
   }
-  int cleanup = remove_sources(loop, registrations, registered);
-  if (cleanup) {
-    return cleanup;
-  }
+  remove_sources(loop, registrations, registered, *epoch);
   if (error) {
     return error;
+  }
+  if (*epoch != loop->backend->epoch) {
+    *count = 0;
   }
   /* No borrowed source or registration survives a handler or application call. */
   if (pyxis_signal_checkpoint()) {

@@ -20,6 +20,7 @@ return {
     dev_source_include_uv_pyxis_h = "dev/share/sources/libuv/include/uv/pyxis.h",
     dev_source_include_uv_pyxis_native_h = "dev/share/sources/libuv/include/uv/pyxis-native.h",
     dev_source_pyxis_core_c = "dev/share/sources/libuv/pyxis/core.c",
+    dev_source_pyxis_readiness_c = "dev/share/sources/libuv/pyxis/readiness.c",
     dev_source_pyxis_fs_c = "dev/share/sources/libuv/pyxis/fs.c",
     dev_source_pyxis_internal_h = "dev/share/sources/libuv/pyxis/internal.h",
     dev_source_pyxis_os_c = "dev/share/sources/libuv/pyxis/os.c",

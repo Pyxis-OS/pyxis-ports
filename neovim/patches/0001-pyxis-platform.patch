@@ -1,8 +1,7 @@
 diff --git a/src/nvim/event/defs.h b/src/nvim/event/defs.h
-index 95a7303..b815d1e 100644
 --- a/src/nvim/event/defs.h
 +++ b/src/nvim/event/defs.h
-@@ -82,7 +82,7 @@ struct stream {
+@@ -82,7 +82,7 @@
      uv_pipe_t pipe;
      uv_tcp_t tcp;
      uv_idle_t idle;
@@ -11,7 +10,7 @@ index 95a7303..b815d1e 100644
      uv_tty_t tty;
  #endif
    } uv;
-@@ -157,6 +157,10 @@ struct proc {
+@@ -157,6 +157,10 @@
    Loop *loop;
    void *data;
    int pid, status, refcount;
@@ -23,7 +22,6 @@ index 95a7303..b815d1e 100644
    uint64_t stopped_time;  // proc_stop() timestamp
    const char *cwd;
 diff --git a/src/nvim/event/libuv_proc.c b/src/nvim/event/libuv_proc.c
-index 50ab55e..525b96a 100644
 --- a/src/nvim/event/libuv_proc.c
 +++ b/src/nvim/event/libuv_proc.c
 @@ -2,6 +2,15 @@
@@ -42,7 +40,7 @@ index 50ab55e..525b96a 100644
  
  #include "nvim/eval/typval.h"
  #include "nvim/event/defs.h"
-@@ -32,6 +41,11 @@ static void libuv_proc_stdio(LibuvProc *uvproc, int idx, uv_pipe_t *parent_pipe,
+@@ -32,6 +41,11 @@
                               bool child_readable, bool overlapped, bool win_create_pipe,
                               int *to_close)
  {
@@ -54,17 +52,18 @@ index 50ab55e..525b96a 100644
  #ifdef MSWIN
    if (win_create_pipe) {
      uvproc->uvstdio[idx].flags = UV_CREATE_PIPE
-@@ -70,7 +84,39 @@ static void libuv_proc_stdio(LibuvProc *uvproc, int idx, uv_pipe_t *parent_pipe,
+@@ -70,7 +84,39 @@
    uvproc->uvstdio[idx].data.fd = child_fd;
    to_close[idx] = child_fd;
    uv_pipe_open(parent_pipe, parent_fd);
+-}
 +#endif
 +}
 +
 +#ifdef __pyxis__
 +/// The internal --embed server is the one child that receives the loop's pipe
 +/// factory; it also answers uname and the hostname from SYSTEM_INFO READ.
-+static int spawn_internal_server(Proc *proc, LibuvProc *uvproc)
++static int spawn_internal_server(Proc *proc, LibuvProc *uvproc, struct call_limit *limit)
 +{
 +  handle_t pipe_service = HANDLE_INVALID;
 +  environment_capability(startup_environment_handle(), "pipe", &pipe_service);
@@ -81,7 +80,7 @@ index 50ab55e..525b96a 100644
 +      .rights = SYSTEM_INFO_RIGHT_READ, .transport = 0 };
 +  }
 +  int status = uv_pyxis_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts,
-+                              resources, resource_count);
++                              resources, resource_count, limit);
 +  if (pipe_service != HANDLE_INVALID) {
 +    handle_close(pipe_service);
 +  }
@@ -89,12 +88,12 @@ index 50ab55e..525b96a 100644
 +    handle_close(system_info);
 +  }
 +  return status;
- }
++}
 +#endif
  
  /// @returns zero on success, or negative error code
  int libuv_proc_spawn(LibuvProc *uvproc)
-@@ -79,6 +125,9 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+@@ -79,6 +125,9 @@
    Proc *proc = (Proc *)uvproc;
    uvproc->uvopts.file = proc_get_exepath(proc);
    uvproc->uvopts.args = proc->argv;
@@ -104,15 +103,15 @@ index 50ab55e..525b96a 100644
    uvproc->uvopts.flags = UV_PROCESS_WINDOWS_HIDE;
  #ifdef MSWIN
    // libuv collapses the argv to a CommandLineToArgvW()-style string. cmd.exe
-@@ -92,6 +141,7 @@ int libuv_proc_spawn(LibuvProc *uvproc)
- #else
+@@ -93,6 +142,7 @@
    // Always setsid() on unix-likes. #8107
    uvproc->uvopts.flags |= UV_PROCESS_DETACHED;
-+#endif
  #endif
++#endif
    uvproc->uvopts.exit_cb = exit_cb;
    uvproc->uvopts.cwd = proc->cwd;
-@@ -137,7 +187,16 @@ int libuv_proc_spawn(LibuvProc *uvproc)
+ 
+@@ -137,7 +187,17 @@
    }
  
    int status;
@@ -121,8 +120,9 @@ index 50ab55e..525b96a 100644
 +  // External jobs are ordinary children: libuv resolves bare names and bundles
 +  // with the shell's lookup and passes only the authority this editor holds.
 +  assert(!ui_client_forward_stdin);
-+  status = proc->internal_tui ? spawn_internal_server(proc, uvproc)
-+                              : uv_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts);
++  status = proc->internal_tui ? spawn_internal_server(proc, uvproc, &uvproc->spawn_limit)
++                              : uv_pyxis_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts,
++                                               NULL, 0, &uvproc->spawn_limit);
 +#else
 +  status = uv_spawn(&proc->loop->uv, &uvproc->uv, &uvproc->uvopts);
 +#endif
@@ -130,7 +130,7 @@ index 50ab55e..525b96a 100644
      ILOG("uv_spawn(%s) failed: %s", uvproc->uvopts.file, uv_strerror(status));
      if (uvproc->uvopts.env) {
        os_free_fullenv(uvproc->uvopts.env);
-@@ -180,7 +239,17 @@ static void exit_cb(uv_process_t *handle, int64_t status, int term_signal)
+@@ -180,7 +240,17 @@
    // Use stored/expected signal.
    term_signal = proc->exit_signal;
  #endif
@@ -149,7 +149,6 @@ index 50ab55e..525b96a 100644
  }
  
 diff --git a/src/nvim/event/proc.c b/src/nvim/event/proc.c
-index 7d258f1..e4fe68c 100644
 --- a/src/nvim/event/proc.c
 +++ b/src/nvim/event/proc.c
 @@ -1,6 +1,11 @@
@@ -165,7 +164,7 @@ index 7d258f1..e4fe68c 100644
  #include <string.h>
  #include <uv.h>
  
-@@ -42,6 +47,11 @@ static int exit_need_delay = 0;
+@@ -42,6 +47,11 @@
  int proc_spawn(Proc *proc, bool in, bool out, bool err)
    FUNC_ATTR_NONNULL_ALL
  {
@@ -177,7 +176,7 @@ index 7d258f1..e4fe68c 100644
    // forwarding stderr contradicts with processing it internally
    assert(!(err && proc->fwd_err));
  
-@@ -124,7 +134,11 @@ int proc_spawn(Proc *proc, bool in, bool out, bool err)
+@@ -124,7 +134,11 @@
    proc->internal_close_cb = decref;
    proc->refcount++;
    kv_push(proc->loop->children, proc);
@@ -189,7 +188,7 @@ index 7d258f1..e4fe68c 100644
    return 0;
  }
  
-@@ -133,12 +147,16 @@ void proc_teardown(Loop *loop) FUNC_ATTR_NONNULL_ALL
+@@ -133,12 +147,16 @@
    proc_is_tearing_down = true;
    for (size_t i = 0; i < kv_size(loop->children); i++) {
      Proc *proc = kv_A(loop->children, i);
@@ -206,7 +205,7 @@ index 7d258f1..e4fe68c 100644
    }
  
    // Wait until all children exit and all close events are processed.
-@@ -196,7 +214,9 @@ int proc_wait(Proc *proc, int ms, MultiQueue *events)
+@@ -196,7 +214,9 @@
        LOOP_PROCESS_EVENTS(proc->loop, events, 0);
      }
  
@@ -216,7 +215,7 @@ index 7d258f1..e4fe68c 100644
    }
  
    if (proc->refcount == 1) {
-@@ -213,15 +233,42 @@ int proc_wait(Proc *proc, int ms, MultiQueue *events)
+@@ -213,15 +233,42 @@
    return proc->status;
  }
  
@@ -259,7 +258,7 @@ index 7d258f1..e4fe68c 100644
    switch (proc->type) {
    case kProcTypeUv:
      proc->exit_signal = SIGTERM;
-@@ -235,6 +282,8 @@ void proc_stop(Proc *proc) FUNC_ATTR_NONNULL_ALL
+@@ -235,6 +282,8 @@
      break;
    }
  
@@ -268,7 +267,7 @@ index 7d258f1..e4fe68c 100644
    // (Re)start timer to verify that stopped process(es) died.
    uv_timer_start(&proc->loop->children_kill_timer, children_kill_cb,
                   KILL_TIMEOUT_MS, 0);
-@@ -255,6 +304,15 @@ static void children_kill_cb(uv_timer_t *handle)
+@@ -255,6 +304,15 @@
  {
    Loop *loop = handle->loop->data;
  
@@ -284,7 +283,7 @@ index 7d258f1..e4fe68c 100644
    for (size_t i = 0; i < kv_size(loop->children); i++) {
      Proc *proc = kv_A(loop->children, i);
      bool exited = (proc->status >= 0);
-@@ -274,6 +332,7 @@ static void children_kill_cb(uv_timer_t *handle)
+@@ -274,6 +332,7 @@
                       KILL_TIMEOUT_MS, 0);
      }
    }
@@ -292,7 +291,7 @@ index 7d258f1..e4fe68c 100644
  }
  
  static void proc_close_event(void **argv)
-@@ -444,7 +503,11 @@ void exit_on_closed_chan(int status)
+@@ -444,7 +503,11 @@
  static void on_proc_exit(Proc *proc)
  {
    Loop *loop = proc->loop;
@@ -305,10 +304,9 @@ index 7d258f1..e4fe68c 100644
    // Process has terminated, but there could still be data to be read from the
    // OS. We are still in the libuv loop, so we cannot call code that polls for
 diff --git a/src/nvim/event/proc.h b/src/nvim/event/proc.h
-index bbd76ad..9201595 100644
 --- a/src/nvim/event/proc.h
 +++ b/src/nvim/event/proc.h
-@@ -43,7 +43,11 @@ static inline const char *proc_get_exepath(Proc *proc)
+@@ -43,7 +43,11 @@
  
  static inline bool proc_is_stopped(Proc *proc)
  {
@@ -321,7 +319,6 @@ index bbd76ad..9201595 100644
  }
  
 diff --git a/src/nvim/event/socket.c b/src/nvim/event/socket.c
-index baf9775..9cba32d 100644
 --- a/src/nvim/event/socket.c
 +++ b/src/nvim/event/socket.c
 @@ -1,3 +1,41 @@
@@ -366,17 +363,16 @@ index baf9775..9cba32d 100644
  #include <assert.h>
  #include <inttypes.h>
  #include <stdbool.h>
-@@ -365,3 +403,5 @@ cleanup:
+@@ -365,3 +403,5 @@
    uv_freeaddrinfo(addr_req.addrinfo);
    return success;
  }
 +
 +#endif
 diff --git a/src/nvim/os/env.c b/src/nvim/os/env.c
-index a6a811d..a53afca 100644
 --- a/src/nvim/os/env.c
 +++ b/src/nvim/os/env.c
-@@ -225,7 +225,17 @@ int os_unsetenv(const char *name)
+@@ -225,7 +225,17 @@
  size_t os_get_fullenv_size(void)
  {
    size_t len = 0;
@@ -395,7 +391,7 @@ index a6a811d..a53afca 100644
    wchar_t *envstrings = GetEnvironmentStringsW();
    wchar_t *p = envstrings;
    size_t l;
-@@ -274,7 +284,24 @@ void os_free_fullenv(char **env)
+@@ -274,7 +284,24 @@
  /// @param  env_size  size of `env`, @see os_fullenv_size
  void os_copy_fullenv(char **env, size_t env_size)
  {
@@ -421,7 +417,7 @@ index a6a811d..a53afca 100644
    wchar_t *envstrings = GetEnvironmentStringsW();
    if (!envstrings) {
      return;
-@@ -319,7 +346,18 @@ void os_copy_fullenv(char **env, size_t env_size)
+@@ -319,7 +346,18 @@
  /// @return [allocated] environment variable's value, or NULL
  char *os_getenvname_at_index(size_t index)
  {
@@ -441,7 +437,7 @@ index a6a811d..a53afca 100644
    wchar_t *envstrings = GetEnvironmentStringsW();
    if (!envstrings) {
      return NULL;
-@@ -385,7 +423,9 @@ char *os_getenvname_at_index(size_t index)
+@@ -385,7 +423,9 @@
  /// @return the process ID.
  int64_t os_get_pid(void)
  {
@@ -452,7 +448,7 @@ index a6a811d..a53afca 100644
    return (int64_t)GetCurrentProcessId();
  #else
    return (int64_t)getpid();
-@@ -410,6 +450,14 @@ void os_hint_priority(void)
+@@ -410,6 +450,14 @@
  /// @param size       Size of `hostname`.
  void os_get_hostname(char *hostname, size_t size)
  {
@@ -467,16 +463,15 @@ index a6a811d..a53afca 100644
  #ifdef HAVE_SYS_UTSNAME_H
    struct utsname vutsname;
  
-@@ -441,6 +489,7 @@ void os_get_hostname(char *hostname, size_t size)
+@@ -440,6 +488,7 @@
+ #else
    emsg("os_get_hostname failed: missing uname()");
    *hostname = NUL;
- #endif
 +#endif
+ #endif
  }
  
- /// The "real" home directory as determined by `init_homedir`.
 diff --git a/src/nvim/os/os_defs.h b/src/nvim/os/os_defs.h
-index db575e0..ff44138 100644
 --- a/src/nvim/os/os_defs.h
 +++ b/src/nvim/os/os_defs.h
 @@ -16,6 +16,8 @@
@@ -489,7 +484,6 @@ index db575e0..ff44138 100644
  # include "nvim/os/unix_defs.h"
  #endif
 diff --git a/src/nvim/os/proc.c b/src/nvim/os/proc.c
-index 5e87f09..ff702bd 100644
 --- a/src/nvim/os/proc.c
 +++ b/src/nvim/os/proc.c
 @@ -1,3 +1,23 @@
@@ -516,14 +510,13 @@ index 5e87f09..ff702bd 100644
  /// OS process functions
  ///
  /// psutil is a good reference for cross-platform syscall voodoo:
-@@ -282,3 +302,5 @@ bool os_proc_running(int pid)
+@@ -282,3 +302,5 @@
    // other errors the process might be running, assuming it is then.
    return true;
  }
 +
 +#endif
 diff --git a/src/nvim/os/proc.h b/src/nvim/os/proc.h
-index 5e36006..b25c67a 100644
 --- a/src/nvim/os/proc.h
 +++ b/src/nvim/os/proc.h
 @@ -4,4 +4,10 @@
@@ -539,7 +532,6 @@ index 5e36006..b25c67a 100644
 +# include "os/proc.h.generated.h"
 +#endif
 diff --git a/src/nvim/os/pty_proc_unix.c b/src/nvim/os/pty_proc_unix.c
-index c981b40..0b4a9ae 100644
 --- a/src/nvim/os/pty_proc_unix.c
 +++ b/src/nvim/os/pty_proc_unix.c
 @@ -1,3 +1,61 @@
@@ -604,14 +596,13 @@ index c981b40..0b4a9ae 100644
  // Some of the code came from pangoterm and libuv
  
  #include <assert.h>
-@@ -462,3 +520,5 @@ PtyProc pty_proc_init(Loop *loop, void *data)
+@@ -462,3 +520,5 @@
    rv.tty_fd = -1;
    return rv;
  }
 +
 +#endif
 diff --git a/src/nvim/os/pty_proc_unix.h b/src/nvim/os/pty_proc_unix.h
-index d3bc8b7..fd46732 100644
 --- a/src/nvim/os/pty_proc_unix.h
 +++ b/src/nvim/os/pty_proc_unix.h
 @@ -2,15 +2,32 @@
@@ -651,7 +642,6 @@ index d3bc8b7..fd46732 100644
 +#endif
 diff --git a/src/nvim/os/pyxis_defs.h b/src/nvim/os/pyxis_defs.h
 new file mode 100644
-index 0000000..2fe0671
 --- /dev/null
 +++ b/src/nvim/os/pyxis_defs.h
 @@ -0,0 +1,16 @@
@@ -672,7 +662,6 @@ index 0000000..2fe0671
 +#define ENV_SEPCHAR ';'
 +#define ENV_SEPSTR ";"
 diff --git a/src/nvim/os/signal.c b/src/nvim/os/signal.c
-index 712309f..0c20c44 100644
 --- a/src/nvim/os/signal.c
 +++ b/src/nvim/os/signal.c
 @@ -19,6 +19,11 @@
@@ -703,3 +692,84 @@ index 712309f..0c20c44 100644
  #endif
  }
  
+diff --git a/src/nvim/event/libuv_proc.h b/src/nvim/event/libuv_proc.h
+--- a/src/nvim/event/libuv_proc.h
++++ b/src/nvim/event/libuv_proc.h
+@@ -1,6 +1,9 @@
+ #pragma once
+ 
+ #include <uv.h>
++#ifdef __pyxis__
++# include <abi/limit.h>
++#endif
+ 
+ #include "nvim/event/defs.h"
+ 
+@@ -9,6 +12,9 @@
+   uv_process_t uv;
+   uv_process_options_t uvopts;
+   uv_stdio_container_t uvstdio[4];
++#ifdef __pyxis__
++  struct call_limit spawn_limit;  // Owned result of this spawn invocation.
++#endif
+ } LibuvProc;
+ 
+ #include "event/libuv_proc.h.generated.h"
+diff --git a/src/nvim/channel.c b/src/nvim/channel.c
+--- a/src/nvim/channel.c
++++ b/src/nvim/channel.c
+@@ -5,6 +5,9 @@
+ #include <stddef.h>
+ #include <stdio.h>
+ #include <string.h>
++#ifdef __pyxis__
++# include <process.h>
++#endif
+ 
+ #include "klib/kvec.h"
+ #include "nvim/api/private/converter.h"
+@@ -434,7 +437,17 @@
+ 
+   int status = proc_spawn(proc, has_in, has_out, has_err);
+   if (status) {
++#ifdef __pyxis__
++    char detail[256];
++    const char *error = os_strerror(status);
++    if (proc->type == kProcTypeUv
++        && call_limit_format(&chan->stream.uv.spawn_limit, detail, sizeof(detail))) {
++      error = detail;
++    }
++    semsg(_(e_jobspawn), error, cmd);
++#else
+     semsg(_(e_jobspawn), os_strerror(status), cmd);
++#endif
+     xfree(cmd);
+     if (proc->env) {
+       tv_dict_free(proc->env);
+diff --git a/src/nvim/os/shell.c b/src/nvim/os/shell.c
+--- a/src/nvim/os/shell.c
++++ b/src/nvim/os/shell.c
+@@ -4,6 +4,9 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <uv.h>
++#ifdef __pyxis__
++# include <process.h>
++#endif
+ 
+ #include "auto/config.h"
+ #include "klib/kvec.h"
+@@ -908,7 +911,13 @@
+     // Failed, probably 'shell' is not executable.
+     if (!silent) {
+       msg_puts(_("\nshell failed to start: "));
++#ifdef __pyxis__
++      char detail[256];
++      msg_outtrans(call_limit_format(&uvproc.spawn_limit, detail, sizeof(detail))
++                   ? detail : os_strerror(status), 0, false);
++#else
+       msg_outtrans(os_strerror(status), 0, false);
++#endif
+       msg_puts(": ");
+       msg_outtrans(prog, 0, false);
+       msg_putchar('\n');

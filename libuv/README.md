@@ -50,13 +50,24 @@ requires clock READ and pipe CREATE. Sleep requires clock SLEEP. No wall time
 is substituted for monotonic time, and clock failures in value-only clock APIs
 abort rather than returning invented timestamps.
 
-Each loop reserves one of the native 32 wait interests for its wake pipe and
-cooperative signal sources, aggregated through one private readiness set. An
-opened stream or observed child reserves one of the remaining 31 interests,
-including inactive streams; timers consume none. Capacity failure is UV_ENOSPC
-before stream ownership transfer or child publication. A wait beyond 30 seconds
-is capped and recomputed. A native wait error returns its negative UV error
-from uv_run, in addition to the ordinary zero/alive return values.
+Each loop owns one persistent native readiness set for its wake pipe, opened
+streams and child observations. Registration admission happens before descriptor
+ownership transfer or child publication. Actual metadata allocation and the
+native process-wide readiness account decide capacity; there is no libuv handle
+quota. Readiness metadata refusal is UV_ENOSPC, allocation failure UV_ENOMEM.
+The native account's INFO reply reports its current ceiling and charge; it is
+not a physical-memory reservation. Each poll turn collects at most one native
+batch of 64 records, then runs the ordinary signal/check/close/timer phases.
+Remaining ready sources rotate across turns. Software read-ahead, completed
+writes and shutdown also drive the loop without a fresh native readiness edge.
+
+Long waits preserve their absolute monotonic deadline across native 30-second
+slices. Empty slices do not finish blocking UV_RUN_ONCE or fire timers early.
+A native backend error returns its negative UV error from uv_run, in addition
+to the ordinary zero/alive return values. A terminal error received while a
+stream is disarmed is retained for its next operation, with no inactive I/O
+callback. Handle activity and ref/unref control loop liveness independently of
+retained watch storage.
 
 Stream open transfers responsibility for its libc descriptor. It must not be
 closed, reused or independently consumed until the libuv handle closes. Data
@@ -107,14 +118,18 @@ alive. Signal-handle close requires the initial thread and aborts if stop fails.
 The old native TTY resize callback API is retired; consumers use SIGWINCH and
 query geometry through uv_tty_get_winsize.
 
-The private set retains only its wake registration between native waits. Each
-wait temporarily registers at most two borrowed libc sources, collects one
-snapshot of at most three readiness records, validates their identities and
-removes signal registrations before checkpoint or application callbacks. It
-preserves the original deadline across signal-only wakes and retains all 31
-other native wait slots. Setup failure rolls back before publishing a watcher;
-source and set errors return through uv_run. The set survives stopped watchers
-until loop close, without retaining their logical source ownership.
+Each wait temporarily registers at most two borrowed libc signal sources in
+the loop's common set. It validates native identities/generations and withdraws
+all borrowed observations before checkpoint or application callbacks. Worker
+threads do not acquire signal ownership. Watch tags resolve through loop-owned
+records; callback close/restart invalidates stale records before dispatch.
+
+REMOVE joins cleanup before descriptor/observer release. If explicit removal
+fails, confirmed last-CONTROL set closure withdraws every observation and
+invalidates the old backend epoch. The loop retains its streams, observers,
+requests and async state and rebuilds real registrations from held sources before
+the next wait. Fresh admission refusal is returned honestly; unconfirmed set
+closure aborts rather than releasing borrowed storage unsafely.
 
 Child launch supports up to three explicit stdin/stdout/stderr slots, directional
 CREATE_PIPE, inherited native PIPE/CONSOLE or native/callable-exported FILE
@@ -156,7 +171,8 @@ being added to an ordinary child's inventory. An explicit
 `uv_pyxis_spawn` TCP resource replaces that declaration source with its selected
 rights; a CONNECT-only replacement cannot satisfy LISTEN.
 
-`uv_pyxis_spawn` accepts an array of `uv_pyxis_resource_t` records containing
+`uv_pyxis_spawn` accepts an optional final caller-owned `struct call_limit *`
+(NULL opts out) and an array of `uv_pyxis_resource_t` records containing
 name, source handle, rights and transport. Ordinary spawn forwards explicitly
 exported named capabilities, including native FILEs and controllers, with their
 actual masks and transport. The fixed memory/clock/launcher roles retain their
@@ -176,9 +192,13 @@ read-only copies to outlive the process handle. Ordinary `uv_spawn` continues to
 resource. Neovim selects that resource only for its same-image internal `--embed`
 server, allowing both event loops to create their own wake pipes.
 
-`uv_pyxis_spawn_job(loop, process, launcher, command, exit_cb)` selects the exact
+`uv_pyxis_spawn_job(loop, process, launcher, command, exit_cb, limit)` selects the exact
 native inventory in `struct pyxis_job_options` from the SDK's `pyxis/job.h`.
-It adds no inherited resources. The supplied image, argv, grants, selected CAP/TEXT
+Its optional final caller-owned `struct call_limit *` receives numeric native
+capacity detail; NULL opts out. Both Pyxis spawn extensions clear detail on entry,
+never print, and preserve unknown launch outcomes without retry. Standard
+`uv_spawn` passes NULL. Process watches are admitted atomically with native
+launch before the child is published. It adds no inherited resources. The supplied image, argv, grants, selected CAP/TEXT
 entries and cwd follow libc's direct-job preparation
 and final grant audit, including rejection of known descendant launch authority.
 The caller audits provider behavior for the child's lifetime.

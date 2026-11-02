@@ -38,7 +38,9 @@ It delegates the read-only runtime as `nvim_runtime://`. The terminal client
 launches only its same-image `--embed` server over directional stdio pipes;
 that internal child explicitly receives pipe CREATE and retains the runtime
 root. The parent's `app://` is excluded from child inheritance. Redirected
-stdin requiring fd 3 rejects before launch.
+stdin requiring fd 3 rejects before launch. Native spawn capacity errors include
+the SDK's structured quantity and limiting source when available, through the
+ordinary job/shell error message.
 
 `nvim_runtime://sysinit.vim` loads before optional user configuration at
 `home://.config/nvim/init.lua` or `home://.config/nvim/init.vim`. It selects the

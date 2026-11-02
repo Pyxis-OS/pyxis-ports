@@ -38,12 +38,12 @@ struct child_stream {
   unsigned parent_access;
   uv_pipe_t *stream;
   struct pyxis_descriptor_binding inherited;
+  struct uv__pyxis_watch *watch;
 };
 
 static int prepare_streams(uv_loop_t *loop, const uv_process_options_t *options,
-    struct child_stream streams[ENVIRONMENT_STREAM_COUNT], unsigned *needed)
+    struct child_stream streams[ENVIRONMENT_STREAM_COUNT])
 {
-  *needed = 1;
   for (size_t i = 0; i < ENVIRONMENT_STREAM_COUNT; ++i) {
     streams[i].parent_fd = -1;
     if (i >= (size_t)options->stdio_count || options->stdio[i].flags == UV_IGNORE) {
@@ -70,7 +70,6 @@ static int prepare_streams(uv_loop_t *loop, const uv_process_options_t *options,
       streams[i].stream = stream;
       streams[i].parent_access = i == ENVIRONMENT_STDIN ? PYXIS_DESCRIPTOR_WRITE :
           PYXIS_DESCRIPTOR_READ;
-      ++*needed;
     } else {
       int fd;
       if (stdio->flags == UV_INHERIT_FD) {
@@ -325,20 +324,23 @@ static enum call_status stage_configured_sources(const struct environment_captur
 
 int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     const uv_process_options_t *options, const uv_pyxis_resource_t *extra_resources,
-    size_t extra_count)
+    size_t extra_count, struct call_limit *limit)
 {
+  if (limit) {
+    *limit = (struct call_limit){0};
+  }
   if (!loop || !process || !options) {
     return UV_EINVAL;
   }
   /* Spawn callers close this handle after failure too. It owns no native
-   * observer or wait admission until publication succeeds. */
+   * observer until publication succeeds. Local watch storage is prepared first. */
   uv__handle_init(loop, (uv_handle_t *)process, UV_PROCESS);
   process->observer = HANDLE_INVALID;
   process->selection = NULL;
   process->exit_reason = 0;
   process->pid = UV_ENOSYS;
   process->exit_cb = options->exit_cb;
-  process->admitted = 0;
+  process->watch = NULL;
   if (!options->file || !options->args || !options->args[0] ||
       options->stdio_count < 0 || (options->stdio_count && !options->stdio)) {
     return UV_EINVAL;
@@ -356,12 +358,12 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     return error;
   }
   struct child_stream streams[ENVIRONMENT_STREAM_COUNT] = {0};
-  unsigned needed;
-  error = prepare_streams(loop, options, streams, &needed);
+  error = prepare_streams(loop, options, streams);
   if (error) {
     return error;
   }
-  error = uv__pyxis_reserve(loop, needed);
+  error = uv__pyxis_watch_new(loop, (uv_handle_t *)process, HANDLE_INVALID,
+      WAIT_COMPLETE, WAIT_COMPLETE, limit, &process->watch);
   if (error) {
     return error;
   }
@@ -476,7 +478,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   if (error) {
     goto done;
   }
-  snapshot_status = program_image_prepare(selection->image, &input, NULL);
+  snapshot_status = program_image_prepare(selection->image, &input, limit);
   if (snapshot_status != CALL_OK) {
     error = uv__pyxis_status(snapshot_status);
     goto done;
@@ -500,7 +502,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
         }
       }
       if (!error) {
-        error = uv__pyxis_status(program_image_select_interpreter(input, image, NULL));
+        error = uv__pyxis_status(program_image_select_interpreter(input, image, limit));
       }
     }
     if (!error) {
@@ -732,6 +734,17 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
         handle_close(parent);
         goto done;
       }
+      struct pyxis_descriptor_binding binding;
+      if (pyxis_descriptor_borrow(streams[i].parent_fd, &binding)) {
+        error = uv_translate_sys_error(errno);
+        goto done;
+      }
+      error = uv__pyxis_watch_new(loop, (uv_handle_t *)streams[i].stream,
+          binding.handle, streams[i].parent_access == PYXIS_DESCRIPTOR_READ ?
+          WAIT_READABLE : WAIT_WRITABLE, 0, limit, &streams[i].watch);
+      if (error) {
+        goto done;
+      }
       entries[entry_count++] = (struct launch_environment_entry){
         (uintptr_t)(i == ENVIRONMENT_STDIN ? "stdin" : i == ENVIRONMENT_STDOUT ? "stdout" : "stderr"),
         ENVIRONMENT_CAP, ENVIRONMENT_EXPORTED, grant_count, 0};
@@ -791,10 +804,13 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       goto done;
     }
   }
+  struct launch_observation observation = {
+    .set = loop->backend->set, .tag = process->watch->tag,
+  };
   handle_t observer = HANDLE_INVALID;
   enum call_status status = program_launch_prepared(admission_launcher,
       bundle_launch ? bundle_launch_request(bundle_launch) : &request,
-      input, &working.context, &observer, NULL);
+      input, &working.context, &observer, &observation, limit);
   bundle_launch_admitted(bundle_launch, status, observer);
   if (status != CALL_OK) {
     error = uv__pyxis_status(status);
@@ -803,7 +819,7 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
   process->observer = observer;
   process->selection = selection;
   selection = NULL;
-  process->admitted = 1;
+  uv__pyxis_watch_bind(process->watch, observer, observation.registration);
   uv__handle_start(process);
   for (size_t i = 0; i < ENVIRONMENT_STREAM_COUNT; ++i) {
     uv_pipe_t *stream = streams[i].stream;
@@ -811,14 +827,17 @@ int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
       stream->fd = streams[i].parent_fd;
       streams[i].parent_fd = -1;
       stream->access = streams[i].parent_access;
-      stream->admitted = 1;
+      stream->watch = streams[i].watch;
+      streams[i].watch = NULL;
       stream->flags |= stream->access == PYXIS_DESCRIPTOR_READ ? UV_HANDLE_READABLE : UV_HANDLE_WRITABLE;
     }
   }
-  needed = 0;
   error = 0;
 
 done:
+  if (error) {
+    uv__pyxis_watch_close(&process->watch);
+  }
   bundle_launch_close(bundle_launch);
   command_selection_close(selection);
   command_search_capture_close(&search);
@@ -841,6 +860,7 @@ done:
   pyxis_environment_snapshot_close(&inherited_environment);
   pyxis_working_snapshot_close(&working);
   for (size_t i = 0; i < ENVIRONMENT_STREAM_COUNT; ++i) {
+    uv__pyxis_watch_close(&streams[i].watch);
     if (streams[i].parent_fd >= 0) {
       close(streams[i].parent_fd);
     }
@@ -857,14 +877,16 @@ done:
   uv__free(directories);
   uv__free(entries);
   uv__free(grants);
-  uv__pyxis_release(loop, needed);
   return error;
 }
 
 int uv_pyxis_spawn_job(uv_loop_t *loop, uv_process_t *process,
     handle_t launcher, const struct pyxis_job_options *command,
-    uv_exit_cb exit_cb)
+    uv_exit_cb exit_cb, struct call_limit *limit)
 {
+  if (limit) {
+    *limit = (struct call_limit){0};
+  }
   if (!loop || !process || !command) {
     return UV_EINVAL;
   }
@@ -874,35 +896,41 @@ int uv_pyxis_spawn_job(uv_loop_t *loop, uv_process_t *process,
   process->exit_reason = 0;
   process->pid = UV_ENOSYS;
   process->exit_cb = exit_cb;
-  process->admitted = 0;
-  int error = uv__pyxis_reserve(loop, 1);
+  process->watch = NULL;
+  int error = uv__pyxis_watch_new(loop, (uv_handle_t *)process, HANDLE_INVALID,
+      WAIT_COMPLETE, WAIT_COMPLETE, limit, &process->watch);
   if (error) {
     return error;
   }
+  struct launch_observation observation = {
+    .set = loop->backend->set, .tag = process->watch->tag,
+  };
   handle_t observer = HANDLE_INVALID;
-  enum call_status status = pyxis_job_launch_observer(launcher, command, &observer, NULL);
+  enum call_status status = pyxis_job_launch_observer(launcher, command, &observer,
+      &observation, limit);
   if (status != CALL_OK) {
-    uv__pyxis_release(loop, 1);
+    uv__pyxis_watch_close(&process->watch);
     return uv__pyxis_status(status);
   }
   process->observer = observer;
-  process->admitted = 1;
+  uv__pyxis_watch_bind(process->watch, observer, observation.registration);
   uv__handle_start(process);
   return 0;
 }
 
 int uv_spawn(uv_loop_t *loop, uv_process_t *process, const uv_process_options_t *options)
 {
-  return uv_pyxis_spawn(loop, process, options, NULL, 0);
+  return uv_pyxis_spawn(loop, process, options, NULL, 0, NULL);
 }
 
-void uv__pyxis_process_dispatch(uv_process_t *process)
+int uv__pyxis_process_dispatch(uv_process_t *process)
 {
   struct process_result result;
   enum call_status status = process_wait(process->observer, &result);
   if (status != CALL_OK) {
-    abort();
+    return uv__pyxis_status(status);
   }
+  uv__pyxis_watch_close(&process->watch);
   process->exit_reason = result.kind;
   uv__handle_stop(process);
   if (process->exit_cb) {
@@ -910,6 +938,7 @@ void uv__pyxis_process_dispatch(uv_process_t *process)
         result.kind == PROCESS_EXITED || result.kind == PROCESS_START_FAILED ?
             result.exit_status : -1, 0);
   }
+  return 0;
 }
 
 const struct command_selection *uv_pyxis_process_selection(const uv_process_t *process)
@@ -919,14 +948,13 @@ const struct command_selection *uv_pyxis_process_selection(const uv_process_t *p
 
 void uv__pyxis_process_close(uv_process_t *process)
 {
+  uv__pyxis_watch_close(&process->watch);
   command_selection_close(process->selection);
   process->selection = NULL;
   if (process->observer != HANDLE_INVALID) {
     handle_close(process->observer);
     process->observer = HANDLE_INVALID;
   }
-  uv__pyxis_release(process->loop, process->admitted);
-  process->admitted = 0;
 }
 
 int uv_process_kill(uv_process_t *process, int signal)

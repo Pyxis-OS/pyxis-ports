@@ -205,21 +205,6 @@ void uv_stop(uv_loop_t *loop)
   loop->stop_flag = 1;
 }
 
-int uv__pyxis_reserve(uv_loop_t *loop, unsigned count)
-{
-  if (count > WAIT_MAX_INTERESTS - 1 - loop->interest_count) {
-    return UV_ENOSPC;
-  }
-  loop->interest_count += count;
-  return 0;
-}
-
-void uv__pyxis_release(uv_loop_t *loop, unsigned count)
-{
-  assert(loop->interest_count >= count);
-  loop->interest_count -= count;
-}
-
 uint64_t uv_hrtime(void)
 {
   uint64_t now;
@@ -273,14 +258,20 @@ int uv_loop_init(uv_loop_t *loop)
   loop->time = now / UINT64_C(1000000);
   loop->wake_reader = wake.reader;
   loop->wake_writer = wake.writer;
-  loop->signal_set = HANDLE_INVALID;
   uv__queue_init(&loop->handle_queue);
   uv__queue_init(&loop->prepare_handles);
   uv__queue_init(&loop->check_handles);
   uv__queue_init(&loop->idle_handles);
   uv__queue_init(&loop->async_handles);
   uv__queue_init(&loop->signal_handles);
-  return 0;
+  int error = uv__pyxis_backend_init(loop);
+  if (error) {
+    uv__pyxis_backend_close(loop);
+    handle_close(loop->wake_reader);
+    handle_close(loop->wake_writer);
+    handle_close(loop->clock);
+  }
+  return error;
 }
 
 int uv_loop_close(uv_loop_t *loop)
@@ -290,12 +281,7 @@ int uv_loop_close(uv_loop_t *loop)
     return UV_EBUSY;
   }
   enum call_status first = CALL_OK;
-  if (loop->signal_set != HANDLE_INVALID) {
-    if (handle_close(loop->signal_set)) {
-      first = CALL_IO;
-    }
-    loop->signal_set = HANDLE_INVALID;
-  }
+  uv__pyxis_backend_close(loop);
   enum call_status wake_status = handle_close(loop->wake_reader);
   if (first == CALL_OK) {
     first = wake_status;
@@ -503,6 +489,34 @@ static void run_closing(uv_loop_t *loop)
   }
 }
 
+static int dispatch_watch(struct uv__pyxis_watch *watch, uint64_t events)
+{
+  uv_loop_t *loop = watch->loop;
+  if (watch->error) {
+    if (!watch->owner || watch->owner->type == UV_PROCESS) {
+      return watch->error;
+    }
+    uv_stream_t *stream = (uv_stream_t *)watch->owner;
+    if ((stream->flags & UV_HANDLE_READING) ||
+        !uv__queue_empty(&stream->write_queue) || stream->shutdown_req) {
+      return watch->error;
+    }
+  }
+  uv__pyxis_watch_unready(watch);
+  if (!watch->owner) {
+    if (events & (WAIT_ERROR | WAIT_PEER_FIN | WAIT_CLOSED | WAIT_WRITE_CLOSED)) {
+      return UV_EIO;
+    }
+    run_async(loop);
+    return 0;
+  }
+  if (watch->owner->type == UV_PROCESS) {
+    return events & WAIT_COMPLETE ?
+        uv__pyxis_process_dispatch((uv_process_t *)watch->owner) : 0;
+  }
+  return uv__pyxis_stream_dispatch((uv_stream_t *)watch->owner, events);
+}
+
 static int poll_events(uv_loop_t *loop, int timeout)
 {
   uint64_t now;
@@ -510,55 +524,42 @@ static int poll_events(uv_loop_t *loop, int timeout)
   if (status != CALL_OK) {
     return uv__pyxis_status(status);
   }
-  uint64_t duration = timeout < 0 || timeout > 30000 ? WAIT_MAX_WAIT_NS :
-      (uint64_t)timeout * UINT64_C(1000000);
-  uint64_t deadline = timeout == 0 ? 0 : now + duration;
-  if (deadline < now && timeout != 0) {
+  uint64_t deadline = 0;
+  if (timeout < 0) {
     deadline = UINT64_MAX;
+  } else if (timeout) {
+    uint64_t duration = (uint64_t)timeout * UINT64_C(1000000);
+    uint64_t base = loop->time > UINT64_MAX / UINT64_C(1000000) ? UINT64_MAX :
+        loop->time * UINT64_C(1000000);
+    deadline = base > UINT64_MAX - duration ? UINT64_MAX : base + duration;
   }
-  struct wait_interest interests[WAIT_MAX_INTERESTS];
-  uv_handle_t *handles[WAIT_MAX_INTERESTS];
-  uint64_t events[WAIT_MAX_INTERESTS];
+  struct uv__pyxis_backend *backend = loop->backend;
+  struct readiness_set_event events[READINESS_SET_BATCH_MAX];
   size_t count;
+  uint64_t epoch;
   for (;;) {
-    count = 1;
-    struct uv__queue *entry;
-    int immediate = 0;
-    uv__queue_foreach(entry, &loop->handle_queue) {
-      uv_handle_t *handle = uv__queue_data(entry, uv_handle_t, handle_queue);
-      if (uv__is_closing(handle)) {
-        continue;
-      }
-      if (handle->type == UV_NAMED_PIPE || handle->type == UV_TTY) {
-        int result = uv__pyxis_stream_events((uv_stream_t *)handle, &interests[count]);
-        if (result < 0) {
-          return result;
-        }
-        if (!result) {
-          continue;
-        }
-        if (result == 2) {
-          immediate = 1;
-        }
-      } else if (handle->type == UV_PROCESS && uv__is_active(handle)) {
-        interests[count] = (struct wait_interest){((uv_process_t *)handle)->observer,
-            WAIT_COMPLETE, 0};
-      } else {
-        continue;
-      }
-      handles[count++] = handle;
-    }
-    memset(events, 0, count * sizeof(*events));
-    int error = uv__pyxis_signal_wait(loop, interests, count,
-        immediate ? 0 : deadline, events);
+    int error = uv__pyxis_backend_ensure(loop, NULL);
     if (error) {
       return error;
     }
-    int ready = immediate || uv__pyxis_signal_pending(loop);
-    for (size_t index = 0; index < count; ++index) {
-      ready |= events[index] != 0;
+    if (!uv__queue_empty(&backend->dispatch_queue)) {
+      uv__queue_add(&backend->ready_queue, &backend->dispatch_queue);
+      uv__queue_init(&backend->dispatch_queue);
     }
-    if (ready || !deadline || loop->stop_flag) {
+    int immediate = !uv__queue_empty(&backend->ready_queue);
+    uint64_t slice = now > UINT64_MAX - WAIT_MAX_WAIT_NS ? UINT64_MAX :
+        now + WAIT_MAX_WAIT_NS;
+    if (slice > deadline) {
+      slice = deadline;
+    }
+    error = uv__pyxis_signal_wait(loop, immediate ? 0 : slice, events, &count, &epoch);
+    if (error) {
+      return error;
+    }
+    if (epoch != backend->epoch) {
+      continue;
+    }
+    if (count || immediate || uv__pyxis_signal_pending(loop) || !deadline || loop->stop_flag) {
       break;
     }
     status = clock_now(loop->clock, &now);
@@ -568,22 +569,45 @@ static int poll_events(uv_loop_t *loop, int timeout)
     if (now >= deadline) {
       break;
     }
-    /* Another loop's signal may have been collected. Keep this wait's deadline. */
+    /* Empty native slices and another loop's signals preserve the logical wait. */
   }
-  if (events[0]) {
-    run_async(loop);
-  }
-  for (size_t i = 1; i < count; ++i) {
-    uv_handle_t *handle = handles[i];
-    if (uv__is_closing(handle)) {
+  uv__queue_move(&backend->ready_queue, &backend->dispatch_queue);
+  for (size_t index = 0; index < count; ++index) {
+    struct readiness_set_event *event = &events[index];
+    struct uv__pyxis_watch *watch = uv__pyxis_watch_find(loop, event, epoch);
+    if (!watch) {
       continue;
     }
-    if (handle->type == UV_PROCESS) {
-      if (events[i] & WAIT_COMPLETE) {
-        uv__pyxis_process_dispatch((uv_process_t *)handle);
+    if (event->status >= CALL_STATUS_COUNT ||
+        (event->status != CALL_OK && event->events)) {
+      return UV_EIO;
+    }
+    if (event->status != CALL_OK) {
+      watch->error = uv__pyxis_status(event->status);
+      uv__pyxis_watch_ready(watch);
+    }
+  }
+  for (size_t index = 0; index < count; ++index) {
+    struct readiness_set_event *event = &events[index];
+    struct uv__pyxis_watch *watch = uv__pyxis_watch_find(loop, event, epoch);
+    if (!watch) {
+      continue;
+    }
+    int error = dispatch_watch(watch, event->events);
+    if (error) {
+      return error;
+    }
+  }
+  while (!uv__queue_empty(&backend->dispatch_queue)) {
+    struct uv__pyxis_watch *watch = uv__queue_data(
+        uv__queue_head(&backend->dispatch_queue), struct uv__pyxis_watch, ready_queue);
+    uv__pyxis_watch_unready(watch);
+    if (watch->owner && !uv__is_closing(watch->owner)) {
+      int error = dispatch_watch(watch, 0);
+      if (error) {
+        uv__pyxis_watch_ready(watch);
+        return error;
       }
-    } else {
-      uv__pyxis_stream_dispatch((uv_stream_t *)handle, events[i]);
     }
   }
   return 0;

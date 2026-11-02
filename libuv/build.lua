@@ -39,7 +39,7 @@ return function(ctx)
     "sha256=" .. ctx.metadata.source.archive.sha256 .. "\n",
     "version=" .. ctx.metadata.version .. "\nlicense=" .. ctx.metadata.license .. "\n",
     "patches=0001-pyxis-platform.patch\n",
-    "profile=native one-thread loop, pipes, console, child observation, timers, synchronous filesystem, persistent signal watchers with cooperative WINCH/INT delivery\n",
+    "profile=native one-thread loop, persistent readiness set, pipes, console, child observation, timers, synchronous filesystem, persistent signal watchers with cooperative WINCH/INT delivery\n",
     "omitted=Unix/Windows backends, workers, async filesystem, sockets, watches, other signal delivery, oneshot signals, module loading\n"))
   assert(provenance:close())
   for _, name in ipairs({ "license", "extra_license", "notice", "provenance" }) do
@@ -62,6 +62,7 @@ return function(ctx)
     "include/uv/pyxis.h",
     "include/uv/pyxis-native.h",
     "pyxis/core.c",
+    "pyxis/readiness.c",
     "pyxis/fs.c",
     "pyxis/internal.h",
     "pyxis/os.c",

@@ -14,6 +14,8 @@ struct sockaddr_in;
 struct sockaddr_in6;
 struct addrinfo;
 struct pyxis_terminal_state;
+struct uv__pyxis_backend;
+struct uv__pyxis_watch;
 
 typedef struct uv_buf_t {
   char *base;
@@ -55,9 +57,7 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
   handle_t clock; \
   handle_t wake_reader; \
   handle_t wake_writer; \
-  unsigned interest_count; \
-  handle_t signal_set; \
-  struct readiness_set_registration wake_registration; \
+  struct uv__pyxis_backend *backend; \
   struct uv__queue signal_handles;
 
 #define UV_HANDLE_PRIVATE_FIELDS \
@@ -70,7 +70,7 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
   struct uv__queue write_completed_queue; \
   int fd; \
   unsigned access; \
-  unsigned admitted;
+  struct uv__pyxis_watch *watch;
 
 #define UV_WRITE_PRIVATE_FIELDS \
   struct uv__queue queue; \
@@ -85,7 +85,7 @@ typedef struct { void *handle; char *errmsg; } uv_lib_t;
   handle_t observer; \
   struct command_selection *selection; \
   uint64_t exit_reason; \
-  unsigned admitted;
+  struct uv__pyxis_watch *watch;
 
 #define UV_TIMER_PRIVATE_FIELDS \
   uv_timer_cb timer_cb; \

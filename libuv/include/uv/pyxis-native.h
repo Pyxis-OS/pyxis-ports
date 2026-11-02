@@ -3,6 +3,8 @@
 
 #include "uv.h"
 
+struct call_limit;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,10 +20,11 @@ typedef struct {
  * A record replaces an inherited capability of the same name. Names must be
  * unique; memory, clock, launcher and script are reserved. Arrays, names and
  * source handles are borrowed until return; source grants survive all outcomes.
+ * Optional caller-owned limit detail is cleared on entry; NULL opts out.
  * Native launch capture/startup budgets apply. Close process after failure too. */
 UV_EXTERN int uv_pyxis_spawn(uv_loop_t *loop, uv_process_t *process,
     const uv_process_options_t *options, const uv_pyxis_resource_t *resources,
-    size_t resource_count);
+    size_t resource_count, struct call_limit *limit);
 
 struct command_selection;
 
@@ -36,10 +39,11 @@ struct pyxis_job_options;
 /* Exact native job inventory, with libc FILE/descriptor preparation and audit.
  * Inputs survive all outcomes. Caller prepares any PIPE endpoints separately.
  * Close process after failure too; close only detaches the owned observer.
+ * Optional caller-owned limit detail is cleared on entry; NULL opts out.
  * Native uncertain admission maps to UV_EIO; never automatically replay. */
 UV_EXTERN int uv_pyxis_spawn_job(uv_loop_t *loop, uv_process_t *process,
     handle_t launcher, const struct pyxis_job_options *command,
-    uv_exit_cb exit_cb);
+    uv_exit_cb exit_cb, struct call_limit *limit);
 
 /* Requests termination through this handle's observer, without awaiting cleanup.
  * Completion remains the exit callback and native process->exit_reason. */
