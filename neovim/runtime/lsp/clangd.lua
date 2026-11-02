@@ -1,7 +1,8 @@
 -- Pyxis: clangd from the hosted toolchain. Enable it in init.lua with
 -- vim.lsp.enable('clangd'); change it with vim.lsp.config('clangd', { ... }).
 --
--- libc reports no CPU count, so -j sets the worker count. Background indexing
+-- clangd sizes its worker pool from the CPU allowance libc reports
+-- (sysconf(_SC_NPROCESSORS_ONLN) through libc++), so no -j. Background indexing
 -- would write .cache/clangd into the project and stays off.
 
 local markers = { 'compile_commands.json', 'compile_flags.txt', '.git' }
@@ -11,7 +12,6 @@ return {
   cmd = {
     'clangd',
     '--resource-dir=clang_resources://',
-    '-j=4',
     '--background-index=false',
     '--pch-storage=memory',
   },
