@@ -684,7 +684,7 @@ static int run_program(lua_State *state)
     const struct launch_request *prepared = owned->launch ?
         bundle_launch_request(owned->launch) : &request;
     status = program_launch_prepared(launcher, prepared, owned->input,
-        &owned->working.context, &owned->child, &owned->limit);
+        &owned->working.context, &owned->child, NULL, &owned->limit);
   }
   if (status != CALL_OK) {
     return native_error(state, owned, "run", status);
