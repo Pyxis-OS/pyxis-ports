@@ -6,7 +6,7 @@ return function(ctx)
   local host_lpeg = assert(ctx.extra.host_lpeg)
   local host_module = ctx.build .. "/host/nlua0.so"
   local lua = host_lua .. "/lua"
-  ctx.run({ "make", "-j16", "-C", host_lua, "lua", "CC=cc",
+  ctx.run({ "make", "-j12", "-C", host_lua, "lua", "CC=cc",
     "MYCFLAGS=-DLUA_USE_POSIX -DLUA_USE_DLOPEN", "MYLIBS=-Wl,-E -ldl" })
   ctx.run({ "mkdir", "-p", ctx.build .. "/host" })
   local compile_host = { "cc", "-O2", "-shared", "-fPIC", "-DNVIM_NLUA0",
@@ -50,7 +50,7 @@ return function(ctx)
     "-DENABLE_LIBINTL=OFF", "-DENABLE_TRANSLATIONS=OFF", "-DENABLE_UNIBILIUM=OFF",
     "-DENABLE_WASMTIME=OFF", "-DENABLE_COMPILER_SUGGESTIONS=OFF",
     "-DFETCHCONTENT_FULLY_DISCONNECTED=ON" })
-  ctx.run({ "cmake", "--build", ctx.build, "--target", "nvim_bin", "--parallel", "16" })
+  ctx.run({ "cmake", "--build", ctx.build, "--target", "nvim_bin", "--parallel", "12" })
 
   local runtime = ctx.stage .. "/bin/nvim.pxb/app/share/nvim/runtime"
   ctx.run({ "mkdir", "-p", runtime .. "/syntax/vim" })

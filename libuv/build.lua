@@ -1,5 +1,5 @@
 return function(ctx)
-  ctx.run({ "make", "-j16", "-f", ctx.recipe .. "/Makefile",
+  ctx.run({ "make", "-j12", "-f", ctx.recipe .. "/Makefile",
     "SDK=" .. ctx.sdk, "SOURCE=" .. ctx.source, "BUILD=" .. ctx.build,
     "RECIPE=" .. ctx.recipe, "CROSS_COMPILE=" .. ctx.cross_compile })
   ctx.run({ "install", "-D", "-m", "644", ctx.build .. "/libuv.a",
