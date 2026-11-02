@@ -132,8 +132,8 @@ The files in `pyxis/` are the platform layer:
   joinable pthreads. Creation fails with libc's error without the threads
   grant. Stack requests are minimums of at least 1 MiB, rounded up to a page;
   libc refuses more than 8 MiB. Names stay inside SDL. Only normal priority
-  succeeds. `SDL_DetachThread` sets an error and leaves libc's record and stack
-  reserved until exit, which then skips orderly finalizers. Conditions wait on
+  succeeds. `SDL_DetachThread` calls `pthread_detach`, so libc collects the finished
+  thread's stack and record as for any detached thread. Conditions wait on
   the monotonic clock; upstream's pthread recursive mutexes and TLS keys and its
   generic semaphores (over those conditions) are built unchanged.
 - **Audio** (`SDL_pyxisaudio.c`): one output device, the space's native PCM
@@ -282,8 +282,7 @@ editor is the in-tree Set and Has-then-Get consumer.
 
 These facilities report themselves as unsupported, as upstream does:
 
-- **Thread priorities and detach.** Only normal priority succeeds, and
-  detached threads are not collected before exit.
+- **Thread priorities.** Only normal priority succeeds.
 - **Audio capture** and output device selection: there is one default output.
 - **Haptics, sensors, HIDAPI, shared objects, power and Vulkan.**
 - **OpenGL in the ordinary archive.** Select the separate OSMesa archive for GL.

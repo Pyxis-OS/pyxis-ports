@@ -81,14 +81,11 @@ void SDL_SYS_WaitThread(SDL_Thread *thread)
   pthread_join(thread->handle, NULL);
 }
 
-/* libc has no detached threads. The thread keeps running and SDL frees its
- * own record when it returns, but libc's joinable record, stack and TLS stay
- * reserved until the process exits, and that uncollected record makes exit
- * skip libc's orderly finalizers. */
+/* As upstream's pthread backend: libc collects a detached thread's stack and
+ * record with the next thread creation, join or orderly exit. */
 void SDL_SYS_DetachThread(SDL_Thread *thread)
 {
-  (void)thread;
-  SDL_SetError("Pyxis threads cannot be detached; resources remain until exit");
+  pthread_detach(thread->handle);
 }
 
 #endif /* SDL_THREAD_PTHREAD */
