@@ -129,7 +129,7 @@ int uv__pyxis_watch_new(uv_loop_t *loop, uv_handle_t *owner, handle_t target,
     size_t capacity = backend->capacity ? backend->capacity * 2 : 16;
     if (capacity < backend->capacity || capacity > SIZE_MAX / sizeof(*backend->watches) ||
         capacity >= UV__PYXIS_SIGNAL_TAG(1)) {
-      return UV_ENOMEM;
+      return UV_EOVERFLOW;
     }
     void *grown = uv__realloc(backend->watches, capacity * sizeof(*backend->watches));
     if (!grown) {
