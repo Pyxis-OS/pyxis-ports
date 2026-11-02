@@ -786,11 +786,10 @@ diff --git a/src/nvim/event/loop.c b/src/nvim/event/loop.c
  #include <uv.h>
  
  #include "nvim/event/loop.h"
-@@ -11,6 +14,17 @@
- #include "nvim/types_defs.h"
+@@ -12,9 +15,28 @@
  
  #include "event/loop.c.generated.h"
-+
+ 
 +#ifdef __pyxis__
 +static void pyxis_uv_run(uv_loop_t *loop, uv_run_mode mode)
 +{
@@ -801,10 +800,22 @@ diff --git a/src/nvim/event/loop.c b/src/nvim/event/loop.c
 +  }
 +}
 +#endif
- 
++
  void loop_init(Loop *loop, void *data)
  {
-@@ -56,7 +70,11 @@
++#ifdef __pyxis__
++  int status = uv_loop_init(&loop->uv);
++  if (status < 0) {
++    fprintf(stderr, "Nvim: uv_loop_init failed: %s (%d)\n", uv_strerror(status), status);
++    abort();
++  }
++#else
+   uv_loop_init(&loop->uv);
++#endif
+   loop->recursive = 0;
+   loop->closing = false;
+   loop->uv.data = loop;
+@@ -56,7 +78,11 @@
      mode = UV_RUN_NOWAIT;
    }
  
@@ -816,7 +827,7 @@ diff --git a/src/nvim/event/loop.c b/src/nvim/event/loop.c
  
    if (ms > 0) {
      uv_timer_stop(&loop->poll_timer);
-@@ -161,7 +179,11 @@
+@@ -161,7 +187,11 @@
    while (true) {
      // Run the loop to tickle close-callbacks (which should then free memory).
      // Use UV_RUN_NOWAIT to avoid a hang. #11820

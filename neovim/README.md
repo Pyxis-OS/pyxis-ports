@@ -42,10 +42,10 @@ stdin requiring fd 3 rejects before launch. Native spawn capacity errors include
 the SDK's structured quantity and limiting source when available, through the
 ordinary job/shell error message.
 
-WP5.4 (accepted by chronium, 2026-11-02): a negative `uv_run` result prints its
-actual error text and code to stderr and immediately aborts that Neovim process,
-during polling or teardown. This does not run editor preservation. Explicit
-spawn refusals remain recoverable through the ordinary job/shell error path.
+WP5.4 (accepted by chronium, 2026-11-02): a failed `uv_loop_init` or negative
+`uv_run` result prints its actual error text and code to stderr and immediately
+aborts that Neovim process during initialization, polling or teardown. This does
+not run editor preservation. Explicit spawn refusals remain recoverable through the ordinary job/shell error path.
 
 `nvim_runtime://sysinit.vim` loads before optional user configuration at
 `home://.config/nvim/init.lua` or `home://.config/nvim/init.vim`. It selects the
