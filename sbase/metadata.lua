@@ -13,6 +13,8 @@ return {
     "patches/0001-use-libc-strcasestr.patch",
     "patches/0006-use-native-grep-stdio.patch",
     "patches/0007-count-pipe-values-by-size.patch",
+    "patches/0008-follow-tail-by-name.patch",
+    "patches/0009-check-sort-output-file.patch",
   },
   outputs = {
     executable = "bin/cksum.pxe",

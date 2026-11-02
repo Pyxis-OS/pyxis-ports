@@ -1,0 +1,77 @@
+--- a/tail.c
++++ b/tail.c
+@@ -14,6 +14,20 @@
+ 
+ static char mode = 'n';
+ 
++/* Pyxis: -F reopens NAME when it names a different file than the one followed.
++ * Identity needs st_dev and st_ino from both sides; without them a replacement
++ * cannot be proven and the open file is kept. */
++static int
++replaced(const struct stat *open, const struct stat *named)
++{
++	const uint64_t identity = STAT_DEV_VALID | STAT_INO_VALID;
++
++	if ((open->st_valid & identity) != identity ||
++	    (named->st_valid & identity) != identity)
++		return 0;
++	return open->st_dev != named->st_dev || open->st_ino != named->st_ino;
++}
++
+ static int
+ dropinit(int fd, const char *fname, size_t count)
+ {
+@@ -143,7 +157,7 @@
+ static void
+ usage(void)
+ {
+-	eprintf("usage: %s [-f] [-c num | -m num | -n num | -num] [file ...]\n", argv0);
++	eprintf("usage: %s [-f | -F] [-c num | -m num | -n num | -num] [file ...]\n", argv0);
+ }
+ 
+ int
+@@ -152,11 +166,15 @@
+ 	struct stat st1, st2;
+ 	int fd;
+ 	size_t n = 10;
+-	int fflag = 0, ret = 0, newline = 0, many = 0;
++	struct stat st3;
++	int fflag = 0, Fflag = 0, missing = 0, ret = 0, newline = 0, many = 0;
+ 	char *numstr;
+ 	int (*tail)(int, const char *, size_t) = taketail;
+ 
+ 	ARGBEGIN {
++	case 'F':
++		Fflag = 1;
++		/* fallthrough */
+ 	case 'f':
+ 		fflag = 1;
+ 		break;
+@@ -221,6 +239,27 @@
+ 				}
+ 				st1 = st2;
+ 				sleep(1);
++				if (!Fflag || fd == 0)
++					continue;
++				if (stat(*argv, &st3) < 0) {
++					if (!missing)
++						fprintf(stderr, "%s: file removed\n", *argv);
++					missing = 1;
++					continue;
++				}
++				missing = 0;
++				if (!replaced(&st1, &st3))
++					continue;
++				/* Print what the old file still holds, then follow
++				 * the new one from its start. */
++				if (concat(fd, *argv, 1, "<stdout>") < 0)
++					exit(1);
++				close(fd);
++				if ((fd = open(*argv, O_RDONLY)) < 0)
++					eprintf("open %s:", *argv);
++				fprintf(stderr, "%s: file replaced\n", *argv);
++				if (fstat(fd, &st1) < 0)
++					eprintf("fstat %s:", *argv);
+ 			}
+ 		}
+ 	}

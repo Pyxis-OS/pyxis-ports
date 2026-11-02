@@ -1,0 +1,12 @@
+--- a/sort.c
++++ b/sort.c
+@@ -430,6 +430,9 @@
+ 		}
+ 	}
+ 
++	/* Pyxis: report a failed write or close of -o FILE, as for stdout. */
++	if (outfile && fshut(ofp, outfile))
++		ret = 2;
+ 	if (fshut(stdin, "<stdin>") | fshut(stdout, "<stdout>") |
+ 	    fshut(stderr, "<stderr>"))
+ 		ret = 2;
