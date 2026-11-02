@@ -303,3 +303,7 @@ bounded; explicit `pyxis_resources` replacements also bound continuation, with
 no fallback to fuller sources. Embeddings keep the existing source profile and
 captured leaf jobs are unchanged. Scope ownership is in the standalone CLI, not
 the libuv loop or process-handle garbage collector.
+
+The backend generation is never reused: exhausting its uint64_t generation
+returns UV_EOVERFLOW until loop teardown/reinitialization. Cleanup still closes
+and releases the old observations; exhaustion does not abort the library.

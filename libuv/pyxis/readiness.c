@@ -46,8 +46,10 @@ void uv__pyxis_backend_reset(uv_loop_t *loop)
   }
   backend->set = HANDLE_INVALID;
   backend->rebuild = 1;
-  if (++backend->epoch == 0) {
-    abort();
+  /* Zero permanently exhausts this backend incarnation rather than reusing
+   * a generation that a staged reply could still carry. Cleanup stays valid. */
+  if (backend->epoch) {
+    ++backend->epoch;
   }
   for (size_t index = 0; index < backend->capacity; ++index) {
     if (backend->watches[index]) {
@@ -76,6 +78,9 @@ void uv__pyxis_set_remove(uv_loop_t *loop,
 int uv__pyxis_backend_ensure(uv_loop_t *loop, struct call_limit *limit)
 {
   struct uv__pyxis_backend *backend = loop->backend;
+  if (!backend->epoch) {
+    return UV_EOVERFLOW;
+  }
   if (!backend->rebuild) {
     return 0;
   }
@@ -243,7 +248,7 @@ struct uv__pyxis_watch *uv__pyxis_watch_find(uv_loop_t *loop,
     const struct readiness_set_event *event, uint64_t epoch)
 {
   struct uv__pyxis_backend *backend = loop->backend;
-  if (epoch != backend->epoch || !event->tag || event->tag > backend->capacity ||
+  if (!backend->epoch || epoch != backend->epoch || !event->tag || event->tag > backend->capacity ||
       !event->registration.identity || !event->registration.generation) {
     return NULL;
   }
